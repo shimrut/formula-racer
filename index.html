@@ -453,10 +453,13 @@
         <div class="header-controls">
             <div class="settings-group">
                 <label>
-                    <input type="checkbox" id="toggle-route"> Trace Route
+                    <input type="checkbox" id="toggle-route" checked> Trace Route
                 </label>
                 <label>
                     <input type="checkbox" id="toggle-vector"> Show Vector
+                </label>
+                <label>
+                    <input type="checkbox" id="toggle-camera"> Dynamic Cam
                 </label>
             </div>
             <select id="track-select">
@@ -766,6 +769,7 @@
                 // Settings Controls
                 this.toggleRoute = document.getElementById('toggle-route');
                 this.toggleVector = document.getElementById('toggle-vector');
+                this.toggleCamera = document.getElementById('toggle-camera');
                 
                 // Generate Internal Car Sprite
                 this.carSprite = this.createCarSprite();
@@ -783,7 +787,7 @@
                 this.status = 'ready'; 
                 this.startTime = 0;
                 this.currentTime = 0;
-                this.activeTimers = []; 
+                this.activeTimers = []; // Keep track of active timeouts/intervals
                 
                 // Visuals
                 this.skidMarks = [];
@@ -792,10 +796,11 @@
                 this.trailTimer = 0;
 
                 // Input
-                this.keys = { left: false, right: false }; 
+                this.keys = { left: false, right: false }; // Only steering
                 
                 // Viewport
                 this.camera = { x: 0, y: 0 };
+                this.zoom = 1; // Dynamic zoom level
                 
                 // DOM
                 this.uiTime = document.getElementById('time-val');
@@ -1252,13 +1257,40 @@
                 ctx.fillStyle = CONFIG.offTrackColor;
                 ctx.fillRect(0, 0, cw, ch);
 
-                // 2. Camera Update
-                const targetCamX = this.pos.x * gs - cw / 2;
-                const targetCamY = this.pos.y * gs - ch / 2;
+                // 2. Camera Update (Dynamic Zoom & Lookahead)
+                const speed = Math.sqrt(this.velocity.x**2 + this.velocity.y**2);
+                
+                let targetZoom = 1.0;
+
+                if (this.toggleCamera.checked) {
+                    // Calculate Target Zoom: Zoom out as speed increases
+                    // Min zoom 0.75 (was 0.55) for less extreme zoom out
+                    // Speed factor 0.02 (was 0.035) for less dynamicity/distraction
+                    const minZoom = 0.75;
+                    const speedFactor = 0.02; 
+                    targetZoom = Math.max(minZoom, 1.0 - (speed * speedFactor));
+                }
+                
+                // Smoothly interpolate zoom
+                this.zoom += (targetZoom - this.zoom) * 0.05;
+
+                // Look Ahead: Shift camera in direction of travel
+                const lookAheadAmount = 15; // Pixels per velocity unit
+                const laX = this.velocity.x * lookAheadAmount;
+                const laY = this.velocity.y * lookAheadAmount;
+
+                // Calculate Camera Target (Car Pos + Lookahead - Half Screen / Zoom)
+                // We divide screen size by zoom to keep car centered in the scaled view
+                const targetCamX = (this.pos.x * gs + laX) - (cw / 2 / this.zoom);
+                const targetCamY = (this.pos.y * gs + laY) - (ch / 2 / this.zoom);
+                
+                // Smooth Camera Movement
                 this.camera.x += (targetCamX - this.camera.x) * 0.1;
                 this.camera.y += (targetCamY - this.camera.y) * 0.1;
 
                 ctx.save();
+                // Apply Zoom and Camera Transform
+                ctx.scale(this.zoom, this.zoom);
                 ctx.translate(-this.camera.x, -this.camera.y);
 
                 // 3. Draw Track Surface
@@ -1391,7 +1423,6 @@
                 ctx.restore();
 
                 // 10. Speed Lines
-                const speed = Math.sqrt(this.velocity.x**2 + this.velocity.y**2);
                 if (speed > 4 && this.status === 'playing') {
                     ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
                     ctx.lineWidth = 1;
