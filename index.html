@@ -154,10 +154,10 @@
         .mobile-controls {
             display: none; /* Hidden on desktop */
             position: absolute;
-            bottom: 20px;
+            bottom: 30px;
             width: 100%;
             justify-content: space-between;
-            padding: 0 30px;
+            padding: 0 40px;
             box-sizing: border-box;
             pointer-events: none; /* Click-through empty space */
             z-index: 30;
@@ -168,16 +168,18 @@
             gap: 15px;
             align-items: flex-end;
             pointer-events: auto;
+            width: 100%;
+            justify-content: space-between;
         }
 
         .touch-btn {
-            width: 70px;
-            height: 70px;
+            width: 90px;
+            height: 90px;
             background: rgba(255, 255, 255, 0.1);
             border: 2px solid rgba(255, 255, 255, 0.2);
             border-radius: 50%;
             color: white;
-            font-size: 24px;
+            font-size: 32px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -194,15 +196,104 @@
             border-color: var(--accent-color);
         }
 
-        .touch-btn.large {
-            width: 90px;
-            height: 90px;
-            font-size: 32px;
-            background: rgba(34, 197, 94, 0.2);
+        /* Start Screen & Lights */
+        #start-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            backdrop-filter: blur(5px);
         }
 
-        .touch-btn.large:active {
-            background: rgba(34, 197, 94, 0.6);
+        #start-btn {
+            font-size: 1.5rem;
+            padding: 1.5rem 3rem;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: 800;
+            letter-spacing: 2px;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 20px rgba(239, 68, 68, 0.5); }
+            50% { transform: scale(1.05); box-shadow: 0 0 40px rgba(239, 68, 68, 0.8); }
+            100% { transform: scale(1); box-shadow: 0 0 20px rgba(239, 68, 68, 0.5); }
+        }
+
+        #start-lights {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            background: #111;
+            padding: 15px 25px;
+            border-radius: 10px;
+            border: 2px solid #333;
+            z-index: 40;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        #start-lights.visible {
+            opacity: 1;
+        }
+
+        .light {
+            width: 40px;
+            height: 40px;
+            background: #333;
+            border-radius: 50%;
+            border: 2px solid #000;
+            box-shadow: inset 0 0 10px #000;
+            transition: background 0.1s, box-shadow 0.1s;
+        }
+
+        .light.on {
+            background: #ff0000;
+            box-shadow: 0 0 20px #ff0000;
+        }
+
+        /* Green Light Style */
+        .light.green {
+            background: #22c55e;
+            box-shadow: 0 0 20px #22c55e;
+        }
+
+        /* GO Message Styling - Positioned higher */
+        #go-message {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.5);
+            font-size: 8rem;
+            font-weight: 900;
+            color: #22c55e;
+            text-shadow: 0 0 20px #fff;
+            pointer-events: none;
+            z-index: 60;
+            opacity: 0;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        
+        #go-message.visible {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1.2);
         }
 
         .modal {
@@ -243,28 +334,6 @@
             color: var(--accent-color);
         }
 
-        .tutorial {
-            position: absolute;
-            top: 80px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
-            border: 1px solid var(--accent-color);
-            padding: 1rem 2rem;
-            border-radius: 4px;
-            pointer-events: none;
-            transition: opacity 0.5s;
-            color: #fff;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            white-space: nowrap;
-        }
-
-        .hidden {
-            opacity: 0;
-        }
-
         .key-hint {
             position: absolute;
             bottom: 1rem;
@@ -298,10 +367,7 @@
                 font-size: 0.7rem;
                 opacity: 0.8;
             }
-            .tutorial {
-                font-size: 0.9rem;
-                padding: 0.8rem 1.5rem;
-            }
+            .light { width: 30px; height: 30px; }
         }
     </style>
 </head>
@@ -325,32 +391,42 @@
 
     <div id="game-container">
         <canvas id="gameCanvas"></canvas>
-        <div id="tutorial-msg" class="tutorial">Touch Controls Enabled</div>
         <div class="key-hint">
-            WASD / ARROWS
+            A / D or Arrows to Steer
         </div>
 
-        <!-- Mobile Touch Controls -->
+        <!-- Start Screen Overlay -->
+        <div id="start-overlay">
+            <button id="start-btn" onclick="game.startSequence()">Start Your Engines</button>
+        </div>
+
+        <!-- F1 Lights (3 Steps) -->
+        <div id="start-lights">
+            <div class="light" id="light-1"></div>
+            <div class="light" id="light-2"></div>
+            <div class="light" id="light-3"></div>
+        </div>
+        
+        <!-- Big GO Text -->
+        <div id="go-message">GO!</div>
+
+        <!-- Mobile Touch Controls (Steering Only) -->
         <div class="mobile-controls">
             <div class="control-group">
                 <div id="btn-left" class="touch-btn">←</div>
                 <div id="btn-right" class="touch-btn">→</div>
             </div>
-            <div class="control-group">
-                <div id="btn-brake" class="touch-btn">↓</div>
-                <div id="btn-gas" class="touch-btn large">↑</div>
-            </div>
         </div>
     </div>
 
     <div class="controls">
-        <button class="danger" onclick="game.reset()" title="Restart Track">Restart</button>
+        <button class="danger" onclick="game.reset(true)" title="Restart Track">Restart</button>
     </div>
 
     <div id="modal" class="modal">
         <h2 id="modal-title">CRASH</h2>
         <p id="modal-msg">Terminal Damage</p>
-        <button onclick="game.reset()">Box Box</button>
+        <button onclick="game.reset(true)">Box Box</button>
     </div>
 
     <script>
@@ -538,7 +614,7 @@
                 this.particles = [];
 
                 // Input
-                this.keys = { up: false, down: false, left: false, right: false };
+                this.keys = { left: false, right: false }; // Only steering
                 
                 // Viewport
                 this.camera = { x: 0, y: 0 };
@@ -549,7 +625,9 @@
                 this.modal = document.getElementById('modal');
                 this.modalTitle = document.getElementById('modal-title');
                 this.modalMsg = document.getElementById('modal-msg');
-                this.tutorial = document.getElementById('tutorial-msg');
+                this.startOverlay = document.getElementById('start-overlay');
+                this.startLights = document.getElementById('start-lights');
+                this.goMessage = document.getElementById('go-message');
 
                 // Listeners
                 window.addEventListener('resize', () => this.resize());
@@ -567,6 +645,45 @@
                 this.loop(this.lastTime);
             }
 
+            startSequence() {
+                if(this.status !== 'ready') return;
+                
+                this.status = 'starting';
+                this.startOverlay.style.display = 'none';
+                this.startLights.classList.add('visible');
+                
+                const l1 = document.getElementById('light-1');
+                const l2 = document.getElementById('light-2');
+                const l3 = document.getElementById('light-3');
+                
+                // Sequence: 1s intervals
+                setTimeout(() => l1.classList.add('on'), 500);
+                setTimeout(() => l2.classList.add('on'), 1500);
+                
+                setTimeout(() => {
+                    // Turn all green
+                    l1.classList.remove('on'); l1.classList.add('green');
+                    l2.classList.remove('on'); l2.classList.add('green');
+                    l3.classList.remove('on'); l3.classList.add('green');
+                    
+                    // Show GO
+                    this.goMessage.classList.add('visible');
+                    
+                    // START
+                    this.status = 'playing';
+                    this.startTime = performance.now();
+                    
+                    // Cleanup visuals after start
+                    setTimeout(() => {
+                        this.startLights.classList.remove('visible');
+                        this.goMessage.classList.remove('visible');
+                        [l1, l2, l3].forEach(l => {
+                            l.className = 'light';
+                        });
+                    }, 1500);
+                }, 2500);
+            }
+
             bindMobileControls() {
                 const setupBtn = (id, key) => {
                     const btn = document.getElementById(id);
@@ -576,13 +693,6 @@
                         e.preventDefault(); 
                         this.handleKey({ key: key }, true);
                         btn.classList.add('active');
-                        
-                        // Auto-start
-                        if (this.status === 'ready') {
-                            this.status = 'playing';
-                            this.startTime = performance.now();
-                            this.tutorial.classList.add('hidden');
-                        }
                     };
                     const up = (e) => {
                         e.preventDefault(); 
@@ -597,8 +707,6 @@
                     btn.addEventListener('mouseleave', up);
                 };
 
-                setupBtn('btn-gas', 'w');
-                setupBtn('btn-brake', 's');
                 setupBtn('btn-left', 'a');
                 setupBtn('btn-right', 'd');
             }
@@ -648,7 +756,6 @@
             
             // Helper to round corners
             smoothPoly(points, radius) {
-                // Filter out duplicate adjacent points to prevent Divide-by-Zero
                 const uniquePoints = points.filter((p, i) => {
                     const next = points[(i + 1) % points.length];
                     return !(Math.abs(p.x - next.x) < 0.01 && Math.abs(p.y - next.y) < 0.01);
@@ -671,31 +778,23 @@
                     const len1 = Math.sqrt(v1.x*v1.x + v1.y*v1.y);
                     const len2 = Math.sqrt(v2.x*v2.x + v2.y*v2.y);
                     
-                    // Safety check
                     if (len1 < 0.001 || len2 < 0.001) {
                         newPoints.push(curr);
                         continue;
                     }
 
-                    // Constrain radius
                     const r = Math.min(radius, len1/2.5, len2/2.5);
-                    
-                    // Normalize
                     const n1 = { x: v1.x/len1, y: v1.y/len1 };
                     const n2 = { x: v2.x/len2, y: v2.y/len2 };
-                    
-                    // Start/End of curve
                     const start = { x: curr.x - n1.x * r, y: curr.y - n1.y * r };
                     const end   = { x: curr.x + n2.x * r, y: curr.y + n2.y * r };
                     
-                    // Interpolate Curve (Quadratic Bezier)
                     const steps = 5;
                     for(let t=0; t<=steps; t++) {
                         const s = t/steps;
                         const a = (1-s)*(1-s);
                         const b = 2*(1-s)*s;
                         const c = s*s;
-                        
                         newPoints.push({
                             x: a*start.x + b*curr.x + c*end.x,
                             y: a*start.y + b*curr.y + c*end.y
@@ -708,34 +807,22 @@
             loadTrack(trackKey) {
                 if (TRACKS[trackKey]) {
                     this.currentTrack = TRACKS[trackKey];
-                    // Generate smoothed geometry
                     const cornerRadius = 3; 
                     this.activeGeometry.outer = this.smoothPoly(this.currentTrack.outer, cornerRadius);
                     this.activeGeometry.inner = this.smoothPoly(this.currentTrack.inner, cornerRadius);
-                    
                     this.reset();
                     document.activeElement.blur(); 
                 }
             }
 
             handleKey(e, isDown) {
-                // Ignore key events if no valid key property (can happen with manual triggers)
                 if (!e.key) return;
-
-                if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].indexOf(e.code) > -1) {
-                    // Only prevent default on actual keyboard events, not our synthetic objects
+                if(["ArrowLeft","ArrowRight","a","d"].indexOf(e.key.toLowerCase()) > -1 || ["ArrowLeft","ArrowRight"].indexOf(e.code) > -1) {
                     if (e.preventDefault) e.preventDefault();
                 }
                 switch(e.key.toLowerCase()) {
-                    case 'w': case 'arrowup': this.keys.up = isDown; break;
-                    case 's': case 'arrowdown': this.keys.down = isDown; break;
                     case 'a': case 'arrowleft': this.keys.left = isDown; break;
                     case 'd': case 'arrowright': this.keys.right = isDown; break;
-                }
-                if (isDown && this.status === 'ready' && (this.keys.up || this.keys.down)) {
-                    this.status = 'playing';
-                    this.startTime = performance.now();
-                    this.tutorial.classList.add('hidden');
                 }
             }
 
@@ -745,15 +832,9 @@
                     let ax = 0;
                     let ay = 0;
 
-                    if (this.keys.up) {
-                        ax += Math.cos(this.angle) * CONFIG.accel;
-                        ay += Math.sin(this.angle) * CONFIG.accel;
-                    }
-                    if (this.keys.down) {
-                        ax -= Math.cos(this.angle) * (CONFIG.accel * 0.8);
-                        ay -= Math.sin(this.angle) * (CONFIG.accel * 0.8);
-                        if(Math.random() > 0.5) this.spawnParticles('smoke');
-                    }
+                    // AUTO ACCELERATE
+                    ax += Math.cos(this.angle) * CONFIG.accel;
+                    ay += Math.sin(this.angle) * CONFIG.accel;
 
                     if (this.keys.left) this.angle -= CONFIG.turnSpeed * dt;
                     if (this.keys.right) this.angle += CONFIG.turnSpeed * dt;
@@ -802,7 +883,8 @@
                     
                     const slip = 1 - (vx * vNormX + vy * vNormY);
                     
-                    if ((slip > 0.05 && speed > 2) || (this.keys.down && speed > 1)) {
+                    // Slightly easier skid mark threshold
+                    if (slip > 0.05 && speed > 2) {
                         this.skidMarks.push({
                             x: this.pos.x, 
                             y: this.pos.y, 
@@ -912,17 +994,22 @@
                 this.showModal('POLE POSITION', `Lap Time: ${finalTime}s`);
             }
 
-            reset() {
+            reset(autoStart = false) {
                 this.pos = { ...this.currentTrack.startPos };
                 this.velocity = { x: 0, y: 0 };
                 this.angle = this.currentTrack.startAngle;
-                this.keys = { up: false, down: false, left: false, right: false };
-                this.status = 'ready';
+                this.keys = { left: false, right: false }; // Reset keys
+                this.status = 'ready'; // Reset to ready state
                 this.currentTime = 0;
                 this.skidMarks = [];
                 this.particles = [];
                 this.modal.classList.remove('active');
-                this.tutorial.classList.remove('hidden');
+                
+                // Reset Visuals
+                this.startLights.classList.remove('visible');
+                this.goMessage.classList.remove('visible');
+                [...this.startLights.children].forEach(el => el.className = 'light');
+
                 this.uiTime.innerText = "0.00";
                 this.uiSpeed.innerText = "0";
                 
@@ -931,6 +1018,13 @@
                 const gs = CONFIG.gridSize;
                 this.camera.x = (this.pos.x * gs) - cw/2;
                 this.camera.y = (this.pos.y * gs) - ch/2;
+
+                if (autoStart) {
+                    this.startOverlay.style.display = 'none';
+                    this.startSequence();
+                } else {
+                    this.startOverlay.style.display = 'flex';
+                }
             }
 
             showModal(title, msg) {
