@@ -150,6 +150,61 @@
             background-color: #ef4444;
         }
 
+        /* Mobile Controls Styling */
+        .mobile-controls {
+            display: none; /* Hidden on desktop */
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            justify-content: space-between;
+            padding: 0 30px;
+            box-sizing: border-box;
+            pointer-events: none; /* Click-through empty space */
+            z-index: 30;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+            pointer-events: auto;
+        }
+
+        .touch-btn {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+            touch-action: manipulation;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            transition: transform 0.1s, background 0.1s;
+        }
+
+        .touch-btn:active, .touch-btn.active {
+            background: rgba(239, 68, 68, 0.6);
+            transform: scale(0.95);
+            border-color: var(--accent-color);
+        }
+
+        .touch-btn.large {
+            width: 90px;
+            height: 90px;
+            font-size: 32px;
+            background: rgba(34, 197, 94, 0.2);
+        }
+
+        .touch-btn.large:active {
+            background: rgba(34, 197, 94, 0.6);
+        }
+
         .modal {
             position: absolute;
             top: 0;
@@ -224,6 +279,9 @@
             h1 { font-size: 1rem; display: none; }
             .header-controls { gap: 0.5rem; width: 100%; justify-content: space-between; }
             
+            .mobile-controls {
+                display: flex;
+            }
             .key-hint {
                 display: none;
             }
@@ -267,9 +325,21 @@
 
     <div id="game-container">
         <canvas id="gameCanvas"></canvas>
-        <div id="tutorial-msg" class="tutorial">Touch & Drag to Drive</div>
+        <div id="tutorial-msg" class="tutorial">Touch Controls Enabled</div>
         <div class="key-hint">
             WASD / ARROWS
+        </div>
+
+        <!-- Mobile Touch Controls -->
+        <div class="mobile-controls">
+            <div class="control-group">
+                <div id="btn-left" class="touch-btn">←</div>
+                <div id="btn-right" class="touch-btn">→</div>
+            </div>
+            <div class="control-group">
+                <div id="btn-brake" class="touch-btn">↓</div>
+                <div id="btn-gas" class="touch-btn large">↑</div>
+            </div>
         </div>
     </div>
 
@@ -469,7 +539,6 @@
 
                 // Input
                 this.keys = { up: false, down: false, left: false, right: false };
-                this.analogSteer = 0; // -1 to 1 for smooth mobile steering
                 
                 // Viewport
                 this.camera = { x: 0, y: 0 };
@@ -499,52 +568,39 @@
             }
 
             bindMobileControls() {
-                const touchZone = document.getElementById('game-container');
-                let startX = 0;
-                let isTouching = false;
-
-                const handleTouch = (e) => {
-                    e.preventDefault(); // Prevent scrolling/zooming
+                const setupBtn = (id, key) => {
+                    const btn = document.getElementById(id);
+                    if (!btn) return;
                     
-                    if (e.type === 'touchstart') {
-                        const touch = e.touches[0];
-                        startX = touch.clientX;
-                        isTouching = true;
-                        this.keys.up = true; // Auto-accelerate on touch
-                        this.analogSteer = 0; // Reset steering
+                    const down = (e) => {
+                        e.preventDefault(); 
+                        this.handleKey({ key: key }, true);
+                        btn.classList.add('active');
                         
-                        // Auto-start game
+                        // Auto-start
                         if (this.status === 'ready') {
                             this.status = 'playing';
                             this.startTime = performance.now();
                             this.tutorial.classList.add('hidden');
                         }
-                    } else if (e.type === 'touchmove' && isTouching) {
-                        const touch = e.touches[0];
-                        const diff = touch.clientX - startX;
-                        
-                        // Analog Logic:
-                        // 120px drag = Full Lock Steering (1.0)
-                        const maxDrag = 120; 
-                        let val = diff / maxDrag;
-                        
-                        // Deadzone (10px) to prevent twitchy steering
-                        if (Math.abs(diff) < 10) val = 0;
-                        
-                        // Clamp between -1 and 1
-                        this.analogSteer = Math.max(-1, Math.min(1, val));
+                    };
+                    const up = (e) => {
+                        e.preventDefault(); 
+                        this.handleKey({ key: key }, false);
+                        btn.classList.remove('active');
+                    };
 
-                    } else if (e.type === 'touchend' || e.type === 'touchcancel') {
-                        isTouching = false;
-                        this.keys.up = false;
-                        this.analogSteer = 0;
-                    }
+                    btn.addEventListener('touchstart', down, { passive: false });
+                    btn.addEventListener('touchend', up, { passive: false });
+                    btn.addEventListener('mousedown', down);
+                    btn.addEventListener('mouseup', up);
+                    btn.addEventListener('mouseleave', up);
                 };
 
-                touchZone.addEventListener('touchstart', handleTouch, { passive: false });
-                touchZone.addEventListener('touchmove', handleTouch, { passive: false });
-                touchZone.addEventListener('touchend', handleTouch, { passive: false });
-                touchZone.addEventListener('touchcancel', handleTouch, { passive: false });
+                setupBtn('btn-gas', 'w');
+                setupBtn('btn-brake', 's');
+                setupBtn('btn-left', 'a');
+                setupBtn('btn-right', 'd');
             }
 
             // Create F1 Car Sprite
@@ -699,14 +755,8 @@
                         if(Math.random() > 0.5) this.spawnParticles('smoke');
                     }
 
-                    // Keyboard Steering (Digital)
                     if (this.keys.left) this.angle -= CONFIG.turnSpeed * dt;
                     if (this.keys.right) this.angle += CONFIG.turnSpeed * dt;
-
-                    // Mobile Steering (Analog)
-                    if (this.analogSteer !== 0) {
-                        this.angle += this.analogSteer * CONFIG.turnSpeed * dt;
-                    }
 
                     this.velocity.x += ax * dt;
                     this.velocity.y += ay * dt;
