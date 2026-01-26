@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Vector Racer: Grand Prix</title>
     <style>
+        /* Global Box Sizing for correct padding handling */
+        * {
+            box-sizing: border-box;
+        }
+
         :root {
             --bg-color: #0f172a; /* Dark background */
             --text-color: #f8fafc;
@@ -29,7 +34,7 @@
 
         header {
             width: 100%;
-            padding: 1rem;
+            padding: 1rem 2rem; /* Horizontal padding */
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -56,6 +61,28 @@
             display: flex;
             align-items: center;
             gap: 1.5rem;
+        }
+
+        .settings-group {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .settings-group label {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+
+        .settings-group input[type="checkbox"] {
+            accent-color: var(--accent-color);
+            width: 1rem;
+            height: 1rem;
+            cursor: pointer;
         }
 
         select {
@@ -173,13 +200,13 @@
         }
 
         .touch-btn {
-            width: 90px;
-            height: 90px;
+            width: 120px;
+            height: 120px;
             background: rgba(255, 255, 255, 0.1);
             border: 2px solid rgba(255, 255, 255, 0.2);
             border-radius: 50%;
             color: white;
-            font-size: 32px;
+            font-size: 48px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -225,6 +252,10 @@
             letter-spacing: 2px;
             box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
             animation: pulse 2s infinite;
+            max-width: 90vw;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         @keyframes pulse {
@@ -334,6 +365,41 @@
             color: var(--accent-color);
         }
 
+        /* Modal Track Selector Styling */
+        .modal-track-selector {
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.8rem;
+            width: 100%;
+            max-width: 280px;
+        }
+
+        .modal-track-selector label {
+            color: #94a3b8;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .modal-track-selector select {
+            width: 100%;
+            padding: 0.8rem;
+            background: #0f172a;
+            color: #fff;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .modal-track-selector select:hover {
+            border-color: var(--accent-color);
+        }
+
         .key-hint {
             position: absolute;
             bottom: 1rem;
@@ -346,7 +412,16 @@
 
         @media (max-width: 768px) {
             h1 { font-size: 1rem; display: none; }
-            .header-controls { gap: 0.5rem; width: 100%; justify-content: space-between; }
+            .header-controls { 
+                gap: 0.5rem; 
+                width: 100%; 
+                justify-content: space-between; 
+                flex-wrap: wrap; /* Allow wrapping on small screens */
+            }
+            
+            .settings-group {
+                display: none; /* Hide advanced settings on mobile to save space */
+            }
             
             .mobile-controls {
                 display: flex;
@@ -376,9 +451,19 @@
     <header>
         <h1>Vector <span>Grand Prix</span></h1>
         <div class="header-controls">
+            <div class="settings-group">
+                <label>
+                    <input type="checkbox" id="toggle-route"> Trace Route
+                </label>
+                <label>
+                    <input type="checkbox" id="toggle-vector"> Show Vector
+                </label>
+            </div>
             <select id="track-select">
                 <option value="circuit">Classic Circuit</option>
                 <option value="monza">Temple of Speed</option>
+                <option value="silverstone">Royal Circuit</option>
+                <option value="spa">Forest Run</option>
                 <option value="oval">Super Oval</option>
                 <option value="complex">The Complex</option>
             </select>
@@ -427,6 +512,18 @@
         <h2 id="modal-title">CRASH</h2>
         <p id="modal-msg">Terminal Damage</p>
         <button onclick="game.reset(true)">Box Box</button>
+        
+        <div class="modal-track-selector">
+            <label>Next Grand Prix</label>
+            <select id="modal-track-select">
+                <option value="circuit">Classic Circuit</option>
+                <option value="monza">Temple of Speed</option>
+                <option value="silverstone">Royal Circuit</option>
+                <option value="spa">Forest Run</option>
+                <option value="oval">Super Oval</option>
+                <option value="complex">The Complex</option>
+            </select>
+        </div>
     </div>
 
     <script>
@@ -473,13 +570,13 @@
             finishLineColor: '#fff',
             
             // Physics Constants
-            accel: 20.0, 
-            turnSpeed: 4.0,  
-            friction: 0.96, 
-            crashSpeed: 4.5,
+            accel: 28.0, // Tuned for ~220 kph top speed
+            turnSpeed: 5.0,  // Balanced steering response
+            friction: 0.96, // Lower drag for higher top speed
+            crashSpeed: 7.0, // Higher impact tolerance
             
             // Collision radius (approximate car half-width in grid units)
-            carRadius: 0.25 
+            carRadius: 0.2 
         };
 
         // --- Track Definitions ---
@@ -546,6 +643,79 @@
                 startPos: Point(12, 28),
                 startAngle: 0
             },
+            silverstone: {
+                name: "Royal Circuit",
+                outer: [
+                    Point(15, 35),
+                    Point(35, 35),
+                    Point(42, 32), // Copse (Widened & pushed out)
+                    Point(50, 28), // Maggotts Entry (Widened)
+                    Point(58, 20), // Becketts (Widened)
+                    Point(55, 12), // Chapel Exit (Widened)
+                    Point(50, 10),
+                    Point(40, 5),
+                    Point(25, 5),
+                    Point(20, 10),
+                    Point(10, 10),
+                    Point(5, 15),
+                    Point(5, 25),
+                    Point(10, 30),
+                    Point(15, 35)
+                ],
+                inner: [
+                    Point(15, 31),
+                    Point(33, 31),
+                    Point(38, 28), // Copse Inner (Tighter to create space)
+                    Point(44, 24), // Maggotts Inner (Significantly tightened)
+                    Point(50, 16), // Becketts Inner
+                    Point(47, 14),
+                    Point(38, 9),
+                    Point(25, 9),
+                    Point(23, 13),
+                    Point(12, 13),
+                    Point(9, 16),
+                    Point(9, 23),
+                    Point(13, 27),
+                    Point(15, 31)
+                ],
+                startLine: { p1: Point(20, 31), p2: Point(20, 35) },
+                startPos: Point(18, 33),
+                startAngle: 0
+            },
+            spa: {
+                name: "Forest Run",
+                outer: [
+                    Point(15, 38), // La Source
+                    Point(5, 30),  // Downhill
+                    Point(10, 25), // Eau Rouge Bottom
+                    Point(15, 20), // Raidillon Top
+                    Point(40, 5),  // Kemmel Straight End
+                    Point(50, 5),  // Les Combes
+                    Point(55, 10), // Malmedy
+                    Point(55, 20), // Rivage
+                    Point(45, 25), // Pouhon
+                    Point(40, 30), // Fagnes
+                    Point(35, 35), // Stavelot
+                    Point(20, 35)  // Blanchimont / Bus Stop
+                ],
+                inner: [
+                    Point(18, 34), // La Source In
+                    Point(10, 30),
+                    Point(13, 25), // Eau Rouge In
+                    Point(17, 22),
+                    Point(40, 9),  // Kemmel In
+                    Point(48, 9),
+                    Point(51, 12),
+                    Point(51, 18),
+                    Point(45, 21), // Pouhon In
+                    Point(40, 26),
+                    Point(35, 31),
+                    Point(20, 31)
+                ],
+                startLine: { p1: Point(19, 32.5), p2: Point(19, 35.6) },
+                startPos: Point(21, 34), 
+                startAngle: 2.6 
+            },
             oval: {
                 name: "Super Oval",
                 outer: [
@@ -591,6 +761,11 @@
                 this.ctx = this.canvas.getContext('2d');
                 this.container = document.getElementById('game-container');
                 this.trackSelect = document.getElementById('track-select');
+                this.modalTrackSelect = document.getElementById('modal-track-select');
+                
+                // Settings Controls
+                this.toggleRoute = document.getElementById('toggle-route');
+                this.toggleVector = document.getElementById('toggle-vector');
                 
                 // Generate Internal Car Sprite
                 this.carSprite = this.createCarSprite();
@@ -608,13 +783,16 @@
                 this.status = 'ready'; 
                 this.startTime = 0;
                 this.currentTime = 0;
+                this.activeTimers = []; 
                 
                 // Visuals
                 this.skidMarks = [];
+                this.routeTrace = []; 
                 this.particles = [];
+                this.trailTimer = 0;
 
                 // Input
-                this.keys = { left: false, right: false }; // Only steering
+                this.keys = { left: false, right: false }; 
                 
                 // Viewport
                 this.camera = { x: 0, y: 0 };
@@ -633,7 +811,10 @@
                 window.addEventListener('resize', () => this.resize());
                 window.addEventListener('keydown', (e) => this.handleKey(e, true));
                 window.addEventListener('keyup', (e) => this.handleKey(e, false));
+                
+                // Track Selectors
                 this.trackSelect.addEventListener('change', (e) => this.loadTrack(e.target.value));
+                this.modalTrackSelect.addEventListener('change', (e) => this.loadTrack(e.target.value));
                 
                 // Mobile Control Bindings
                 this.bindMobileControls();
@@ -643,6 +824,14 @@
                 
                 this.lastTime = performance.now();
                 this.loop(this.lastTime);
+            }
+
+            clearTimers() {
+                this.activeTimers.forEach(id => {
+                    clearTimeout(id);
+                    clearInterval(id);
+                });
+                this.activeTimers = [];
             }
 
             startSequence() {
@@ -657,10 +846,10 @@
                 const l3 = document.getElementById('light-3');
                 
                 // Sequence: 1s intervals
-                setTimeout(() => l1.classList.add('on'), 500);
-                setTimeout(() => l2.classList.add('on'), 1500);
+                this.activeTimers.push(setTimeout(() => l1.classList.add('on'), 500));
+                this.activeTimers.push(setTimeout(() => l2.classList.add('on'), 1500));
                 
-                setTimeout(() => {
+                this.activeTimers.push(setTimeout(() => {
                     // Turn all green
                     l1.classList.remove('on'); l1.classList.add('green');
                     l2.classList.remove('on'); l2.classList.add('green');
@@ -674,14 +863,14 @@
                     this.startTime = performance.now();
                     
                     // Cleanup visuals after start
-                    setTimeout(() => {
+                    this.activeTimers.push(setTimeout(() => {
                         this.startLights.classList.remove('visible');
                         this.goMessage.classList.remove('visible');
                         [l1, l2, l3].forEach(l => {
                             l.className = 'light';
                         });
-                    }, 1500);
-                }, 2500);
+                    }, 1500));
+                }, 2500));
             }
 
             bindMobileControls() {
@@ -807,6 +996,11 @@
             loadTrack(trackKey) {
                 if (TRACKS[trackKey]) {
                     this.currentTrack = TRACKS[trackKey];
+                    
+                    // Sync both selectors
+                    this.trackSelect.value = trackKey;
+                    this.modalTrackSelect.value = trackKey;
+
                     const cornerRadius = 3; 
                     this.activeGeometry.outer = this.smoothPoly(this.currentTrack.outer, cornerRadius);
                     this.activeGeometry.inner = this.smoothPoly(this.currentTrack.inner, cornerRadius);
@@ -892,6 +1086,17 @@
                             alpha: 1.0
                         });
                         if (this.skidMarks.length > 200) this.skidMarks.shift();
+                    }
+
+                    // Trace Route Logic (if setting enabled)
+                    if (this.toggleRoute.checked) {
+                        this.trailTimer += dt;
+                        if (this.trailTimer > 0.05) {
+                            this.routeTrace.push({ x: this.pos.x, y: this.pos.y });
+                            this.trailTimer = 0;
+                        }
+                    } else {
+                        this.routeTrace = []; // Clear if turned off
                     }
                 }
 
@@ -995,6 +1200,9 @@
             }
 
             reset(autoStart = false) {
+                // Clear any running start sequences
+                this.clearTimers();
+
                 this.pos = { ...this.currentTrack.startPos };
                 this.velocity = { x: 0, y: 0 };
                 this.angle = this.currentTrack.startAngle;
@@ -1002,6 +1210,7 @@
                 this.status = 'ready'; // Reset to ready state
                 this.currentTime = 0;
                 this.skidMarks = [];
+                this.routeTrace = [];
                 this.particles = [];
                 this.modal.classList.remove('active');
                 
@@ -1081,6 +1290,19 @@
                         }
                     }
                 ctx.restore();
+
+                // 4.5 Route Trace (If Enabled)
+                if (this.toggleRoute.checked && this.routeTrace.length > 1) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = "rgba(56, 189, 248, 0.5)"; // Light Blue
+                    ctx.lineWidth = 4;
+                    ctx.lineJoin = 'round';
+                    ctx.moveTo(this.routeTrace[0].x * gs, this.routeTrace[0].y * gs);
+                    for (let i = 1; i < this.routeTrace.length; i++) {
+                        ctx.lineTo(this.routeTrace[i].x * gs, this.routeTrace[i].y * gs);
+                    }
+                    ctx.stroke();
+                }
 
                 // 6. Draw Curbs
                 const drawCurb = (poly) => {
@@ -1183,6 +1405,19 @@
                         ctx.lineTo(rx + vx, ry + vy);
                     }
                     ctx.stroke();
+                }
+
+                // 11. Show Vector (If Enabled)
+                if (this.toggleVector.checked && this.status === 'playing' && speed > 1) {
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    ctx.moveTo(px, py);
+                    // Project vector forward (reduced to 75% of previous length: 0.8 -> 0.6)
+                    ctx.lineTo(px + this.velocity.x * gs * 0.6, py + this.velocity.y * gs * 0.6);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
                 }
 
                 ctx.restore();
