@@ -469,6 +469,7 @@
 
                 // Input
                 this.keys = { up: false, down: false, left: false, right: false };
+                this.analogSteer = 0; // -1 to 1 for smooth mobile steering
                 
                 // Viewport
                 this.camera = { x: 0, y: 0 };
@@ -510,6 +511,7 @@
                         startX = touch.clientX;
                         isTouching = true;
                         this.keys.up = true; // Auto-accelerate on touch
+                        this.analogSteer = 0; // Reset steering
                         
                         // Auto-start game
                         if (this.status === 'ready') {
@@ -519,25 +521,23 @@
                         }
                     } else if (e.type === 'touchmove' && isTouching) {
                         const touch = e.touches[0];
-                        const currentX = touch.clientX;
-                        const diff = currentX - startX;
-                        const threshold = 20; // Sensitivity deadzone
+                        const diff = touch.clientX - startX;
+                        
+                        // Analog Logic:
+                        // 120px drag = Full Lock Steering (1.0)
+                        const maxDrag = 120; 
+                        let val = diff / maxDrag;
+                        
+                        // Deadzone (10px) to prevent twitchy steering
+                        if (Math.abs(diff) < 10) val = 0;
+                        
+                        // Clamp between -1 and 1
+                        this.analogSteer = Math.max(-1, Math.min(1, val));
 
-                        if (diff < -threshold) {
-                            this.keys.left = true;
-                            this.keys.right = false;
-                        } else if (diff > threshold) {
-                            this.keys.right = true;
-                            this.keys.left = false;
-                        } else {
-                            this.keys.left = false;
-                            this.keys.right = false;
-                        }
                     } else if (e.type === 'touchend' || e.type === 'touchcancel') {
                         isTouching = false;
                         this.keys.up = false;
-                        this.keys.left = false;
-                        this.keys.right = false;
+                        this.analogSteer = 0;
                     }
                 };
 
@@ -699,8 +699,14 @@
                         if(Math.random() > 0.5) this.spawnParticles('smoke');
                     }
 
+                    // Keyboard Steering (Digital)
                     if (this.keys.left) this.angle -= CONFIG.turnSpeed * dt;
                     if (this.keys.right) this.angle += CONFIG.turnSpeed * dt;
+
+                    // Mobile Steering (Analog)
+                    if (this.analogSteer !== 0) {
+                        this.angle += this.analogSteer * CONFIG.turnSpeed * dt;
+                    }
 
                     this.velocity.x += ax * dt;
                     this.velocity.y += ay * dt;
