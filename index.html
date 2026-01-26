@@ -99,6 +99,7 @@
             align-items: center;
             overflow: hidden;
             background-color: #0f172a;
+            touch-action: none; /* Prevent browser handling gestures */
         }
 
         canvas {
@@ -147,61 +148,6 @@
 
         button.danger:hover {
             background-color: #ef4444;
-        }
-
-        /* Mobile Controls Styling */
-        .mobile-controls {
-            display: none; /* Hidden on desktop */
-            position: absolute;
-            bottom: 20px;
-            width: 100%;
-            justify-content: space-between;
-            padding: 0 30px;
-            box-sizing: border-box;
-            pointer-events: none; /* Click-through empty space */
-            z-index: 30;
-        }
-
-        .control-group {
-            display: flex;
-            gap: 15px;
-            align-items: flex-end;
-            pointer-events: auto;
-        }
-
-        .touch-btn {
-            width: 70px;
-            height: 70px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            color: white;
-            font-size: 24px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            user-select: none;
-            touch-action: manipulation;
-            cursor: pointer;
-            backdrop-filter: blur(4px);
-            transition: transform 0.1s, background 0.1s;
-        }
-
-        .touch-btn:active, .touch-btn.active {
-            background: rgba(239, 68, 68, 0.6);
-            transform: scale(0.95);
-            border-color: var(--accent-color);
-        }
-
-        .touch-btn.large {
-            width: 90px;
-            height: 90px;
-            font-size: 32px;
-            background: rgba(34, 197, 94, 0.2); /* Slight green tint for gas */
-        }
-        
-        .touch-btn.large:active {
-            background: rgba(34, 197, 94, 0.6);
         }
 
         .modal {
@@ -257,6 +203,7 @@
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 1px;
+            white-space: nowrap;
         }
 
         .hidden {
@@ -277,9 +224,6 @@
             h1 { font-size: 1rem; display: none; }
             .header-controls { gap: 0.5rem; width: 100%; justify-content: space-between; }
             
-            .mobile-controls {
-                display: flex;
-            }
             .key-hint {
                 display: none;
             }
@@ -295,6 +239,10 @@
                 padding: 0.5rem 1rem;
                 font-size: 0.7rem;
                 opacity: 0.8;
+            }
+            .tutorial {
+                font-size: 0.9rem;
+                padding: 0.8rem 1.5rem;
             }
         }
     </style>
@@ -319,21 +267,9 @@
 
     <div id="game-container">
         <canvas id="gameCanvas"></canvas>
-        <div id="tutorial-msg" class="tutorial">Race Start</div>
+        <div id="tutorial-msg" class="tutorial">Touch & Drag to Drive</div>
         <div class="key-hint">
             WASD / ARROWS
-        </div>
-
-        <!-- Mobile Touch Controls -->
-        <div class="mobile-controls">
-            <div class="control-group">
-                <div id="btn-left" class="touch-btn">←</div>
-                <div id="btn-right" class="touch-btn">→</div>
-            </div>
-            <div class="control-group">
-                <div id="btn-brake" class="touch-btn">↓</div>
-                <div id="btn-gas" class="touch-btn large">↑</div>
-            </div>
         </div>
     </div>
 
@@ -562,38 +498,53 @@
             }
 
             bindMobileControls() {
-                const setupBtn = (id, key) => {
-                    const btn = document.getElementById(id);
-                    if (!btn) return;
+                const touchZone = document.getElementById('game-container');
+                let startX = 0;
+                let isTouching = false;
+
+                const handleTouch = (e) => {
+                    e.preventDefault(); // Prevent scrolling/zooming
                     
-                    const down = (e) => {
-                        e.preventDefault(); 
-                        this.handleKey({ key: key }, true);
-                        btn.classList.add('active');
-                        // Auto-start game if needed
+                    if (e.type === 'touchstart') {
+                        const touch = e.touches[0];
+                        startX = touch.clientX;
+                        isTouching = true;
+                        this.keys.up = true; // Auto-accelerate on touch
+                        
+                        // Auto-start game
                         if (this.status === 'ready') {
                             this.status = 'playing';
                             this.startTime = performance.now();
                             this.tutorial.classList.add('hidden');
                         }
-                    };
-                    const up = (e) => {
-                        e.preventDefault(); 
-                        this.handleKey({ key: key }, false);
-                        btn.classList.remove('active');
-                    };
+                    } else if (e.type === 'touchmove' && isTouching) {
+                        const touch = e.touches[0];
+                        const currentX = touch.clientX;
+                        const diff = currentX - startX;
+                        const threshold = 20; // Sensitivity deadzone
 
-                    btn.addEventListener('touchstart', down, { passive: false });
-                    btn.addEventListener('touchend', up, { passive: false });
-                    btn.addEventListener('mousedown', down);
-                    btn.addEventListener('mouseup', up);
-                    btn.addEventListener('mouseleave', up);
+                        if (diff < -threshold) {
+                            this.keys.left = true;
+                            this.keys.right = false;
+                        } else if (diff > threshold) {
+                            this.keys.right = true;
+                            this.keys.left = false;
+                        } else {
+                            this.keys.left = false;
+                            this.keys.right = false;
+                        }
+                    } else if (e.type === 'touchend' || e.type === 'touchcancel') {
+                        isTouching = false;
+                        this.keys.up = false;
+                        this.keys.left = false;
+                        this.keys.right = false;
+                    }
                 };
 
-                setupBtn('btn-gas', 'w');
-                setupBtn('btn-brake', 's');
-                setupBtn('btn-left', 'a');
-                setupBtn('btn-right', 'd');
+                touchZone.addEventListener('touchstart', handleTouch, { passive: false });
+                touchZone.addEventListener('touchmove', handleTouch, { passive: false });
+                touchZone.addEventListener('touchend', handleTouch, { passive: false });
+                touchZone.addEventListener('touchcancel', handleTouch, { passive: false });
             }
 
             // Create F1 Car Sprite
