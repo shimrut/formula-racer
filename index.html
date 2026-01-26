@@ -34,13 +34,14 @@
 
         header {
             width: 100%;
-            padding: 1rem 2rem; /* Horizontal padding */
+            padding: 0.8rem 1.5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
             background: #020617;
             border-bottom: 2px solid var(--accent-color);
-            z-index: 10;
+            z-index: 100;
+            position: relative; /* For absolute menu positioning */
         }
 
         h1 {
@@ -55,6 +56,13 @@
 
         h1 span {
             color: var(--accent-color);
+        }
+
+        /* Container for right-side header items */
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
         }
 
         .header-controls {
@@ -103,18 +111,31 @@
 
         .stats {
             display: flex;
-            gap: 1.5rem;
+            gap: 1rem;
             font-size: 0.9rem;
             font-family: 'Courier New', monospace;
             background: #000;
-            padding: 0.5rem 1rem;
+            padding: 0.5rem 0.8rem;
             border-radius: 4px;
             border: 1px solid #334155;
+            white-space: nowrap;
         }
 
         .stat-item span {
             color: var(--accent-color);
             font-weight: bold;
+        }
+
+        /* Menu Toggle Button (Mobile) */
+        #menu-toggle {
+            display: none;
+            background: transparent;
+            border: 1px solid #334155;
+            color: white;
+            font-size: 1.2rem;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
         }
 
         #game-container {
@@ -411,37 +432,83 @@
         }
 
         @media (max-width: 768px) {
-            h1 { font-size: 1rem; display: none; }
-            .header-controls { 
-                gap: 0.5rem; 
-                width: 100%; 
-                justify-content: space-between; 
-                flex-wrap: wrap; /* Allow wrapping on small screens */
-            }
+            h1 { font-size: 1rem; }
             
+            .header-right {
+                gap: 0.5rem;
+            }
+
+            /* Hide full settings on mobile initially */
+            .header-controls {
+                display: none;
+                position: absolute;
+                top: 100%;
+                right: 0;
+                width: 100%;
+                background: rgba(15, 23, 42, 0.95);
+                backdrop-filter: blur(10px);
+                flex-direction: column;
+                padding: 1.5rem;
+                gap: 1.5rem;
+                border-bottom: 2px solid var(--accent-color);
+                box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+                align-items: stretch;
+            }
+
+            .header-controls.visible {
+                display: flex;
+            }
+
             .settings-group {
-                display: none; /* Hide advanced settings on mobile to save space */
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
             }
             
+            .settings-group label {
+                font-size: 1rem;
+                padding: 5px 0;
+            }
+            
+            .settings-group input[type="checkbox"] {
+                width: 1.2rem;
+                height: 1.2rem;
+            }
+
+            #track-select {
+                width: 100%;
+                padding: 0.8rem;
+                font-size: 1rem;
+            }
+
+            /* Show Menu Toggle */
+            #menu-toggle {
+                display: block;
+            }
+
             .mobile-controls {
                 display: flex;
             }
+            
             .key-hint {
                 display: none;
             }
+            
             /* Reposition Restart Button for Mobile */
             .controls {
                 bottom: auto;
-                top: 80px;
+                top: 130px; /* Moved down slightly to avoid overlap */
                 right: 20px;
                 left: auto;
                 z-index: 25;
             }
+            
             .controls button {
                 padding: 0.5rem 1rem;
                 font-size: 0.7rem;
                 opacity: 0.8;
             }
+            
             .light { width: 30px; height: 30px; }
         }
     </style>
@@ -450,29 +517,38 @@
 
     <header>
         <h1>Vector <span>Grand Prix</span></h1>
-        <div class="header-controls">
-            <div class="settings-group">
-                <label>
-                    <input type="checkbox" id="toggle-route" checked> Trace Route
-                </label>
-                <label>
-                    <input type="checkbox" id="toggle-vector"> Show Vector
-                </label>
-                <label>
-                    <input type="checkbox" id="toggle-camera"> Dynamic Cam
-                </label>
-            </div>
-            <select id="track-select">
-                <option value="circuit">Classic Circuit</option>
-                <option value="monza">Temple of Speed</option>
-                <option value="silverstone">Royal Circuit</option>
-                <option value="spa">Forest Run</option>
-                <option value="oval">Super Oval</option>
-                <option value="complex">The Complex</option>
-            </select>
+        
+        <div class="header-right">
+            <!-- Stats moved outside controls so they stay visible -->
             <div class="stats">
                 <div class="stat-item">LAP: <span id="time-val">0.00</span></div>
                 <div class="stat-item">KPH: <span id="speed-val">0</span></div>
+            </div>
+
+            <!-- Hamburger Button -->
+            <button id="menu-toggle">☰</button>
+
+            <!-- Collapsible Controls -->
+            <div class="header-controls" id="header-controls">
+                <div class="settings-group">
+                    <label>
+                        <input type="checkbox" id="toggle-route" checked> Trace Route
+                    </label>
+                    <label>
+                        <input type="checkbox" id="toggle-vector"> Show Vector
+                    </label>
+                    <label>
+                        <input type="checkbox" id="toggle-camera"> Dynamic Cam
+                    </label>
+                </div>
+                <select id="track-select">
+                    <option value="circuit">Classic Circuit</option>
+                    <option value="monza">Temple of Speed</option>
+                    <option value="silverstone">Royal Circuit</option>
+                    <option value="spa">Forest Run</option>
+                    <option value="oval">Super Oval</option>
+                    <option value="complex">The Complex</option>
+                </select>
             </div>
         </div>
     </header>
@@ -765,6 +841,7 @@
                 this.container = document.getElementById('game-container');
                 this.trackSelect = document.getElementById('track-select');
                 this.modalTrackSelect = document.getElementById('modal-track-select');
+                this.headerControls = document.getElementById('header-controls');
                 
                 // Settings Controls
                 this.toggleRoute = document.getElementById('toggle-route');
@@ -811,6 +888,7 @@
                 this.startOverlay = document.getElementById('start-overlay');
                 this.startLights = document.getElementById('start-lights');
                 this.goMessage = document.getElementById('go-message');
+                this.menuToggle = document.getElementById('menu-toggle');
 
                 // Listeners
                 window.addEventListener('resize', () => this.resize());
@@ -821,6 +899,11 @@
                 this.trackSelect.addEventListener('change', (e) => this.loadTrack(e.target.value));
                 this.modalTrackSelect.addEventListener('change', (e) => this.loadTrack(e.target.value));
                 
+                // Menu Toggle Listener
+                this.menuToggle.addEventListener('click', () => {
+                   this.headerControls.classList.toggle('visible');
+                });
+
                 // Mobile Control Bindings
                 this.bindMobileControls();
 
@@ -1010,6 +1093,8 @@
                     this.activeGeometry.outer = this.smoothPoly(this.currentTrack.outer, cornerRadius);
                     this.activeGeometry.inner = this.smoothPoly(this.currentTrack.inner, cornerRadius);
                     this.reset();
+                    // Close menu if open on mobile
+                    this.headerControls.classList.remove('visible');
                     document.activeElement.blur(); 
                 }
             }
