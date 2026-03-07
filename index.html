@@ -2,10 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Vector Racer: Grand Prix</title>
     <link rel="stylesheet" href="styles.css">
-    <script defer src="https://cloud.umami.is/script.js" data-website-id="cac6a14a-eb4d-422d-8920-e30b8ca96eac"></script>
 </head>
 <body>
 
@@ -13,12 +12,6 @@
         <h1>Vector <span>Grand Prix</span></h1>
         
         <div class="header-right">
-            <!-- Stats moved outside controls so they stay visible -->
-            <div class="stats">
-                <div class="stat-item">LAP: <span id="time-val">0.00</span></div>
-                <div class="stat-item">KPH: <span id="speed-val">0</span></div>
-                <div class="stat-item" id="best-time-display" style="display: none;">BEST: <span id="best-time-val">--</span></div>
-            </div>
 
             <!-- Hamburger Button -->
             <button id="menu-toggle">☰</button>
@@ -29,26 +22,26 @@
                     <label>
                         <input type="checkbox" id="toggle-route" checked> Trace Route
                     </label>
-                    <label>
-                        <input type="checkbox" id="toggle-vector"> Show Vector
-                    </label>
-                    <label>
-                        <input type="checkbox" id="toggle-camera"> Dynamic Cam
-                    </label>
                 </div>
                 <select id="track-select">
                     <option value="circuit">Classic Circuit</option>
-                    <option value="monza">Temple of Speed</option>
-                    <option value="silverstone">Royal Circuit</option>
-                    <option value="spa">Forest Run</option>
-                    <option value="oval">Super Oval</option>
-                    <option value="complex">The Complex</option>
+                    <option value="sunlitTemple" hidden>Sunlit Temple</option>
+                    <option value="royalPlateau" hidden>Royal Plateau</option>
+                    <option value="mistwoodSerpent" hidden>Mistwood Serpent</option>
+                    <option value="harborParkLoop">Harbor Park Loop</option>
                 </select>
             </div>
         </div>
     </header>
 
     <div id="game-container">
+        <!-- Stats HUD Overlay -->
+        <div class="stats">
+            <div class="stat-item">LAP: <span id="time-val">0.00</span></div>
+            <div class="stat-item">KPH: <span id="speed-val">0</span></div>
+            <div class="stat-item" id="best-time-display" style="display: none;">BEST: <span id="best-time-val">--</span></div>
+        </div>
+
         <canvas id="gameCanvas"></canvas>
         <div class="key-hint">
             A / D or Arrows to Steer
@@ -56,7 +49,7 @@
 
         <!-- Start Screen Overlay -->
         <div id="start-overlay">
-            <button id="start-btn" data-umami-event="start-race">Start Your Engines</button>
+            <button id="start-btn">Start Your Engines</button>
         </div>
 
         <!-- F1 Lights (3 Steps) -->
@@ -78,26 +71,25 @@
         </div>
     </div>
 
-    <div class="controls">
-        <button id="restart-btn" class="danger" title="Restart Track">Restart</button>
-    </div>
+
 
     <div id="modal" class="modal">
-        <h2 id="modal-title">CRASH</h2>
-        <p id="modal-msg">Terminal Damage</p>
-        <div id="modal-lap-times" class="modal-lap-times"></div>
-        <button id="modal-reset-btn" data-umami-event="restart-race">Box Box</button>
-        
-        <div class="modal-track-selector">
-            <label>Next Grand Prix</label>
-            <select id="modal-track-select">
+        <div class="modal-card">
+            <h2 id="modal-title">CRASH</h2>
+            <p id="modal-msg">Terminal Damage</p>
+            <div id="modal-lap-times" class="modal-lap-times"></div>
+            <button id="modal-reset-btn">Box Box <kbd class="modal-btn-kbd">R</kbd></button>
+            
+            <div class="modal-track-selector">
+                <label>Next Grand Prix</label>
+                <select id="modal-track-select">
                 <option value="circuit">Classic Circuit</option>
-                <option value="monza">Temple of Speed</option>
-                <option value="silverstone">Royal Circuit</option>
-                <option value="spa">Forest Run</option>
-                <option value="oval">Super Oval</option>
-                <option value="complex">The Complex</option>
+                <option value="sunlitTemple" hidden>Sunlit Temple</option>
+                <option value="royalPlateau" hidden>Royal Plateau</option>
+                <option value="mistwoodSerpent" hidden>Mistwood Serpent</option>
+                <option value="harborParkLoop">Harbor Park Loop</option>
             </select>
+            </div>
         </div>
     </div>
 
