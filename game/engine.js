@@ -15,8 +15,6 @@ export class RealTimeRacer {
         
         // Settings Controls
         this.toggleRoute = document.getElementById('toggle-route');
-        this.toggleVector = document.getElementById('toggle-vector');
-        this.toggleCamera = document.getElementById('toggle-camera');
         
         // Generate Internal Car Sprite
         this.carSprite = this.createCarSprite();
@@ -37,11 +35,16 @@ export class RealTimeRacer {
             outerCurb: null,
             innerCurb: null
         };
+        
+        // Cache variables for DOM to avoid unnecessary reflows
+        this._lastTimeText = "";
+        this._lastSpeedText = "";
 
         // Game State
         this.status = 'ready'; 
         this.startTime = 0;
         this.currentTime = 0;
+        this.lapMaxDist = 0; // max distance from start line this lap
         this.bestLapTime = null; // Best lap time for current track
         this.activeTimers = []; // Keep track of active timeouts/intervals
         
@@ -56,13 +59,19 @@ export class RealTimeRacer {
         
         // Viewport
         this.camera = { x: 0, y: 0 };
-        this.zoom = 1; // Dynamic zoom level
+        this.zoom = 1;
         
         // Performance optimization: Cache values
         this.cachedSpeed = 0;
         this.frameSkip = 0;
-        this.frameCount = 0;
         this.frameTimeHistory = [];
+        
+        // Fixed timestep for smooth physics (60Hz)
+        this.FIXED_DT = 1 / 60;
+        this.accumulator = 0;
+        this.prevPos = { x: 0, y: 0 };
+        this.prevAngle = 0;
+        this.timeOffsetMs = 0;
         
         // Detect device performance early (before track loading)
         this.qualityLevel = this.detectDevicePerformance();
@@ -95,16 +104,23 @@ export class RealTimeRacer {
            this.headerControls.classList.toggle('visible');
         });
 
+        // Close menu when tapping outside (mobile: touchend; desktop: click)
+        const closeMenuIfOutside = (e) => {
+            if (!this.headerControls.classList.contains('visible')) return;
+            const t = e.target;
+            if (this.headerControls.contains(t) || this.menuToggle.contains(t)) return;
+            this.headerControls.classList.remove('visible');
+        };
+        document.addEventListener('click', closeMenuIfOutside);
+        document.addEventListener('touchend', closeMenuIfOutside, { passive: true });
+
         // Button Listeners
         const startBtn = document.getElementById('start-btn');
         if (startBtn) {
             startBtn.addEventListener('click', () => this.startSequence());
         }
         
-        const restartBtn = document.getElementById('restart-btn');
-        if (restartBtn) {
-            restartBtn.addEventListener('click', () => this.reset(true));
-        }
+
         
         const modalResetBtn = document.getElementById('modal-reset-btn');
         if (modalResetBtn) {
@@ -116,9 +132,58 @@ export class RealTimeRacer {
 
         this.resize();
         this.loadTrack('circuit');
+        this.exposeTestHooks();
         
-        this.lastTime = performance.now();
+        this.lastTime = this.getNow();
         this.loop(this.lastTime);
+    }
+
+    getNow() {
+        return performance.now() + this.timeOffsetMs;
+    }
+
+    exposeTestHooks() {
+        window.render_game_to_text = () => this.renderGameToText();
+        window.advanceTime = (ms) => this.advanceTime(ms);
+    }
+
+    renderGameToText() {
+        return JSON.stringify({
+            coordinateSystem: 'origin top-left, x increases right, y increases down, units are track-grid cells',
+            mode: this.status,
+            track: this.currentTrackKey,
+            player: {
+                x: Number(this.pos.x.toFixed(2)),
+                y: Number(this.pos.y.toFixed(2)),
+                angle: Number(this.angle.toFixed(3)),
+                speed: Number(this.cachedSpeed.toFixed(2))
+            },
+            lapTime: Number(this.currentTime.toFixed(2)),
+            startLine: this.currentTrack.startLine,
+            routeTracePoints: this.routeTrace.length
+        });
+    }
+
+    advanceTime(ms) {
+        const totalSteps = Math.max(1, Math.round(ms / (this.FIXED_DT * 1000)));
+        const stepMs = ms / totalSteps;
+
+        for (let i = 0; i < totalSteps; i++) {
+            this.timeOffsetMs += stepMs;
+            this.prevPos = { x: this.pos.x, y: this.pos.y };
+            this.prevAngle = this.angle;
+            this.update(this.FIXED_DT);
+        }
+
+        if (this.status === 'playing') {
+            this.currentTime = (this.getNow() - this.startTime) / 1000;
+            this.uiTime.textContent = this.currentTime.toFixed(2);
+            this.uiSpeed.textContent = Math.round(this.cachedSpeed * 20).toString();
+        }
+
+        this.accumulator = 0;
+        this.render(this.FIXED_DT, 1);
+        this.lastTime = performance.now();
     }
 
     detectDevicePerformance() {
@@ -176,7 +241,7 @@ export class RealTimeRacer {
             
             // START
             this.status = 'playing';
-            this.startTime = performance.now();
+            this.startTime = this.getNow();
             
             // Cleanup visuals after start
             this.activeTimers.push(setTimeout(() => {
@@ -317,6 +382,28 @@ export class RealTimeRacer {
         const outer = this.activeGeometry.outer;
         const inner = this.activeGeometry.inner;
         
+        // Find bounds for the offscreen canvas
+        let maxX = 0; let maxY = 0;
+        for (let p of outer) {
+            if (p.x * gs > maxX) maxX = p.x * gs;
+            if (p.y * gs > maxY) maxY = p.y * gs;
+        }
+        
+        // Create or resize canvas
+        if (!this.trackCanvas) {
+            this.trackCanvas = document.createElement('canvas');
+            this.trackCtx = this.trackCanvas.getContext('2d', { alpha: false });
+        }
+        
+        this.trackCanvas.width = maxX + gs * 5; // padding
+        this.trackCanvas.height = maxY + gs * 5;
+        
+        const ctx = this.trackCtx;
+        
+        // Off-track background
+        ctx.fillStyle = CONFIG.offTrackColor;
+        ctx.fillRect(0, 0, this.trackCanvas.width, this.trackCanvas.height);
+        
         // Track surface path (for fill)
         const surfacePath = new Path2D();
         surfacePath.moveTo(outer[0].x * gs, outer[0].y * gs);
@@ -349,6 +436,60 @@ export class RealTimeRacer {
         this.trackPaths.surface = surfacePath;
         this.trackPaths.outerCurb = outerCurbPath;
         this.trackPaths.innerCurb = innerCurbPath;
+
+        // Draw static track elements statically
+        ctx.fillStyle = CONFIG.trackColor;
+        ctx.fill(surfacePath, 'evenodd');
+
+        const drawCurb = (path) => {
+            ctx.lineWidth = 6;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.setLineDash([20, 20]);
+            ctx.strokeStyle = CONFIG.curbRed;
+            ctx.stroke(path);
+            ctx.lineDashOffset = 20;
+            ctx.strokeStyle = CONFIG.curbWhite;
+            ctx.stroke(path);
+            ctx.setLineDash([]);
+            ctx.lineDashOffset = 0;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke(path);
+        };
+        
+        drawCurb(outerCurbPath);
+        drawCurb(innerCurbPath);
+
+        const drawTires = (poly) => {
+            const step = 20; 
+            for(let i=0; i<poly.length; i+=step) {
+                const p = poly[i];
+                const px = p.x * gs;
+                const py = p.y * gs;
+
+                const offsets = [{x:0, y:0}, {x:6, y:4}, {x:-6, y:4}];
+                for(let o of offsets) {
+                    ctx.fillStyle = '#171717';
+                    ctx.beginPath(); ctx.arc(px + o.x, py + o.y, 5, 0, Math.PI*2); ctx.fill();
+                    
+                    ctx.strokeStyle = (i % (step*2) === 0) ? CONFIG.curbRed : CONFIG.curbWhite;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.arc(px + o.x, py + o.y, 2.5, 0, Math.PI*2); ctx.stroke();
+                }
+            }
+        };
+        drawTires(outer);
+
+        const sl = this.currentTrack.startLine;
+        ctx.beginPath();
+        ctx.strokeStyle = CONFIG.finishLineColor;
+        ctx.lineWidth = 8;
+        ctx.setLineDash([8, 8]);
+        ctx.moveTo(sl.p1.x * gs, sl.p1.y * gs);
+        ctx.lineTo(sl.p2.x * gs, sl.p2.y * gs);
+        ctx.stroke();
+        ctx.setLineDash([]);
     }
 
     async loadTrack(trackKey) {
@@ -360,7 +501,7 @@ export class RealTimeRacer {
             this.trackSelect.value = trackKey;
             this.modalTrackSelect.value = trackKey;
 
-            const cornerRadius = 3; 
+            const cornerRadius = this.currentTrack.cornerRadius ?? 3;
             this.activeGeometry.outer = this.smoothPoly(this.currentTrack.outer, cornerRadius);
             this.activeGeometry.inner = this.smoothPoly(this.currentTrack.inner, cornerRadius);
             
@@ -393,6 +534,11 @@ export class RealTimeRacer {
 
     handleKey(e, isDown) {
         if (!e.key) return;
+        if (e.key.toLowerCase() === 'r' && isDown && this.modal.classList.contains('active')) {
+            e.preventDefault();
+            this.reset(true);
+            return;
+        }
         if(["ArrowLeft","ArrowRight","a","d"].indexOf(e.key.toLowerCase()) > -1 || ["ArrowLeft","ArrowRight"].indexOf(e.code) > -1) {
             if (e.preventDefault) e.preventDefault();
         }
@@ -417,8 +563,11 @@ export class RealTimeRacer {
 
             this.velocity.x += ax * dt;
             this.velocity.y += ay * dt;
-            this.velocity.x *= CONFIG.friction;
-            this.velocity.y *= CONFIG.friction;
+            
+            // Frame-rate independent friction (tuned for 60fps baseline)
+            const frictionFactor = Math.pow(CONFIG.friction, dt * 60);
+            this.velocity.x *= frictionFactor;
+            this.velocity.y *= frictionFactor;
 
             // Cache speed calculation (used multiple times)
             this.cachedSpeed = Math.sqrt(this.velocity.x**2 + this.velocity.y**2);
@@ -448,11 +597,20 @@ export class RealTimeRacer {
                     for(let k=0; k<particleCount; k++) this.spawnParticles('spark');
                 }
             } else {
-                if (this.checkFinishLine(this.pos, nextPos)) this.handleWin();
+                const line = this.currentTrack.startLine;
+                const lineMid = { x: (line.p1.x + line.p2.x) / 2, y: (line.p1.y + line.p2.y) / 2 };
+                const dist = Math.hypot(nextPos.x - lineMid.x, nextPos.y - lineMid.y);
+                if (dist > this.lapMaxDist) this.lapMaxDist = dist;
+                if (this.checkFinishLine(this.pos, nextPos)) {
+                    if (this.lapMaxDist > 18 && this.currentTime >= 5.0) {
+                        this.handleWin();
+                    }
+                    this.lapMaxDist = 0;
+                }
                 this.pos = nextPos;
             }
 
-            this.currentTime = (performance.now() - this.startTime) / 1000;
+            this.currentTime = (this.getNow() - this.startTime) / 1000;
 
             // Skid marks (use cached speed)
             const vx = Math.cos(this.angle);
@@ -481,7 +639,7 @@ export class RealTimeRacer {
                 this.trailTimer += dt;
                 if (this.trailTimer > 0.05) {
                     this.routeTrace.push({ x: this.pos.x, y: this.pos.y });
-                    this.trailTimer = 0;
+                    this.trailTimer %= 0.05;
                 }
             } else {
                 this.routeTrace = []; // Clear if turned off
@@ -598,7 +756,6 @@ export class RealTimeRacer {
     }
 
     checkFinishLine(p1, p2) {
-        if (this.currentTime < 5.0) return false;
         const line = this.currentTrack.startLine;
         return !!getIntersection(p1, p2, line.p1, line.p2);
     }
@@ -666,10 +823,14 @@ export class RealTimeRacer {
         this.clearTimers();
 
         this.pos = { ...this.currentTrack.startPos };
+        this.prevPos = { ...this.currentTrack.startPos };
         this.velocity = { x: 0, y: 0 };
         this.angle = this.currentTrack.startAngle;
+        this.prevAngle = this.currentTrack.startAngle;
         this.keys = { left: false, right: false }; // Reset keys
         this.status = 'ready'; // Reset to ready state
+        this.lapMaxDist = 0;
+        this.accumulator = 0;
         this.currentTime = 0;
         this.skidMarks = [];
         this.routeTrace = [];
@@ -718,94 +879,61 @@ export class RealTimeRacer {
         this.modal.classList.add('active');
     }
 
-    render() {
+    render(dt, alpha = 1) {
         const ctx = this.ctx;
         const cw = this.canvas.width;
         const ch = this.canvas.height;
         const gs = CONFIG.gridSize;
 
+        // Interpolated display position (between physics steps). Skip when not playing to avoid jitter.
+        const displayPos = (this.status === 'playing')
+            ? { x: this.pos.x + this.velocity.x * this.accumulator, y: this.pos.y + this.velocity.y * this.accumulator }
+            : { x: this.pos.x, y: this.pos.y };
+        const lerpAngle = (a, b, t) => {
+            let d = b - a;
+            while (d > Math.PI) d -= 2 * Math.PI;
+            while (d < -Math.PI) d += 2 * Math.PI;
+            return a + d * t;
+        };
+        const displayAngle = (this.status === 'playing' && alpha < 1) ? lerpAngle(this.prevAngle, this.angle, 1 - alpha) : this.angle;
+
         // 1. Fill Off-Track
         ctx.fillStyle = CONFIG.offTrackColor;
         ctx.fillRect(0, 0, cw, ch);
 
-        // 2. Camera Update (Dynamic Zoom & Lookahead) - use cached speed
+        // 2. Camera: fixed zoom (1x desktop, 0.75x mobile), direct follow
         const speed = this.cachedSpeed;
-        
-        let targetZoom = 1.0;
-
-        if (this.toggleCamera.checked) {
-            // Calculate Target Zoom: Zoom out as speed increases
-            // Min zoom 0.75 (was 0.55) for less extreme zoom out
-            // Speed factor 0.02 (was 0.035) for less dynamicity/distraction
-            const minZoom = 0.75;
-            const speedFactor = 0.02; 
-            targetZoom = Math.max(minZoom, 1.0 - (speed * speedFactor));
-        }
-        
-        // Smoothly interpolate zoom
-        this.zoom += (targetZoom - this.zoom) * 0.05;
-
-        // Look Ahead: Shift camera in direction of travel
-        const lookAheadAmount = 15; // Pixels per velocity unit
-        const laX = this.velocity.x * lookAheadAmount;
-        const laY = this.velocity.y * lookAheadAmount;
-
-        // Calculate Camera Target (Car Pos + Lookahead - Half Screen / Zoom)
-        // We divide screen size by zoom to keep car centered in the scaled view
-        const targetCamX = (this.pos.x * gs + laX) - (cw / 2 / this.zoom);
-        const targetCamY = (this.pos.y * gs + laY) - (ch / 2 / this.zoom);
-        
-        // Smooth Camera Movement
-        this.camera.x += (targetCamX - this.camera.x) * 0.1;
-        this.camera.y += (targetCamY - this.camera.y) * 0.1;
+        const narrowViewport = window.innerWidth <= 768;
+        this.zoom = narrowViewport ? 0.75 : 1.0;
+        this.camera.x = (displayPos.x * gs) - (cw / 2 / this.zoom);
+        this.camera.y = (displayPos.y * gs) - (ch / 2 / this.zoom);
 
         ctx.save();
         // Apply Zoom and Camera Transform
         ctx.scale(this.zoom, this.zoom);
         ctx.translate(-this.camera.x, -this.camera.y);
 
-        // 3. Draw Track Surface - use cached Path2D for better performance
-        ctx.fillStyle = CONFIG.trackColor;
-        if (this.trackPaths.surface) {
-            ctx.fill(this.trackPaths.surface, 'evenodd');
-        } else {
-            // Fallback if paths not built yet
-            ctx.beginPath();
-            const outer = this.activeGeometry.outer;
-            ctx.moveTo(outer[0].x * gs, outer[0].y * gs);
-            for(let i=1; i<outer.length; i++) ctx.lineTo(outer[i].x * gs, outer[i].y * gs);
-            ctx.closePath();
-            const inner = this.activeGeometry.inner;
-            ctx.moveTo(inner[0].x * gs, inner[0].y * gs);
-            for(let i=1; i<inner.length; i++) ctx.lineTo(inner[i].x * gs, inner[i].y * gs);
-            ctx.closePath();
-            ctx.fill('evenodd');
+        // 3. Draw static track elements via offscreen canvas
+        if (this.trackCanvas) {
+            ctx.drawImage(this.trackCanvas, 0, 0);
         }
 
-        // 4. Skid Marks clipped - optimized batch rendering
-        ctx.save();
-        if (this.trackPaths.surface) {
-            ctx.clip(this.trackPaths.surface, 'evenodd');
-        } else {
-            ctx.clip('evenodd');
-        }
-            if (this.skidMarks.length > 0) {
-                ctx.fillStyle = CONFIG.skidColor;
-                // Batch skid mark rendering - reduce state changes
-                const skidCount = this.frameSkip > 0 ? Math.min(this.skidMarks.length, 50) : this.skidMarks.length;
-                const startIdx = this.frameSkip > 0 ? Math.max(0, this.skidMarks.length - 50) : 0;
-                
-                for(let i = startIdx; i < skidCount; i++) {
-                    const m = this.skidMarks[i];
-                    ctx.save();
-                    ctx.translate(m.x * gs, m.y * gs);
-                    ctx.rotate(m.angle);
-                    ctx.fillRect(-10, -5, 4, 10);
-                    ctx.fillRect(-10, 5, 4, 10);
-                    ctx.restore();
-                }
+        // 4. Skid Marks - removed slow clip operation
+        if (this.skidMarks.length > 0) {
+            ctx.fillStyle = CONFIG.skidColor;
+            const skidCount = this.frameSkip > 0 ? Math.min(this.skidMarks.length, 50) : this.skidMarks.length;
+            const startIdx = this.frameSkip > 0 ? Math.max(0, this.skidMarks.length - 50) : 0;
+            
+            for(let i = startIdx; i < skidCount; i++) {
+                const m = this.skidMarks[i];
+                ctx.save();
+                ctx.translate(m.x * gs, m.y * gs);
+                ctx.rotate(m.angle);
+                ctx.fillRect(-10, -5, 4, 10);
+                ctx.fillRect(-10, 5, 4, 10);
+                ctx.restore();
             }
-        ctx.restore();
+        }
 
         // 4.5 Route Trace (If Enabled)
         if (this.toggleRoute.checked && this.routeTrace.length > 1) {
@@ -814,102 +942,12 @@ export class RealTimeRacer {
             ctx.lineWidth = 4;
             ctx.lineJoin = 'round';
             ctx.moveTo(this.routeTrace[0].x * gs, this.routeTrace[0].y * gs);
-            // Limit route trace points on low-end devices
             const traceStep = this.frameSkip > 0 ? 2 : 1;
             for (let i = traceStep; i < this.routeTrace.length; i += traceStep) {
                 ctx.lineTo(this.routeTrace[i].x * gs, this.routeTrace[i].y * gs);
             }
             ctx.stroke();
         }
-
-        // 6. Draw Curbs - use cached paths
-        const drawCurb = (path) => {
-            if (!path) return;
-            
-            ctx.lineWidth = 6;
-            ctx.lineJoin = 'round';
-            ctx.lineCap = 'round';
-            ctx.setLineDash([20, 20]);
-            
-            // Red
-            ctx.strokeStyle = CONFIG.curbRed;
-            ctx.stroke(path);
-
-            // White
-            ctx.lineDashOffset = 20;
-            ctx.strokeStyle = CONFIG.curbWhite;
-            ctx.stroke(path);
-            
-            ctx.setLineDash([]);
-            ctx.lineDashOffset = 0;
-            
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.stroke(path);
-        };
-
-        if (this.trackPaths.outerCurb && this.trackPaths.innerCurb) {
-            drawCurb(this.trackPaths.outerCurb);
-            drawCurb(this.trackPaths.innerCurb);
-        } else {
-            // Fallback
-            const drawCurbFallback = (poly) => {
-                ctx.lineWidth = 6;
-                ctx.lineJoin = 'round';
-                ctx.lineCap = 'round';
-                ctx.setLineDash([20, 20]);
-                ctx.strokeStyle = CONFIG.curbRed;
-                ctx.beginPath();
-                ctx.moveTo(poly[0].x * gs, poly[0].y * gs);
-                for(let i=1; i<poly.length; i++) ctx.lineTo(poly[i].x * gs, poly[i].y * gs);
-                ctx.closePath();
-                ctx.stroke();
-                ctx.lineDashOffset = 20;
-                ctx.strokeStyle = CONFIG.curbWhite;
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.lineDashOffset = 0;
-                ctx.strokeStyle = '#fff';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-            };
-            drawCurbFallback(this.activeGeometry.outer);
-            drawCurbFallback(this.activeGeometry.inner);
-        }
-
-        // 6.5 Draw Tire Barriers (Sparse) - reduce on low-end
-        if (this.frameSkip === 0) {
-            const drawTires = (poly) => {
-                const step = 20; 
-                for(let i=0; i<poly.length; i+=step) {
-                    const p = poly[i];
-                    const px = p.x * gs;
-                    const py = p.y * gs;
-
-                    const offsets = [{x:0, y:0}, {x:6, y:4}, {x:-6, y:4}];
-                    for(let o of offsets) {
-                        ctx.fillStyle = '#171717';
-                        ctx.beginPath(); ctx.arc(px + o.x, py + o.y, 5, 0, Math.PI*2); ctx.fill();
-                        
-                        ctx.strokeStyle = (i % (step*2) === 0) ? CONFIG.curbRed : CONFIG.curbWhite;
-                        ctx.lineWidth = 2;
-                        ctx.beginPath(); ctx.arc(px + o.x, py + o.y, 2.5, 0, Math.PI*2); ctx.stroke();
-                    }
-                }
-            };
-            drawTires(this.activeGeometry.outer);
-        }
-
-        // 7. Start Line
-        const sl = this.currentTrack.startLine;
-        ctx.beginPath();
-        ctx.strokeStyle = CONFIG.finishLineColor;
-        ctx.lineWidth = 8;
-        ctx.setLineDash([8, 8]);
-        ctx.moveTo(sl.p1.x * gs, sl.p1.y * gs);
-        ctx.lineTo(sl.p2.x * gs, sl.p2.y * gs);
-        ctx.stroke();
-        ctx.setLineDash([]);
 
         // 8. Particles - batch rendering
         if (this.particles.length > 0) {
@@ -932,12 +970,12 @@ export class RealTimeRacer {
             ctx.globalAlpha = 1.0;
         }
 
-        // 9. Player F1 Car
-        const px = this.pos.x * gs;
-        const py = this.pos.y * gs;
+        // 9. Player F1 Car (use interpolated position/angle)
+        const px = displayPos.x * gs;
+        const py = displayPos.y * gs;
         ctx.save();
         ctx.translate(px, py);
-        ctx.rotate(this.angle);
+        ctx.rotate(displayAngle);
         
         const scale = 1.0; 
         ctx.drawImage(this.carSprite, -32*scale, -16*scale, 64*scale, 32*scale);
@@ -953,32 +991,21 @@ export class RealTimeRacer {
             const vy = -this.velocity.y * 2;
             const lineCount = this.frameSkip > 0 ? 3 : 5;
             for(let k=0; k<lineCount; k++) {
-                const rx = this.pos.x * gs + (Math.random()-0.5)*200;
-                const ry = this.pos.y * gs + (Math.random()-0.5)*200;
+                const rx = displayPos.x * gs + (Math.random()-0.5)*200;
+                const ry = displayPos.y * gs + (Math.random()-0.5)*200;
                 ctx.moveTo(rx, ry);
                 ctx.lineTo(rx + vx, ry + vy);
             }
             ctx.stroke();
         }
 
-        // 11. Show Vector (If Enabled)
-        if (this.toggleVector.checked && this.status === 'playing' && speed > 1) {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
-            ctx.beginPath();
-            ctx.moveTo(px, py);
-            // Project vector forward (reduced to 75% of previous length: 0.8 -> 0.6)
-            ctx.lineTo(px + this.velocity.x * gs * 0.6, py + this.velocity.y * gs * 0.6);
-            ctx.stroke();
-            ctx.setLineDash([]);
-        }
+
 
         ctx.restore();
     }
 
     loop(now) {
-        const dt = Math.min((now - this.lastTime) / 1000, 0.1);
+        const rawDt = Math.min((now - this.lastTime) / 1000, 0.1);
         const frameTime = now - this.lastTime;
         this.lastTime = now;
         
@@ -993,31 +1020,35 @@ export class RealTimeRacer {
         // If average frame time > 20ms (below 50fps), reduce quality
         this.frameSkip = avgFrameTime > 20 ? 1 : 0;
         
-        this.update(dt);
-        this.render();
+        // Fixed timestep: run physics at 60Hz for consistent movement
+        this.accumulator += rawDt;
+        const maxSteps = 3; // Cap to avoid spiral of death
+        let steps = 0;
+        while (this.accumulator >= this.FIXED_DT && steps < maxSteps) {
+            this.prevPos = { x: this.pos.x, y: this.pos.y };
+            this.prevAngle = this.angle;
+            this.update(this.FIXED_DT);
+            this.accumulator -= this.FIXED_DT;
+            steps++;
+        }
+        if (this.accumulator > this.FIXED_DT) this.accumulator = this.FIXED_DT; // Clamp
+        const alpha = this.accumulator / this.FIXED_DT; // 0..1 for render interpolation
+        
+        this.render(rawDt, alpha);
         
         if (this.status === 'playing') {
-            // Display current time with comparison to best
+            // Display current time
             let timeText = this.currentTime.toFixed(2);
-            if (this.bestLapTime !== null && this.bestLapTime !== undefined) {
-                const diff = this.currentTime - this.bestLapTime;
-                if (diff < 0) {
-                    timeText += ` <span style="color: #22c55e; font-size: 0.8em;">(-${Math.abs(diff).toFixed(2)})</span>`;
-                } else if (diff > 0) {
-                    timeText += ` <span style="color: #ef4444; font-size: 0.8em;">(+${diff.toFixed(2)})</span>`;
-                } else {
-                    timeText += ` <span style="color: #facc15; font-size: 0.8em;">(=)</span>`;
-                }
+            if (this._lastTimeText !== timeText) {
+                this.uiTime.textContent = timeText;
+                this._lastTimeText = timeText;
             }
-            this.uiTime.innerHTML = timeText;
             
             // Use cached speed instead of recalculating
-            this.uiSpeed.innerText = Math.round(this.cachedSpeed * 20);
-            
-            // Update best time display if available
-            if (this.bestLapTime !== null && this.bestLapTime !== undefined) {
-                this.bestTimeVal.textContent = this.bestLapTime.toFixed(2);
-                this.bestTimeDisplay.style.display = 'block';
+            let speedText = Math.round(this.cachedSpeed * 20).toString();
+            if (this._lastSpeedText !== speedText) {
+                this.uiSpeed.textContent = speedText;
+                this._lastSpeedText = speedText;
             }
         }
         
