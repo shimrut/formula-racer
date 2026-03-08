@@ -54,7 +54,8 @@ h1 {
     font-style: italic;
 }
 
-h1 span {
+h1 .full-name,
+h1 .short-name {
     color: var(--accent-color);
 }
 
@@ -623,8 +624,12 @@ button.danger:hover {
 @media (max-width: 768px),
 (hover: none) and (pointer: coarse),
 (max-height: 600px) and (orientation: landscape) {
-    h1 {
-        font-size: 1rem;
+    .full-name {
+        display: none;
+    }
+
+    .short-name {
+        display: inline !important;
     }
 
     /* Slightly smaller CTA text on narrower screens so the copy wraps cleanly */
@@ -638,21 +643,19 @@ button.danger:hover {
         gap: 0.5rem;
     }
 
-    /* Hide full settings on mobile initially */
+    /* Track selector always visible on mobile */
     .header-controls {
-        display: none;
-        position: absolute;
-        top: 100%;
-        right: 0;
-        width: 100%;
-        background: rgba(15, 23, 42, 0.95);
-        backdrop-filter: blur(10px);
-        flex-direction: column;
-        padding: 1.5rem;
-        gap: 1.5rem;
-        border-bottom: 2px solid var(--accent-color);
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
-        align-items: stretch;
+        display: flex;
+        position: static;
+        width: auto;
+        background: transparent;
+        backdrop-filter: none;
+        flex-direction: row;
+        padding: 0;
+        gap: 0.5rem;
+        border-bottom: none;
+        box-shadow: none;
+        align-items: center;
     }
 
     .header-controls.visible {
@@ -660,30 +663,18 @@ button.danger:hover {
     }
 
     .settings-group {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 1rem;
-    }
-
-    .settings-group label {
-        font-size: 1rem;
-        padding: 5px 0;
-    }
-
-    .settings-group input[type="checkbox"] {
-        width: 1.2rem;
-        height: 1.2rem;
+        display: none; /* Already removed trace route, but keeping this just in case */
     }
 
     #track-select {
-        width: 100%;
-        padding: 0.8rem;
-        font-size: 1rem;
+        width: auto;
+        padding: 0.4rem;
+        font-size: 0.85rem;
     }
 
-    /* Show Menu Toggle */
+    /* Hide Menu Toggle */
     #menu-toggle {
-        display: block;
+        display: none !important;
     }
 
     .mobile-controls {
@@ -705,32 +696,23 @@ button.danger:hover {
         display: none;
     }
 
-    #modal-reset-btn {
-        position: fixed;
-        bottom: max(1rem, env(safe-area-inset-bottom));
-        left: 50%;
-        transform: translateX(-50%);
-        width: min(90%, 320px);
-        z-index: 101;
-    }
-
     .modal-card {
-        padding: 1.25rem 1rem;
-        max-width: min(92vw, 360px);
+        padding: 1.5rem;
+        max-width: min(92vw, 400px);
     }
 
     #modal-main-view {
-        padding-bottom: 4.5rem;
+        padding-bottom: 0;
     }
 
     .modal h2 {
-        font-size: 2.25rem;
-        margin-bottom: 0.25rem;
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
     }
 
     .modal p {
         font-size: 1.1rem;
-        margin-bottom: 1rem;
+        margin-bottom: 1.5rem;
     }
 
     .modal-best-time {
@@ -738,22 +720,23 @@ button.danger:hover {
     }
 
     .share-panel {
-        margin-bottom: 0.5rem;
+        margin-bottom: 1rem;
     }
 
     .lap-times-list {
-        max-height: 160px;
-        padding: 0.4rem;
+        max-height: 200px;
+        padding: 0.5rem;
     }
 
     .lap-time-item {
-        padding: 0.35rem 0.5rem;
-        font-size: 0.85rem;
+        padding: 0.4rem 0.5rem;
+        font-size: 0.9rem;
     }
 
     .modal #modal-reset-btn {
-        padding: 0.85rem 1.5rem;
-        font-size: 1rem;
+        padding: 1rem 1.5rem;
+        font-size: 1.1rem;
+        margin-top: 1rem;
     }
 }
 
