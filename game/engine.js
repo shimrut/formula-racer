@@ -961,7 +961,7 @@ export class RealTimeRacer {
         }
         if (this.shareBtn) {
             this.shareBtn.disabled = !enabled || Boolean(this.shareBlobPromise);
-            this.shareBtn.textContent = 'Challenge Others';
+            this.shareBtn.textContent = 'Challenge a Friend';
         }
     }
 
@@ -1238,25 +1238,32 @@ export class RealTimeRacer {
 
         try {
             const file = this.shareFile instanceof File ? this.shareFile : null;
-            const blob = this.shareFile instanceof Blob ? this.shareFile : null;
             const caption = this.getShareCaption(this.lastSharePayload);
-            const hasNativeShare = !!(navigator.share && file && navigator.canShare && navigator.canShare({ files: [file] }));
 
+            // 1. Native share with image file (mobile / supported browsers)
+            const hasNativeShare = !!(navigator.share && file && navigator.canShare && navigator.canShare({ files: [file] }));
+            if (hasNativeShare) {
+                await navigator.share({ text: caption, files: [file] });
+                this.setShareState(true);
+                return;
+            }
+
+            // 2. Native share without file (desktop browsers that support share but not file sharing)
+            if (navigator.share) {
+                await navigator.share({ text: caption, url: 'https://vectorgp.run' });
+                this.setShareState(true);
+                return;
+            }
+
+            // 3. Clipboard image fallback
+            const blob = this.shareFile instanceof Blob ? this.shareFile : null;
             if (blob && navigator.clipboard?.write && typeof ClipboardItem === 'function') {
                 await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
                 this.setShareState(true);
                 return;
             }
 
-            if (hasNativeShare) {
-                await navigator.share({
-                    text: caption,
-                    files: [file]
-                });
-                this.setShareState(true);
-                return;
-            }
-
+            // 4. Clipboard text fallback
             if (navigator.clipboard?.writeText) {
                 await navigator.clipboard.writeText(caption);
                 this.setShareState(true);
