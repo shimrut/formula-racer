@@ -4,9 +4,11 @@
 }
 
 :root {
-    --bg-color: #0f172a; /* Dark background */
+    --bg-color: #0f172a;
+    /* Dark background */
     --text-color: #f8fafc;
-    --accent-color: #ef4444; /* Racing Red */
+    --accent-color: #ef4444;
+    /* Racing Red */
     --danger-color: #ef4444;
 }
 
@@ -20,11 +22,13 @@ body {
     flex-direction: column;
     align-items: center;
     height: 100vh;
-    height: 100dvh; /* Dynamic viewport for mobile (avoids address bar) */
+    height: 100dvh;
+    /* Dynamic viewport for mobile (avoids address bar) */
     min-height: -webkit-fill-available;
     overflow: hidden;
     user-select: none;
-    -webkit-user-select: none; /* iOS Safari */
+    -webkit-user-select: none;
+    /* iOS Safari */
 }
 
 header {
@@ -36,7 +40,8 @@ header {
     background: #020617;
     border-bottom: 2px solid var(--accent-color);
     z-index: 1000;
-    position: relative; /* For absolute menu positioning */
+    position: relative;
+    /* For absolute menu positioning */
 }
 
 h1 {
@@ -142,18 +147,20 @@ select:hover {
     position: relative;
     flex-grow: 1;
     flex-shrink: 1;
-    min-height: 0; /* Allow flex child to shrink below content size */
+    min-height: 0;
+    /* Allow flex child to shrink below content size */
     width: 100%;
     display: flex;
     justify-content: center;
     align-items: center;
     overflow: hidden;
     background-color: #0f172a;
-    touch-action: none; /* Prevent browser handling gestures */
+    touch-action: none;
+    /* Prevent browser handling gestures */
 }
 
 canvas {
-    box-shadow: 0 0 50px rgba(0,0,0,0.5);
+    box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
 }
 
 
@@ -173,11 +180,7 @@ button {
     letter-spacing: 0.05em;
 }
 
-button:hover {
-    background-color: var(--accent-color);
-    border-bottom-color: #991b1b;
-    transform: translateY(-1px);
-}
+
 
 button:active {
     transform: translateY(2px);
@@ -195,14 +198,16 @@ button.danger:hover {
 
 /* Mobile Controls Styling */
 .mobile-controls {
-    display: none; /* Hidden on desktop */
+    display: none;
+    /* Hidden on desktop */
     position: absolute;
     bottom: 0;
     width: 100%;
     justify-content: space-between;
     padding: 0 5% max(20px, env(safe-area-inset-bottom));
     box-sizing: border-box;
-    pointer-events: none; /* Click-through empty space */
+    pointer-events: none;
+    /* Click-through empty space */
     z-index: 30;
 }
 
@@ -233,7 +238,8 @@ button.danger:hover {
     transition: transform 0.1s, background 0.1s;
 }
 
-.touch-btn:active, .touch-btn.active {
+.touch-btn:active,
+.touch-btn.active {
     background: rgba(239, 68, 68, 0.6);
     transform: scale(0.95);
     border-color: var(--accent-color);
@@ -246,7 +252,7 @@ button.danger:hover {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0,0,0,0.6);
+    background: rgba(0, 0, 0, 0.6);
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -275,9 +281,20 @@ button.danger:hover {
 }
 
 @keyframes pulse {
-    0% { transform: scale(1); box-shadow: 0 0 20px rgba(239, 68, 68, 0.5); }
-    50% { transform: scale(1.05); box-shadow: 0 0 40px rgba(239, 68, 68, 0.8); }
-    100% { transform: scale(1); box-shadow: 0 0 20px rgba(239, 68, 68, 0.5); }
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+    }
+
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 40px rgba(239, 68, 68, 0.8);
+    }
+
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+    }
 }
 
 #start-lights {
@@ -359,7 +376,7 @@ button.danger:hover {
     z-index: 100;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.3s;
+    transition: opacity 0.3s ease;
 }
 
 .modal.active {
@@ -372,55 +389,83 @@ button.danger:hover {
     flex-direction: column;
     align-items: center;
     width: 100%;
-    max-width: 420px;
+    max-width: 440px;
+    background: #0f172a;
+    border: 2px solid #334155;
+    border-radius: 8px;
     padding: 2rem;
     margin: auto;
+    transform: scale(0.95) translateY(20px);
+    transition: transform 0.3s ease;
+}
+
+.modal.active .modal-card {
+    transform: scale(1) translateY(0);
 }
 
 .modal h2 {
-    font-size: 4rem;
+    font-size: 3.5rem;
     margin: 0 0 0.5rem;
     color: #fff;
     text-transform: uppercase;
     font-style: italic;
     font-weight: 900;
     text-align: center;
+    letter-spacing: 2px;
 }
 
 .modal p {
-    font-size: 1.5rem;
-    margin: 0 0 1.5rem;
-    font-family: 'Courier New', monospace;
-    color: var(--accent-color);
-    text-align: center;
-}
-
-.modal-lap-times {
-    width: 100%;
-    max-width: 400px;
-    margin-bottom: 1.5rem;
-    display: none;
-}
-
-.lap-stats {
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.lap-stat-item {
-    color: #fff;
     font-size: 1.2rem;
+    margin: 0 0 2rem;
     font-family: 'Courier New', monospace;
+    color: var(--accent-color);
     text-align: center;
+    font-weight: bold;
+    letter-spacing: 1px;
+    text-transform: uppercase;
 }
 
-.lap-stat-item strong {
-    color: var(--accent-color);
+.share-panel {
+    width: 100%;
+    margin-bottom: 0.5rem;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.8rem;
+}
+
+#share-btn {
+    width: 100%;
+    padding: 1rem;
+    font-size: 0.95rem;
+    background: #334155;
+    border: none;
+    border-bottom: 3px solid #1e293b;
+    color: #f8fafc;
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-weight: bold;
+    transition: all 0.1s;
+}
+
+#share-btn:hover {
+    background: #475569;
+    border-bottom-color: #334155;
+    transform: translateY(-1px);
+}
+
+#share-btn:active {
+    transform: translateY(2px);
+    border-bottom-width: 0;
+}
+
+.modal-lap-times-container {
+    width: 100%;
+    margin-bottom: 1.5rem;
 }
 
 .lap-times-list {
-    max-height: 300px;
+    max-height: 220px;
     overflow-y: auto;
     padding: 0.5rem;
     background: rgba(15, 23, 42, 0.5);
@@ -460,39 +505,97 @@ button.danger:hover {
     margin-left: 0.5rem;
 }
 
-/* Modal Track Selector Styling */
-.modal-track-selector {
-    margin-top: 1.5rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    display: flex;
+.modal-view {
+    display: none;
     flex-direction: column;
     align-items: center;
-    gap: 0.8rem;
     width: 100%;
-    max-width: 280px;
 }
 
-.modal-track-selector label {
+.modal-view.active-view {
+    display: flex;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.text-link-btn {
+    background: transparent;
+    border: none;
     color: #94a3b8;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    margin-top: 1rem;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    font-family: inherit;
+    padding: 0.5rem;
 }
 
-.modal-track-selector select {
-    width: 100%;
-    padding: 0.8rem;
-    background: #0f172a;
+.text-link-btn:hover {
     color: #fff;
-    border: 1px solid #334155;
-    border-radius: 4px;
+}
+
+.modal-subtitle {
+    color: #fff;
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    margin-top: 0;
+    text-transform: uppercase;
+    font-style: italic;
+}
+
+.modal-best-time {
+    color: #fff;
+    font-size: 1.1rem;
+    font-family: 'Courier New', monospace;
+    padding: 0.75rem 1.5rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    justify-content: center;
+}
+
+.modal-best-time strong {
+    color: var(--accent-color);
     font-weight: bold;
+    margin-right: 0.5rem;
+}
+
+#modal-reset-btn {
+    background: var(--accent-color);
+    border: none;
+    border-bottom: 3px solid #991b1b;
+    padding: 1.1rem 2rem;
+    font-size: 1.1rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: white;
+    width: 100%;
+    margin-top: 0.5rem;
     cursor: pointer;
 }
 
-.modal-track-selector select:hover {
-    border-color: var(--accent-color);
+#modal-reset-btn:hover {
+    transform: translateY(-1px);
+    background: #f87171;
+    border-bottom-color: #7f1d1d;
+}
+
+#modal-reset-btn:active {
+    transform: translateY(2px);
+    border-bottom-width: 0;
 }
 
 .modal-btn-kbd {
@@ -517,16 +620,20 @@ button.danger:hover {
     font-family: monospace;
 }
 
-@media (max-width: 768px), (hover: none) and (pointer: coarse), (max-height: 600px) and (orientation: landscape) {
-    h1 { font-size: 1rem; }
-    
+@media (max-width: 768px),
+(hover: none) and (pointer: coarse),
+(max-height: 600px) and (orientation: landscape) {
+    h1 {
+        font-size: 1rem;
+    }
+
     /* Slightly smaller CTA text on narrower screens so the copy wraps cleanly */
     #start-btn {
         font-size: 1.1rem;
         padding: 1.1rem 2rem;
         letter-spacing: 1px;
     }
-    
+
     .header-right {
         gap: 0.5rem;
     }
@@ -544,7 +651,7 @@ button.danger:hover {
         padding: 1.5rem;
         gap: 1.5rem;
         border-bottom: 2px solid var(--accent-color);
-        box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
         align-items: stretch;
     }
 
@@ -557,12 +664,12 @@ button.danger:hover {
         align-items: flex-start;
         gap: 1rem;
     }
-    
+
     .settings-group label {
         font-size: 1rem;
         padding: 5px 0;
     }
-    
+
     .settings-group input[type="checkbox"] {
         width: 1.2rem;
         height: 1.2rem;
@@ -582,13 +689,16 @@ button.danger:hover {
     .mobile-controls {
         display: flex;
     }
-    
+
     .key-hint {
         display: none;
     }
-    
-    
-    .light { width: 30px; height: 30px; }
+
+
+    .light {
+        width: 30px;
+        height: 30px;
+    }
 
     /* Modal: streamlined on mobile portrait */
     .modal-btn-kbd {
@@ -605,8 +715,12 @@ button.danger:hover {
     }
 
     .modal-card {
-        padding: 1.25rem 1rem 5rem;
+        padding: 1.25rem 1rem;
         max-width: min(92vw, 360px);
+    }
+
+    #modal-main-view {
+        padding-bottom: 4.5rem;
     }
 
     .modal h2 {
@@ -619,17 +733,12 @@ button.danger:hover {
         margin-bottom: 1rem;
     }
 
-    .modal-lap-times {
+    .modal-best-time {
         margin-bottom: 1rem;
     }
 
-    .lap-stats {
+    .share-panel {
         margin-bottom: 0.5rem;
-        padding-bottom: 0.5rem;
-    }
-
-    .lap-stat-item {
-        font-size: 1rem;
     }
 
     .lap-times-list {
@@ -646,22 +755,6 @@ button.danger:hover {
         padding: 0.85rem 1.5rem;
         font-size: 1rem;
     }
-
-    .modal-track-selector {
-        margin-top: 1rem;
-        padding-top: 1rem;
-        gap: 0.5rem;
-        max-width: 100%;
-    }
-
-    .modal-track-selector label {
-        font-size: 0.7rem;
-    }
-
-    .modal-track-selector select {
-        padding: 0.65rem;
-        font-size: 0.95rem;
-    }
 }
 
 /* Landscape mobile: shorter viewport – smaller buttons, ensure visibility */
@@ -671,7 +764,7 @@ button.danger:hover {
         height: 80px;
         font-size: 32px;
     }
-    
+
     .mobile-controls {
         padding: 0 3% max(12px, env(safe-area-inset-bottom));
     }
@@ -689,46 +782,32 @@ button.danger:hover {
         padding: 0.75rem 1rem;
         margin: 0 auto;
     }
-    
+
     .modal h2 {
         font-size: 1.75rem;
         margin-bottom: 0.15rem;
     }
-    
+
     .modal p {
         font-size: 0.95rem;
         margin-bottom: 0.5rem;
     }
-    
+
     .modal #modal-reset-btn {
         padding: 0.5rem 1.25rem;
         font-size: 0.85rem;
     }
-    
-    .modal-track-selector {
-        margin-top: 0.5rem;
-        padding-top: 0.5rem;
-        gap: 0.3rem;
-    }
-    
-    .modal-track-selector label {
-        font-size: 0.65rem;
-    }
-    
-    .modal-track-selector select {
-        padding: 0.4rem 0.6rem;
-        font-size: 0.85rem;
-    }
-    
-    .lap-stats {
-        margin-bottom: 0.35rem;
-        padding-bottom: 0.35rem;
+
+    .modal-best-time {
+        margin-bottom: 0.5rem;
+        padding: 0.4rem 1rem;
     }
 
-    .lap-stat-item {
-        font-size: 0.9rem;
+    #share-btn {
+        padding: 0.7rem 1rem;
+        font-size: 0.85rem;
     }
-    
+
     .lap-times-list {
         max-height: 100px;
         padding: 0.3rem;
