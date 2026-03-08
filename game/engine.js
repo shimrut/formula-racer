@@ -12,8 +12,7 @@ export class RealTimeRacer {
         this.trackSelect = document.getElementById('track-select');
         this.headerControls = document.getElementById('header-controls');
         
-        // Settings Controls
-        this.toggleRoute = document.getElementById('toggle-route');
+        // Settings Controls (trace route is always enabled)
         
         // Generate Internal Car Sprite
         this.carSprite = this.createCarSprite();
@@ -94,7 +93,6 @@ export class RealTimeRacer {
         this.startOverlay = document.getElementById('start-overlay');
         this.startLights = document.getElementById('start-lights');
         this.goMessage = document.getElementById('go-message');
-        this.menuToggle = document.getElementById('menu-toggle');
         this.runHistory = [];
         this.runHistoryTimer = 0;
         this.lastSharePayload = null;
@@ -123,35 +121,34 @@ export class RealTimeRacer {
             });
         }
         
-        // Menu Toggle Listener
-        this.menuToggle.addEventListener('click', () => {
-           this.headerControls.classList.toggle('visible');
-        });
 
-        // Close menu when tapping outside (mobile: touchend; desktop: click)
-        const closeMenuIfOutside = (e) => {
-            if (!this.headerControls.classList.contains('visible')) return;
-            const t = e.target;
-            if (this.headerControls.contains(t) || this.menuToggle.contains(t)) return;
-            this.headerControls.classList.remove('visible');
-        };
-        document.addEventListener('click', closeMenuIfOutside);
-        document.addEventListener('touchend', closeMenuIfOutside, { passive: true });
 
         // Button Listeners
         const startBtn = document.getElementById('start-btn');
         if (startBtn) {
-            startBtn.addEventListener('click', () => this.startSequence());
+            startBtn.addEventListener('click', () => {
+                if (typeof umami !== 'undefined') umami.track('start_engines');
+                this.startSequence();
+            });
         }
         
 
         
         const modalResetBtn = document.getElementById('modal-reset-btn');
         if (modalResetBtn) {
-            modalResetBtn.addEventListener('click', () => this.reset(true));
+            modalResetBtn.addEventListener('click', () => {
+                if (typeof umami !== 'undefined') {
+                    if (this.status === 'crashed') umami.track('box_box_crash');
+                    else if (this.status === 'won') umami.track('box_box_win');
+                }
+                this.reset(true);
+            });
         }
         if (this.shareBtn) {
-            this.shareBtn.addEventListener('click', () => this.shareLapResult());
+            this.shareBtn.addEventListener('click', () => {
+                if (typeof umami !== 'undefined') umami.track('challenge_friend_share');
+                this.shareLapResult();
+            });
         }
 
         // Mobile Control Bindings
@@ -555,8 +552,6 @@ export class RealTimeRacer {
             }
             
             this.reset();
-            // Close menu if open on mobile
-            this.headerControls.classList.remove('visible');
             document.activeElement.blur(); 
         }
     }
@@ -663,15 +658,11 @@ export class RealTimeRacer {
                 if (this.skidMarks.length > maxSkids) this.skidMarks.shift();
             }
 
-            // Trace Route Logic (if setting enabled)
-            if (this.toggleRoute.checked) {
-                this.trailTimer += dt;
-                if (this.trailTimer > 0.05) {
-                    this.routeTrace.push({ x: this.pos.x, y: this.pos.y });
-                    this.trailTimer %= 0.05;
-                }
-            } else {
-                this.routeTrace = []; // Clear if turned off
+            // Trace Route Logic (always enabled)
+            this.trailTimer += dt;
+            if (this.trailTimer > 0.05) {
+                this.routeTrace.push({ x: this.pos.x, y: this.pos.y });
+                this.trailTimer %= 0.05;
             }
 
             this.runHistoryTimer += dt;
@@ -1363,8 +1354,8 @@ export class RealTimeRacer {
             }
         }
 
-        // 4.5 Route Trace (If Enabled)
-        if (this.toggleRoute.checked && this.routeTrace.length > 1) {
+        // 4.5 Route Trace (Always Visible)
+        if (this.routeTrace.length > 1) {
             ctx.beginPath();
             ctx.strokeStyle = "rgba(56, 189, 248, 0.5)"; // Light Blue
             ctx.lineWidth = 4;
