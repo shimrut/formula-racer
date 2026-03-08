@@ -10,7 +10,6 @@ export class RealTimeRacer {
         this.ctx = this.canvas.getContext('2d');
         this.container = document.getElementById('game-container');
         this.trackSelect = document.getElementById('track-select');
-        this.modalTrackSelect = document.getElementById('modal-track-select');
         this.headerControls = document.getElementById('header-controls');
         
         // Settings Controls
@@ -85,10 +84,23 @@ export class RealTimeRacer {
         this.modalTitle = document.getElementById('modal-title');
         this.modalMsg = document.getElementById('modal-msg');
         this.modalLapTimes = document.getElementById('modal-lap-times');
+        this.modalBestTime = document.getElementById('modal-best-time');
+        this.viewRunsBtn = document.getElementById('view-runs-btn');
+        this.backToMainBtn = document.getElementById('back-to-main-btn');
+        this.modalMainView = document.getElementById('modal-main-view');
+        this.modalRunsView = document.getElementById('modal-runs-view');
+        this.sharePanel = document.getElementById('share-panel');
+        this.shareBtn = document.getElementById('share-btn');
         this.startOverlay = document.getElementById('start-overlay');
         this.startLights = document.getElementById('start-lights');
         this.goMessage = document.getElementById('go-message');
         this.menuToggle = document.getElementById('menu-toggle');
+        this.runHistory = [];
+        this.runHistoryTimer = 0;
+        this.lastSharePayload = null;
+        this.shareFile = null;
+        this.shareFilename = '';
+        this.shareBlobPromise = null;
 
         // Listeners
         window.addEventListener('resize', () => this.resize());
@@ -97,7 +109,19 @@ export class RealTimeRacer {
         
         // Track Selectors
         this.trackSelect.addEventListener('change', (e) => this.loadTrack(e.target.value));
-        this.modalTrackSelect.addEventListener('change', (e) => this.loadTrack(e.target.value));
+        
+        if (this.viewRunsBtn) {
+            this.viewRunsBtn.addEventListener('click', () => {
+                if (this.modalMainView) this.modalMainView.classList.remove('active-view');
+                if (this.modalRunsView) this.modalRunsView.classList.add('active-view');
+            });
+        }
+        if (this.backToMainBtn) {
+            this.backToMainBtn.addEventListener('click', () => {
+                if (this.modalRunsView) this.modalRunsView.classList.remove('active-view');
+                if (this.modalMainView) this.modalMainView.classList.add('active-view');
+            });
+        }
         
         // Menu Toggle Listener
         this.menuToggle.addEventListener('click', () => {
@@ -125,6 +149,9 @@ export class RealTimeRacer {
         const modalResetBtn = document.getElementById('modal-reset-btn');
         if (modalResetBtn) {
             modalResetBtn.addEventListener('click', () => this.reset(true));
+        }
+        if (this.shareBtn) {
+            this.shareBtn.addEventListener('click', () => this.shareLapResult());
         }
 
         // Mobile Control Bindings
@@ -219,6 +246,9 @@ export class RealTimeRacer {
         if(this.status !== 'ready') return;
         
         this.status = 'starting';
+        this.runHistory = [];
+        this.runHistoryTimer = 0;
+        this.recordRunPoint(this.pos);
         this.startOverlay.style.display = 'none';
         this.startLights.classList.add('visible');
         
@@ -497,9 +527,8 @@ export class RealTimeRacer {
             this.currentTrack = TRACKS[trackKey];
             this.currentTrackKey = trackKey;
             
-            // Sync both selectors
+            // Sync selector
             this.trackSelect.value = trackKey;
-            this.modalTrackSelect.value = trackKey;
 
             const cornerRadius = this.currentTrack.cornerRadius ?? 3;
             this.activeGeometry.outer = this.smoothPoly(this.currentTrack.outer, cornerRadius);
@@ -644,6 +673,12 @@ export class RealTimeRacer {
             } else {
                 this.routeTrace = []; // Clear if turned off
             }
+
+            this.runHistoryTimer += dt;
+            if (this.runHistoryTimer >= 0.05) {
+                this.recordRunPoint(this.pos);
+                this.runHistoryTimer %= 0.05;
+            }
         }
 
         // Update Particles (limit count on low-end devices)
@@ -764,9 +799,11 @@ export class RealTimeRacer {
         this.status = 'won';
         const finalTime = this.currentTime;
         const trackName = this.currentTrackKey;
+        this.recordRunPoint(this.pos);
         
         // Save lap time
         let trackData;
+        const previousBest = this.bestLapTime;
         try {
             trackData = await saveLapTime(trackName, finalTime);
             // Update best lap time in memory
@@ -794,28 +831,40 @@ export class RealTimeRacer {
         const bestTime = trackData.bestTime ? trackData.bestTime.toFixed(2) : 'N/A';
         
         // Check if this is a new best
-        const isNewBest = trackData.bestTime === finalTime && (this.bestLapTime === null || finalTime < this.bestLapTime);
-        const title = isNewBest ? 'NEW BEST LAP!' : 'POLE POSITION';
+        const isNewBest = trackData.bestTime === finalTime && (previousBest === null || previousBest === undefined || finalTime < previousBest);
+        const title = isNewBest ? 'Personal Best' : 'FINISH LINE';
         
         // Build lap times list
         let lapTimesHtml = '';
         if (trackData.lapTimes.length > 0) {
             lapTimesHtml = '<div class="lap-times-list">';
-            trackData.lapTimes.slice().reverse().forEach((time, index) => {
+            const recentRuns = trackData.lapTimes.slice().reverse().slice(0, 10);
+            recentRuns.forEach((time, index) => {
                 const isBest = Math.abs(time - trackData.bestTime) < 0.01; // Floating point comparison
                 const isCurrent = index === 0;
                 lapTimesHtml += `<div class="lap-time-item ${isBest ? 'best' : ''} ${isCurrent ? 'current' : ''}">`;
-                lapTimesHtml += `${trackData.lapTimes.length - index}. ${time.toFixed(2)}s`;
+                const realIndex = trackData.lapTimes.length - index;
+                lapTimesHtml += `${realIndex}. ${time.toFixed(2)}s`;
                 if (isBest) lapTimesHtml += ' <span class="best-badge">BEST</span>';
                 lapTimesHtml += '</div>';
             });
             lapTimesHtml += '</div>';
         }
         
+        this.lastSharePayload = {
+            title,
+            trackName: this.currentTrack.name,
+            trackKey: this.currentTrackKey,
+            lapTime: finalTime,
+            bestTime: trackData.bestTime ?? finalTime,
+            isNewBest,
+            runHistory: this.runHistory.slice()
+        };
         this.showModal(title, `Lap Time: ${formattedTime}s`, {
             bestTime: bestTime,
             lapTimes: lapTimesHtml
         });
+        this.prepareShareAsset();
     }
 
     reset(autoStart = false) {
@@ -834,8 +883,15 @@ export class RealTimeRacer {
         this.currentTime = 0;
         this.skidMarks = [];
         this.routeTrace = [];
+        this.runHistory = [];
+        this.runHistoryTimer = 0;
         this.particles = [];
+        this.lastSharePayload = null;
+        this.shareFile = null;
+        this.shareFilename = '';
+        this.shareBlobPromise = null;
         this.modal.classList.remove('active');
+        this.setShareState(false);
         
         // Reset Visuals
         this.startLights.classList.remove('visible');
@@ -863,20 +919,354 @@ export class RealTimeRacer {
         this.modalTitle.innerText = title;
         this.modalMsg.innerText = msg;
         
-        if (lapData && this.modalLapTimes) {
-            let html = `<div class="lap-stats">`;
-            html += `<div class="lap-stat-item"><strong>Best Time:</strong> ${lapData.bestTime}s</div>`;
-            html += `</div>`;
-            if (lapData.lapTimes) {
-                html += lapData.lapTimes;
+        if (lapData) {
+            if (this.modalBestTime) {
+                 this.modalBestTime.innerHTML = `<strong>Best Time:</strong> ${lapData.bestTime}s`;
+                 this.modalBestTime.style.display = 'flex';
             }
-            this.modalLapTimes.innerHTML = html;
-            this.modalLapTimes.style.display = 'block';
-        } else if (this.modalLapTimes) {
-            this.modalLapTimes.style.display = 'none';
+            if (lapData.lapTimes && this.modalLapTimes) {
+                this.modalLapTimes.innerHTML = lapData.lapTimes;
+            } else if (this.modalLapTimes) {
+                this.modalLapTimes.innerHTML = '';
+            }
+            if (this.viewRunsBtn) this.viewRunsBtn.style.display = lapData.lapTimes ? 'inline-block' : 'none';
+        } else {
+            if (this.modalBestTime) this.modalBestTime.style.display = 'none';
+            if (this.viewRunsBtn) this.viewRunsBtn.style.display = 'none';
         }
+
+        if (this.modalMainView && this.modalRunsView) {
+            this.modalMainView.classList.add('active-view');
+            this.modalRunsView.classList.remove('active-view');
+        }
+
+        this.setShareState(Boolean(this.lastSharePayload));
         
         this.modal.classList.add('active');
+    }
+
+    recordRunPoint(point) {
+        const x = Number(point.x.toFixed(3));
+        const y = Number(point.y.toFixed(3));
+        const lastPoint = this.runHistory[this.runHistory.length - 1];
+        if (lastPoint && Math.abs(lastPoint.x - x) < 0.001 && Math.abs(lastPoint.y - y) < 0.001) {
+            return;
+        }
+        this.runHistory.push({ x, y });
+    }
+
+    setShareState(enabled) {
+        if (this.sharePanel) {
+            this.sharePanel.style.display = enabled ? 'flex' : 'none';
+        }
+        if (this.shareBtn) {
+            this.shareBtn.disabled = !enabled || Boolean(this.shareBlobPromise);
+            this.shareBtn.textContent = 'Challenge Others';
+        }
+    }
+
+    flashShareMessage(message, timeoutMs = 2200) {
+        // Obsolete, removed share status messages
+    }
+
+    getShareCaption(payload) {
+        return `I ran ${payload.trackName} in ${payload.lapTime.toFixed(2)}s. Can you beat it? 🏁 \n 🏎️ vectorgp.run `;
+    }
+
+    getReplayLayout(payload, width, height, hudHeight) {
+        const padding = 28;
+        const run = payload.runHistory.length > 1 ? payload.runHistory : [this.currentTrack.startPos, this.pos];
+        const points = [...this.activeGeometry.outer, ...this.activeGeometry.inner, ...run];
+        const xs = points.map((point) => point.x);
+        const ys = points.map((point) => point.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const usableWidth = width - padding * 2;
+        const usableHeight = height - hudHeight - padding * 2;
+        const scale = Math.min(usableWidth / Math.max(1, maxX - minX), usableHeight / Math.max(1, maxY - minY));
+        const offsetX = padding + (usableWidth - (maxX - minX) * scale) / 2;
+        const offsetY = padding + (usableHeight - (maxY - minY) * scale) / 2;
+
+        return {
+            hudHeight,
+            run,
+            mapPoint: (point) => ({
+                x: offsetX + (point.x - minX) * scale,
+                y: offsetY + (point.y - minY) * scale
+            })
+        };
+    }
+
+    getReplayProgressPoint(run, progress) {
+        if (run.length === 1) {
+            return run[0];
+        }
+
+        const scaledIndex = progress * (run.length - 1);
+        const baseIndex = Math.floor(scaledIndex);
+        const nextIndex = Math.min(run.length - 1, baseIndex + 1);
+        const t = scaledIndex - baseIndex;
+        const start = run[baseIndex];
+        const end = run[nextIndex];
+
+        return {
+            x: start.x + (end.x - start.x) * t,
+            y: start.y + (end.y - start.y) * t
+        };
+    }
+
+    drawMappedPolygon(ctx, points, mapPoint) {
+        if (!points.length) return;
+        const first = mapPoint(points[0]);
+        ctx.beginPath();
+        ctx.moveTo(first.x, first.y);
+        for (let i = 1; i < points.length; i++) {
+            const point = mapPoint(points[i]);
+            ctx.lineTo(point.x, point.y);
+        }
+        ctx.closePath();
+    }
+
+    drawReplayPath(ctx, points, mapPoint) {
+        if (!points.length) return;
+        const first = mapPoint(points[0]);
+        ctx.beginPath();
+        ctx.moveTo(first.x, first.y);
+        for (let i = 1; i < points.length; i++) {
+            const point = mapPoint(points[i]);
+            ctx.lineTo(point.x, point.y);
+        }
+    }
+
+    renderReplayFrame(ctx, payload, layout, width, height, progress, options = {}) {
+        const { hudHeight, run, mapPoint } = layout;
+        const showHud = options.showHud ?? true;
+        const showMarker = options.showMarker ?? true;
+        const currentPoint = this.getReplayProgressPoint(run, progress);
+        const drawCount = Math.max(1, Math.floor(progress * (run.length - 1)));
+        const revealedPoints = run.slice(0, drawCount + 1);
+        if (revealedPoints[revealedPoints.length - 1] !== currentPoint) {
+            revealedPoints.push(currentPoint);
+        }
+
+        ctx.clearRect(0, 0, width, height);
+
+        const gradient = ctx.createLinearGradient(0, 0, width, height);
+        gradient.addColorStop(0, '#020617');
+        gradient.addColorStop(1, '#111827');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+
+        if (showHud && hudHeight > 0) {
+            ctx.fillStyle = '#020617';
+            ctx.fillRect(0, height - hudHeight, width, hudHeight);
+        }
+
+        this.drawMappedPolygon(ctx, this.activeGeometry.outer, mapPoint);
+        ctx.fillStyle = '#334155';
+        ctx.fill();
+
+        this.drawMappedPolygon(ctx, this.activeGeometry.inner, mapPoint);
+        ctx.fillStyle = '#020617';
+        ctx.fill();
+
+        this.drawMappedPolygon(ctx, this.activeGeometry.outer, mapPoint);
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#f8fafc';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+
+        this.drawMappedPolygon(ctx, this.activeGeometry.inner, mapPoint);
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.stroke();
+
+        const lineStart = mapPoint(this.currentTrack.startLine.p1);
+        const lineEnd = mapPoint(this.currentTrack.startLine.p2);
+        ctx.strokeStyle = '#f8fafc';
+        ctx.lineWidth = 6;
+        ctx.setLineDash([8, 8]);
+        ctx.beginPath();
+        ctx.moveTo(lineStart.x, lineStart.y);
+        ctx.lineTo(lineEnd.x, lineEnd.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.strokeStyle = 'rgba(251, 113, 133, 0.2)';
+        ctx.lineWidth = 10;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        this.drawReplayPath(ctx, run, mapPoint);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#fb7185';
+        ctx.lineWidth = 8;
+        this.drawReplayPath(ctx, revealedPoints, mapPoint);
+        ctx.stroke();
+
+        if (showMarker) {
+            const marker = mapPoint(currentPoint);
+            ctx.fillStyle = '#f8fafc';
+            ctx.beginPath();
+            ctx.arc(marker.x, marker.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    wrapText(ctx, text, maxWidth) {
+        const paragraphs = text.split(/\n/);
+        const lines = [];
+        for (const para of paragraphs) {
+            const words = para.split(/\s+/).filter((w) => w.length > 0);
+            let line = '';
+            for (const w of words) {
+                const test = line ? `${line} ${w}` : w;
+                const m = ctx.measureText(test);
+                if (m.width > maxWidth && line) {
+                    lines.push(line);
+                    line = w;
+                } else {
+                    line = test;
+                }
+            }
+            if (line) lines.push(line);
+        }
+        return lines;
+    }
+
+    buildShareImageBlob(payload) {
+        const width = 1080;
+        const height = 1080;
+        const hudHeight = 0;
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        const layout = this.getReplayLayout(payload, width, height, hudHeight);
+
+        this.renderReplayFrame(ctx, payload, layout, width, height, 1, {
+            showHud: false,
+            showMarker: false
+        });
+
+        const caption = this.getShareCaption(payload);
+        const pad = 48;
+        const lineHeight = 52;
+        const fontSize = 42;
+        ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const lines = this.wrapText(ctx, caption, width - pad * 2);
+        const textBlockHeight = lines.length * lineHeight + pad * 2;
+        const y0 = height - textBlockHeight;
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
+        ctx.fillRect(0, y0, width, textBlockHeight);
+        ctx.fillStyle = '#f8fafc';
+        lines.forEach((line, i) => {
+            ctx.fillText(line, width / 2, y0 + pad + lineHeight / 2 + i * lineHeight);
+        });
+
+        return new Promise((resolve, reject) => {
+            if (canvas.toBlob) {
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(blob);
+                        return;
+                    }
+                    reject(new Error('Canvas export returned an empty blob.'));
+                }, 'image/png');
+                return;
+            }
+
+            try {
+                const dataUrl = canvas.toDataURL('image/png');
+                fetch(dataUrl)
+                    .then((response) => response.blob())
+                    .then(resolve)
+                    .catch(reject);
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    downloadBlob(filename, blob) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    prepareShareAsset() {
+        if (!this.lastSharePayload) return;
+        if (this.shareBlobPromise) return this.shareBlobPromise;
+        if (this.shareFile) return Promise.resolve(this.shareFile);
+
+        const payload = this.lastSharePayload;
+        this.shareFile = null;
+        this.shareFilename = `${payload.trackKey}-${payload.lapTime.toFixed(2).replace('.', '-')}.png`;
+        this.setShareState(true);
+
+        this.shareBlobPromise = this.buildShareImageBlob(payload)
+            .then((blob) => {
+                this.shareFile = typeof File === 'function'
+                    ? new File([blob], this.shareFilename, { type: 'image/png' })
+                    : blob;
+                this.shareBlobPromise = null;
+                this.setShareState(true);
+                return this.shareFile;
+            })
+            .catch((error) => {
+                console.error('Error preparing share asset:', error);
+                this.shareBlobPromise = null;
+                this.shareFile = null;
+                this.setShareState(true);
+                throw error;
+            });
+    }
+
+    async shareLapResult() {
+        if (!this.lastSharePayload) return;
+
+        if (!this.shareFile) {
+            this.setShareState(true);
+            return;
+        }
+
+        try {
+            const file = this.shareFile instanceof File ? this.shareFile : null;
+            const blob = this.shareFile instanceof Blob ? this.shareFile : null;
+            const caption = this.getShareCaption(this.lastSharePayload);
+            const hasNativeShare = !!(navigator.share && file && navigator.canShare && navigator.canShare({ files: [file] }));
+
+            if (blob && navigator.clipboard?.write && typeof ClipboardItem === 'function') {
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                this.setShareState(true);
+                return;
+            }
+
+            if (hasNativeShare) {
+                await navigator.share({
+                    text: caption,
+                    files: [file]
+                });
+                this.setShareState(true);
+                return;
+            }
+
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(caption);
+                this.setShareState(true);
+            } else {
+                this.setShareState(true);
+            }
+        } catch (error) {
+            console.error('Error sharing lap result:', error);
+            this.setShareState(true);
+        }
     }
 
     render(dt, alpha = 1) {
@@ -901,12 +1291,43 @@ export class RealTimeRacer {
         ctx.fillStyle = CONFIG.offTrackColor;
         ctx.fillRect(0, 0, cw, ch);
 
-        // 2. Camera: fixed zoom (1x desktop, 0.75x mobile), direct follow
+        // 2. Camera: dynamic look-ahead based on velocity to prevent whipping
         const speed = this.cachedSpeed;
         const narrowViewport = window.innerWidth <= 768;
         this.zoom = narrowViewport ? 0.75 : 1.0;
-        this.camera.x = (displayPos.x * gs) - (cw / 2 / this.zoom);
-        this.camera.y = (displayPos.y * gs) - (ch / 2 / this.zoom);
+        
+        // Target offset uses physical velocity, which takes time to change, 
+        // unlike the immediate response of steering angle
+        let targetLookAheadX = 0;
+        let targetLookAheadY = 0;
+        
+        if (speed > 1) {
+            const multiplier = narrowViewport ? 12 : 5;
+            const maxOffset = narrowViewport ? Math.min(cw, ch) / 2.5 : Math.min(cw, ch) / 5;
+            
+            targetLookAheadX = this.velocity.x * multiplier;
+            targetLookAheadY = this.velocity.y * multiplier;
+            
+            const mag = Math.hypot(targetLookAheadX, targetLookAheadY);
+            if (mag > maxOffset) {
+                targetLookAheadX = (targetLookAheadX / mag) * maxOffset;
+                targetLookAheadY = (targetLookAheadY / mag) * maxOffset;
+            }
+        }
+
+        // Initialize smoothing variables if they don't exist
+        this._lookAheadX = this._lookAheadX || 0;
+        this._lookAheadY = this._lookAheadY || 0;
+        
+        // Smoothly approach the target offset over time 
+        // 1 - exp(-dt * 4) achieves ~98% of target within 1 second.
+        const lerpFactor = 1 - Math.exp(-dt * 4);
+        
+        this._lookAheadX += (targetLookAheadX - this._lookAheadX) * lerpFactor;
+        this._lookAheadY += (targetLookAheadY - this._lookAheadY) * lerpFactor;
+
+        this.camera.x = (displayPos.x * gs) + this._lookAheadX - (cw / 2 / this.zoom);
+        this.camera.y = (displayPos.y * gs) + this._lookAheadY - (ch / 2 / this.zoom);
 
         ctx.save();
         // Apply Zoom and Camera Transform
