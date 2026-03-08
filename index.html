@@ -3,9 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <script defer src="https://cloud.umami.is/script.js" data-website-id="d61b5069-df2c-4e9b-a7d2-125c7fb7c760"></script>
-    <title>Vector Racer: Grand Prix</title>
+    <title>Vector Grand Prix: Formula Racing Simulator</title>
+    <meta name="description" content="Vector Grand Prix: A high-stakes formula racing simulator. Master the physics of speed on challenging circuits in this precision-based vector racing game. Compete for the fastest lap times on every track.">
+    <meta name="keywords" content="formula racing, grand prix game, vector racing, physics-based racing, circuit driver, retro racer, browser game, high speed racing, lap time challenge, global circuits">
+    <meta name="author" content="Vector Grand Prix Team">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://vectorgp.run/">
+    <meta property="og:title" content="Vector Grand Prix: Formula Racing Simulator">
+    <meta property="og:description" content="High-stakes vector formula racing. Master the circuits and set the ultimate lap time.">
+    <meta property="og:image" content="https://vectorgp.run/social-preview.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://vectorgp.run/">
+    <meta property="twitter:title" content="Vector Grand Prix: Formula Racing Simulator">
+    <meta property="twitter:description" content="High-stakes vector formula racing. Master the circuits and set the ultimate lap time.">
+    <meta property="twitter:image" content="https://vectorgp.run/social-preview.png">
+
+    <link rel="canonical" href="https://vectorgp.run/">
     <link rel="stylesheet" href="styles.css">
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Vector Grand Prix",
+      "operatingSystem": "Web",
+      "applicationCategory": "GameApplication",
+      "genre": "Racing Game",
+      "description": "A precision-based vector racing game focused on formula racing mechanics and high-speed circuit mastery.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
 </head>
 <body>
 
@@ -30,6 +66,7 @@
                     <option value="royalPlateau" hidden>Royal Plateau</option>
                     <option value="mistwoodSerpent" hidden>Mistwood Serpent</option>
                     <option value="harborParkLoop">Harbor Park Loop</option>
+                    <option value="jadeSpiralCircuit" hidden>Jade Spiral Circuit</option>
                 </select>
             </div>
         </div>
@@ -76,20 +113,24 @@
 
     <div id="modal" class="modal">
         <div class="modal-card">
-            <h2 id="modal-title">CRASH</h2>
-            <p id="modal-msg">Terminal Damage</p>
-            <div id="modal-lap-times" class="modal-lap-times"></div>
-            <button id="modal-reset-btn">Box Box <kbd class="modal-btn-kbd">R</kbd></button>
+            <div id="modal-main-view" class="modal-view active-view">
+                <h2 id="modal-title">CRASH</h2>
+                <p id="modal-msg">Terminal Damage</p>
+                
+                <div id="modal-best-time" class="modal-best-time" style="display: none;"></div>
+                
+                <div id="share-panel" class="share-panel">
+                    <button id="share-btn" type="button">Challenge Others</button>
+                </div>
+                
+                <button id="modal-reset-btn">Box Box <kbd class="modal-btn-kbd">R</kbd></button>
+                <button id="view-runs-btn" class="text-link-btn" type="button" style="display: none;">View Last 10 Runs</button>
+            </div>
             
-            <div class="modal-track-selector">
-                <label>Next Grand Prix</label>
-                <select id="modal-track-select">
-                <option value="circuit">Classic Circuit</option>
-                <option value="sunlitTemple" hidden>Sunlit Temple</option>
-                <option value="royalPlateau" hidden>Royal Plateau</option>
-                <option value="mistwoodSerpent" hidden>Mistwood Serpent</option>
-                <option value="harborParkLoop">Harbor Park Loop</option>
-            </select>
+            <div id="modal-runs-view" class="modal-view">
+                <h3 class="modal-subtitle">Last 10 Runs</h3>
+                <div id="modal-lap-times" class="modal-lap-times-container"></div>
+                <button id="back-to-main-btn" class="text-link-btn" type="button">Back</button>
             </div>
         </div>
     </div>
