@@ -1,29 +1,44 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <script defer src="https://cloud.umami.is/script.js" data-website-id="d61b5069-df2c-4e9b-a7d2-125c7fb7c760"></script>
+    <script>
+        if (location.hostname === 'vectorgp.run') {
+            const s = document.createElement('script');
+            s.defer = true;
+            s.src = 'https://cloud.umami.is/script.js';
+            s.dataset.websiteId = 'd61b5069-df2c-4e9b-a7d2-125c7fb7c760';
+            document.head.appendChild(s);
+        }
+    </script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Vector Grand Prix: Formula Racing Simulator</title>
-    <meta name="description" content="Vector Grand Prix: A high-stakes formula racing simulator. Master the physics of speed on challenging circuits in this precision-based vector racing game. Compete for the fastest lap times on every track.">
-    <meta name="keywords" content="formula racing, grand prix game, vector racing, physics-based racing, circuit driver, retro racer, browser game, high speed racing, lap time challenge, global circuits">
+    <meta name="description"
+        content="Vector Grand Prix: A high-stakes formula racing simulator. Master the physics of speed on challenging circuits in this precision-based vector racing game. Compete for the fastest lap times on every track.">
+    <meta name="keywords"
+        content="formula racing, grand prix game, vector racing, physics-based racing, circuit driver, retro racer, browser game, high speed racing, lap time challenge, global circuits">
     <meta name="author" content="Vector Grand Prix Team">
-    
+
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://vectorgp.run/">
     <meta property="og:title" content="Vector Grand Prix: Formula Racing Simulator">
-    <meta property="og:description" content="High-stakes vector formula racing. Master the circuits and set the ultimate lap time.">
+    <meta property="og:description"
+        content="High-stakes vector formula racing. Master the circuits and set the ultimate lap time.">
     <meta property="og:image" content="https://vectorgp.run/social-preview.png">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://vectorgp.run/">
     <meta property="twitter:title" content="Vector Grand Prix: Formula Racing Simulator">
-    <meta property="twitter:description" content="High-stakes vector formula racing. Master the circuits and set the ultimate lap time.">
+    <meta property="twitter:description"
+        content="High-stakes vector formula racing. Master the circuits and set the ultimate lap time.">
     <meta property="twitter:image" content="https://vectorgp.run/social-preview.png">
 
     <link rel="canonical" href="https://vectorgp.run/">
+    <link rel="icon" type="image/png" href="favicon.png">
     <link rel="stylesheet" href="styles.css">
 
     <!-- Structured Data -->
@@ -44,23 +59,15 @@
     }
     </script>
 </head>
+
 <body>
 
     <header>
-        <h1>Vector <span>Grand Prix</span></h1>
-        
+        <h1>Vector <span class="full-name">Grand Prix</span><span class="short-name" style="display: none;">GP</span></h1>
+
         <div class="header-right">
-
-            <!-- Hamburger Button -->
-            <button id="menu-toggle">☰</button>
-
             <!-- Collapsible Controls -->
             <div class="header-controls" id="header-controls">
-                <div class="settings-group">
-                    <label>
-                        <input type="checkbox" id="toggle-route" checked> Trace Route
-                    </label>
-                </div>
                 <select id="track-select">
                     <option value="circuit">Classic Circuit</option>
                     <option value="sunlitTemple" hidden>Sunlit Temple</option>
@@ -78,7 +85,8 @@
         <div class="stats">
             <div class="stat-item">LAP: <span id="time-val">0.00</span></div>
             <div class="stat-item">KPH: <span id="speed-val">0</span></div>
-            <div class="stat-item" id="best-time-display" style="display: none;">BEST: <span id="best-time-val">--</span></div>
+            <div class="stat-item" id="best-time-display" style="display: none;">BEST: <span
+                    id="best-time-val">--</span></div>
         </div>
 
         <canvas id="gameCanvas"></canvas>
@@ -97,7 +105,7 @@
             <div class="light" id="light-2"></div>
             <div class="light" id="light-3"></div>
         </div>
-        
+
         <!-- Big GO Text -->
         <div id="go-message">GO!</div>
 
@@ -117,17 +125,18 @@
             <div id="modal-main-view" class="modal-view active-view">
                 <h2 id="modal-title">CRASH</h2>
                 <p id="modal-msg">Terminal Damage</p>
-                
+
                 <div id="modal-best-time" class="modal-best-time" style="display: none;"></div>
-                
+
                 <div id="share-panel" class="share-panel">
-                    <button id="share-btn" type="button">Challenge Others</button>
+                    <button id="share-btn" type="button">Challenge a Friend</button>
                 </div>
-                
+
                 <button id="modal-reset-btn">Box Box <kbd class="modal-btn-kbd">R</kbd></button>
-                <button id="view-runs-btn" class="text-link-btn" type="button" style="display: none;">View Last 10 Runs</button>
+                <button id="view-runs-btn" class="text-link-btn" type="button" style="display: none;">View Last 10
+                    Runs</button>
             </div>
-            
+
             <div id="modal-runs-view" class="modal-view">
                 <h3 class="modal-subtitle">Last 10 Runs</h3>
                 <div id="modal-lap-times" class="modal-lap-times-container"></div>
@@ -138,4 +147,5 @@
 
     <script type="module" src="game/index.js"></script>
 </body>
+
 </html>
