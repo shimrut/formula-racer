@@ -63,9 +63,15 @@
 <body>
 
     <header>
-        <h1>Vector <span class="full-name">Grand Prix</span><span class="short-name" style="display: none;">GP</span></h1>
+        <h1>Vector <span class="full-name">Grand Prix</span><span class="short-name" style="display: none;">GP</span>
+        </h1>
 
         <div class="header-right">
+            <button id="header-htp-btn" class="text-link-btn" type="button"
+                style="margin-top: 0; color: #fff; text-decoration: none; font-weight: bold;">
+                <span class="htp-text">How to Play</span>
+                <span class="htp-icon" style="display: none;">?</span>
+            </button>
             <!-- Collapsible Controls -->
             <div class="header-controls" id="header-controls">
                 <select id="track-select">
@@ -92,6 +98,7 @@
         <canvas id="gameCanvas"></canvas>
         <div class="key-hint">
             A / D or Arrows to Steer
+            <span class="version-label">v 0.2</span>
         </div>
 
         <!-- Start Screen Overlay -->
@@ -145,7 +152,22 @@
         </div>
     </div>
 
-    <script type="module" src="game/index.js"></script>
+    <!-- How To Play Modal -->
+    <div id="how-to-play-modal" class="modal">
+        <div class="modal-card">
+            <h2 style="font-size: 2.5rem;">How to Play</h2>
+            <div class="htp-instructions">
+                <p>🏎️ The car accelerates on its own.</p>
+                <p>🕹️ Use A/D or the Arrows to steer.</p>
+                <p>🏁 End a run without crashing into the walls.</p>
+            </div>
+            <button id="close-htp-btn"
+                style="width: 100%; margin-top: 1rem; padding: 1rem; background: var(--accent-color); color: white; border: none; border-radius: 4px; font-weight: 800; text-transform: uppercase; cursor: pointer;">Got
+                it</button>
+        </div>
+    </div>
+
+    <script type="module" src="game/index.js?v=0.2"></script>
 </body>
 
 </html>

@@ -621,6 +621,13 @@ button.danger:hover {
     font-family: monospace;
 }
 
+.key-hint .version-label {
+    display: block;
+    font-size: 0.65rem;
+    opacity: 0.6;
+    margin-top: 0.25rem;
+}
+
 @media (max-width: 768px),
 (hover: none) and (pointer: coarse),
 (max-height: 600px) and (orientation: landscape) {
@@ -630,6 +637,15 @@ button.danger:hover {
 
     .short-name {
         display: inline !important;
+    }
+
+    .htp-text {
+        display: none;
+    }
+
+    .htp-icon {
+        display: inline !important;
+        font-size: 1.2rem;
     }
 
     /* Slightly smaller CTA text on narrower screens so the copy wraps cleanly */
@@ -800,4 +816,27 @@ button.danger:hover {
         padding: 0.25rem 0.4rem;
         font-size: 0.8rem;
     }
+}
+
+/* How to Play Modal Styles */
+.htp-instructions {
+    text-align: left;
+    margin: 1.5rem 0;
+    width: 100%;
+}
+
+.htp-instructions p {
+    font-size: 1.1rem;
+    margin: 0 0 1rem;
+    font-family: inherit;
+    color: var(--text-color);
+    text-align: left;
+    font-weight: normal;
+    letter-spacing: normal;
+    text-transform: none;
+    line-height: 1.4;
+}
+
+.htp-instructions p strong {
+    color: var(--accent-color);
 }
