@@ -23,7 +23,7 @@ export const CONFIG = {
     accel: 28.0, // Tuned for ~220 kph top speed
     turnSpeed: 5.0,  // Balanced steering response
     friction: 0.96, // Lower drag for higher top speed
-    crashSpeed: 7.0, // Higher impact tolerance
+    crashSpeed: 2.0, // Higher impact tolerance
     
     // Collision radius (approximate car half-width in grid units)
     carRadius: 0.2 
