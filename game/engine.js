@@ -168,7 +168,7 @@ export class RealTimeRacer {
         const startBtn = document.getElementById('start-btn');
         if (startBtn) {
             startBtn.addEventListener('click', () => {
-                if (typeof umami !== 'undefined') umami.track('start_engines');
+                if (typeof umami !== 'undefined') umami.track('start_race', { from: 'entry' });
                 this.startSequence();
             });
         }
@@ -179,9 +179,8 @@ export class RealTimeRacer {
         if (modalResetBtn) {
             modalResetBtn.addEventListener('click', () => {
                 if (typeof umami !== 'undefined') {
-                    umami.track('box_box', {
-                        crash: this.status === 'crashed',
-                        win: this.status === 'won'
+                    umami.track('start_race', {
+                        from: this.status === 'crashed' ? 'crash' : 'win'
                     });
                 }
                 this.reset(true);
@@ -603,6 +602,11 @@ export class RealTimeRacer {
         if (!e.key) return;
         if (e.key.toLowerCase() === 'r' && isDown && this.modal.classList.contains('active')) {
             e.preventDefault();
+            if (typeof umami !== 'undefined') {
+                umami.track('start_race', {
+                    from: this.status === 'crashed' ? 'crash' : 'win'
+                });
+            }
             this.reset(true);
             return;
         }
