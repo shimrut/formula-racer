@@ -162,7 +162,6 @@ export class RealTimeRacer {
         if (this.closeHtpBtn) {
             this.closeHtpBtn.addEventListener('click', () => {
                 if (this.htpModal) this.htpModal.classList.remove('active');
-                localStorage.setItem('vectorgp_ftu_seen', 'true');
             });
         }
 
@@ -201,10 +200,6 @@ export class RealTimeRacer {
         this.resize();
         this.loadTrack('circuit');
         this.exposeTestHooks();
-
-        if (!localStorage.getItem('vectorgp_ftu_seen')) {
-            if (this.htpModal) this.htpModal.classList.add('active');
-        }
 
         this.lastTime = this.getNow();
         this.loop(this.lastTime);
