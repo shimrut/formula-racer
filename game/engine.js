@@ -1,7 +1,7 @@
-import { getIntersection } from './math.js';
-import { CONFIG } from './config.js';
-import { TRACKS } from './tracks.js';
-import { saveLapTime, getTrackData } from './storage.js';
+import { getIntersection } from './math.js?v=0.2';
+import { CONFIG } from './config.js?v=0.2';
+import { TRACKS } from './tracks.js?v=0.2';
+import { saveLapTime, getTrackData } from './storage.js?v=0.2';
 
 // --- Game Engine ---
 export class RealTimeRacer {
@@ -11,69 +11,69 @@ export class RealTimeRacer {
         this.container = document.getElementById('game-container');
         this.trackSelect = document.getElementById('track-select');
         this.headerControls = document.getElementById('header-controls');
-        
+
         // Settings Controls (trace route is always enabled)
-        
+
         // Generate Internal Car Sprite
         this.carSprite = this.createCarSprite();
-        
+
         // Physics State
         this.currentTrack = TRACKS.circuit;
         this.currentTrackKey = 'circuit';
         this.pos = { ...this.currentTrack.startPos };
         this.velocity = { x: 0, y: 0 };
         this.angle = this.currentTrack.startAngle;
-        
+
         // Active Geometry (Smoothed)
         this.activeGeometry = { outer: [], inner: [] };
-        
+
         // Cached Path2D objects for track rendering (performance optimization)
         this.trackPaths = {
             surface: null,
             outerCurb: null,
             innerCurb: null
         };
-        
+
         // Cache variables for DOM to avoid unnecessary reflows
         this._lastTimeText = "";
         this._lastSpeedText = "";
 
         // Game State
-        this.status = 'ready'; 
+        this.status = 'ready';
         this.startTime = 0;
         this.currentTime = 0;
-        this.lapMaxDist = 0; // max distance from start line this lap
+        this.nextCheckpointIndex = 0; // next checkpoint to pass this lap
         this.bestLapTime = null; // Best lap time for current track
         this.activeTimers = []; // Keep track of active timeouts/intervals
-        
+
         // Visuals
         this.skidMarks = [];
-        this.routeTrace = []; 
+        this.routeTrace = [];
         this.particles = [];
         this.trailTimer = 0;
 
         // Input
         this.keys = { left: false, right: false }; // Only steering
-        
+
         // Viewport
         this.camera = { x: 0, y: 0 };
         this.zoom = 1;
-        
+
         // Performance optimization: Cache values
         this.cachedSpeed = 0;
         this.frameSkip = 0;
         this.frameTimeHistory = [];
-        
+
         // Fixed timestep for smooth physics (60Hz)
         this.FIXED_DT = 1 / 60;
         this.accumulator = 0;
         this.prevPos = { x: 0, y: 0 };
         this.prevAngle = 0;
         this.timeOffsetMs = 0;
-        
+
         // Detect device performance early (before track loading)
         this.qualityLevel = this.detectDevicePerformance();
-        
+
         // DOM
         this.uiTime = document.getElementById('time-val');
         this.uiSpeed = document.getElementById('speed-val');
@@ -99,15 +99,44 @@ export class RealTimeRacer {
         this.shareFile = null;
         this.shareFilename = '';
         this.shareBlobPromise = null;
+        this.htpModal = document.getElementById('how-to-play-modal');
+        this.closeHtpBtn = document.getElementById('close-htp-btn');
+        this.headerHtpBtn = document.getElementById('header-htp-btn');
 
         // Listeners
         window.addEventListener('resize', () => this.resize());
         window.addEventListener('keydown', (e) => this.handleKey(e, true));
         window.addEventListener('keyup', (e) => this.handleKey(e, false));
-        
+
         // Track Selectors
         this.trackSelect.addEventListener('change', (e) => this.loadTrack(e.target.value));
-        
+
+        // Mobile workaround: native pickers ignore option[hidden]. Remove hidden options
+        // before picker opens, restore after selection.
+        const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+        if (isTouchDevice) {
+            let hiddenOptsRestore = null;
+            const removeHidden = () => {
+                const opts = Array.from(this.trackSelect.querySelectorAll('option[hidden]'));
+                if (opts.length) {
+                    hiddenOptsRestore = opts.map(o => ({ el: o, next: o.nextSibling }));
+                    hiddenOptsRestore.forEach(({ el }) => el.remove());
+                }
+            };
+            const restoreHidden = () => {
+                if (hiddenOptsRestore) {
+                    hiddenOptsRestore.reverse().forEach(({ el, next }) =>
+                        this.trackSelect.insertBefore(el, next));
+                    hiddenOptsRestore = null;
+                }
+            };
+            this.trackSelect.addEventListener('focus', removeHidden);
+            this.trackSelect.addEventListener('mousedown', removeHidden, { passive: true });
+            this.trackSelect.addEventListener('touchstart', removeHidden, { passive: true });
+            this.trackSelect.addEventListener('change', restoreHidden);
+            this.trackSelect.addEventListener('blur', restoreHidden);
+        }
+
         if (this.viewRunsBtn) {
             this.viewRunsBtn.addEventListener('click', () => {
                 if (this.modalMainView) this.modalMainView.classList.remove('active-view');
@@ -120,10 +149,22 @@ export class RealTimeRacer {
                 if (this.modalMainView) this.modalMainView.classList.add('active-view');
             });
         }
-        
+
 
 
         // Button Listeners
+        if (this.headerHtpBtn) {
+            this.headerHtpBtn.addEventListener('click', () => {
+                if (this.htpModal) this.htpModal.classList.add('active');
+            });
+        }
+
+        if (this.closeHtpBtn) {
+            this.closeHtpBtn.addEventListener('click', () => {
+                if (this.htpModal) this.htpModal.classList.remove('active');
+            });
+        }
+
         const startBtn = document.getElementById('start-btn');
         if (startBtn) {
             startBtn.addEventListener('click', () => {
@@ -131,15 +172,17 @@ export class RealTimeRacer {
                 this.startSequence();
             });
         }
-        
 
-        
+
+
         const modalResetBtn = document.getElementById('modal-reset-btn');
         if (modalResetBtn) {
             modalResetBtn.addEventListener('click', () => {
                 if (typeof umami !== 'undefined') {
-                    if (this.status === 'crashed') umami.track('box_box_crash');
-                    else if (this.status === 'won') umami.track('box_box_win');
+                    umami.track('box_box', {
+                        crash: this.status === 'crashed',
+                        win: this.status === 'won'
+                    });
                 }
                 this.reset(true);
             });
@@ -157,7 +200,7 @@ export class RealTimeRacer {
         this.resize();
         this.loadTrack('circuit');
         this.exposeTestHooks();
-        
+
         this.lastTime = this.getNow();
         this.loop(this.lastTime);
     }
@@ -216,18 +259,18 @@ export class RealTimeRacer {
         testCanvas.width = 100;
         testCanvas.height = 100;
         const testCtx = testCanvas.getContext('2d');
-        
+
         const start = performance.now();
-        for(let i = 0; i < 100; i++) {
+        for (let i = 0; i < 100; i++) {
             testCtx.fillRect(0, 0, 100, 100);
         }
         const elapsed = performance.now() - start;
-        
+
         // If simple operations take > 1ms, likely a low-end device
         // Also check for mobile devices
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const isLowEnd = elapsed > 1 || isMobile;
-        
+
         return isLowEnd ? 1 : 0; // 1 = low quality, 0 = high quality
     }
 
@@ -240,36 +283,36 @@ export class RealTimeRacer {
     }
 
     startSequence() {
-        if(this.status !== 'ready') return;
-        
+        if (this.status !== 'ready') return;
+
         this.status = 'starting';
         this.runHistory = [];
         this.runHistoryTimer = 0;
         this.recordRunPoint(this.pos);
         this.startOverlay.style.display = 'none';
         this.startLights.classList.add('visible');
-        
+
         const l1 = document.getElementById('light-1');
         const l2 = document.getElementById('light-2');
         const l3 = document.getElementById('light-3');
-        
+
         // Sequence: 1s intervals
         this.activeTimers.push(setTimeout(() => l1.classList.add('on'), 500));
         this.activeTimers.push(setTimeout(() => l2.classList.add('on'), 1500));
-        
+
         this.activeTimers.push(setTimeout(() => {
             // Turn all green
             l1.classList.remove('on'); l1.classList.add('green');
             l2.classList.remove('on'); l2.classList.add('green');
             l3.classList.remove('on'); l3.classList.add('green');
-            
+
             // Show GO
             this.goMessage.classList.add('visible');
-            
+
             // START
             this.status = 'playing';
             this.startTime = this.getNow();
-            
+
             // Cleanup visuals after start
             this.activeTimers.push(setTimeout(() => {
                 this.startLights.classList.remove('visible');
@@ -285,14 +328,14 @@ export class RealTimeRacer {
         const setupBtn = (id, key) => {
             const btn = document.getElementById(id);
             if (!btn) return;
-            
+
             const down = (e) => {
-                e.preventDefault(); 
+                e.preventDefault();
                 this.handleKey({ key: key }, true);
                 btn.classList.add('active');
             };
             const up = (e) => {
-                e.preventDefault(); 
+                e.preventDefault();
                 this.handleKey({ key: key }, false);
                 btn.classList.remove('active');
             };
@@ -315,7 +358,7 @@ export class RealTimeRacer {
         c.height = 32;
         const x = c.getContext('2d');
         x.translate(32, 16);
-        
+
         // Tires
         x.fillStyle = '#171717';
         x.fillRect(6, -12, 10, 6); x.fillRect(6, 6, 10, 6);
@@ -328,8 +371,8 @@ export class RealTimeRacer {
         x.fillStyle = '#e2e8f0';
         x.beginPath(); x.moveTo(18, -10); x.lineTo(18, 10); x.lineTo(14, 8); x.lineTo(14, -8); x.fill();
         // Body
-        x.fillStyle = '#dc2626'; 
-        x.beginPath(); x.moveTo(20, 0); x.lineTo(6, -3); x.lineTo(-6, -6); 
+        x.fillStyle = '#dc2626';
+        x.beginPath(); x.moveTo(20, 0); x.lineTo(6, -3); x.lineTo(-6, -6);
         x.lineTo(-12, -6); x.lineTo(-14, -2); x.lineTo(-14, 2); x.lineTo(-12, 6);
         x.lineTo(-6, 6); x.lineTo(6, 3); x.closePath(); x.fill();
         // Intakes
@@ -340,7 +383,7 @@ export class RealTimeRacer {
         x.fillStyle = '#111'; x.fillRect(-18, -10, 4, 20);
         x.fillStyle = '#dc2626'; x.fillRect(-18, -10, 5, 2); x.fillRect(-18, 8, 5, 2);
         // Helmet
-        x.fillStyle = '#facc15'; x.beginPath(); x.arc(-4, 0, 3, 0, Math.PI*2); x.fill();
+        x.fillStyle = '#facc15'; x.beginPath(); x.arc(-4, 0, 3, 0, Math.PI * 2); x.fill();
         // Stripe
         x.fillStyle = '#fff'; x.fillRect(-10, -1, 12, 2);
         return c;
@@ -350,7 +393,7 @@ export class RealTimeRacer {
         this.canvas.width = this.container.clientWidth;
         this.canvas.height = this.container.clientHeight;
     }
-    
+
     // Helper to round corners - optimized with adaptive step count
     smoothPoly(points, radius) {
         const uniquePoints = points.filter((p, i) => {
@@ -362,10 +405,10 @@ export class RealTimeRacer {
 
         const newPoints = [];
         const len = uniquePoints.length;
-        
+
         // Reduce steps for lower-end devices (3 steps instead of 5)
         const steps = (this.qualityLevel > 0 || this.frameSkip > 0) ? 3 : 5;
-        
+
         for (let i = 0; i < len; i++) {
             const prev = uniquePoints[(i - 1 + len) % len];
             const curr = uniquePoints[i];
@@ -374,92 +417,92 @@ export class RealTimeRacer {
             // Edge vectors
             const v1 = { x: curr.x - prev.x, y: curr.y - prev.y };
             const v2 = { x: next.x - curr.x, y: next.y - curr.y };
-            
-            const len1 = Math.sqrt(v1.x*v1.x + v1.y*v1.y);
-            const len2 = Math.sqrt(v2.x*v2.x + v2.y*v2.y);
-            
+
+            const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+            const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+
             if (len1 < 0.001 || len2 < 0.001) {
                 newPoints.push(curr);
                 continue;
             }
 
-            const r = Math.min(radius, len1/2.5, len2/2.5);
-            const n1 = { x: v1.x/len1, y: v1.y/len1 };
-            const n2 = { x: v2.x/len2, y: v2.y/len2 };
+            const r = Math.min(radius, len1 / 2.5, len2 / 2.5);
+            const n1 = { x: v1.x / len1, y: v1.y / len1 };
+            const n2 = { x: v2.x / len2, y: v2.y / len2 };
             const start = { x: curr.x - n1.x * r, y: curr.y - n1.y * r };
-            const end   = { x: curr.x + n2.x * r, y: curr.y + n2.y * r };
-            
-            for(let t=0; t<=steps; t++) {
-                const s = t/steps;
-                const a = (1-s)*(1-s);
-                const b = 2*(1-s)*s;
-                const c = s*s;
+            const end = { x: curr.x + n2.x * r, y: curr.y + n2.y * r };
+
+            for (let t = 0; t <= steps; t++) {
+                const s = t / steps;
+                const a = (1 - s) * (1 - s);
+                const b = 2 * (1 - s) * s;
+                const c = s * s;
                 newPoints.push({
-                    x: a*start.x + b*curr.x + c*end.x,
-                    y: a*start.y + b*curr.y + c*end.y
+                    x: a * start.x + b * curr.x + c * end.x,
+                    y: a * start.y + b * curr.y + c * end.y
                 });
             }
         }
         return newPoints;
     }
-    
+
     // Build cached Path2D objects for track rendering
     buildTrackPaths() {
         const gs = CONFIG.gridSize;
         const outer = this.activeGeometry.outer;
         const inner = this.activeGeometry.inner;
-        
+
         // Find bounds for the offscreen canvas
         let maxX = 0; let maxY = 0;
         for (let p of outer) {
             if (p.x * gs > maxX) maxX = p.x * gs;
             if (p.y * gs > maxY) maxY = p.y * gs;
         }
-        
+
         // Create or resize canvas
         if (!this.trackCanvas) {
             this.trackCanvas = document.createElement('canvas');
             this.trackCtx = this.trackCanvas.getContext('2d', { alpha: false });
         }
-        
+
         this.trackCanvas.width = maxX + gs * 5; // padding
         this.trackCanvas.height = maxY + gs * 5;
-        
+
         const ctx = this.trackCtx;
-        
+
         // Off-track background
         ctx.fillStyle = CONFIG.offTrackColor;
         ctx.fillRect(0, 0, this.trackCanvas.width, this.trackCanvas.height);
-        
+
         // Track surface path (for fill)
         const surfacePath = new Path2D();
         surfacePath.moveTo(outer[0].x * gs, outer[0].y * gs);
-        for(let i=1; i<outer.length; i++) {
+        for (let i = 1; i < outer.length; i++) {
             surfacePath.lineTo(outer[i].x * gs, outer[i].y * gs);
         }
         surfacePath.closePath();
         surfacePath.moveTo(inner[0].x * gs, inner[0].y * gs);
-        for(let i=1; i<inner.length; i++) {
+        for (let i = 1; i < inner.length; i++) {
             surfacePath.lineTo(inner[i].x * gs, inner[i].y * gs);
         }
         surfacePath.closePath();
-        
+
         // Outer curb path
         const outerCurbPath = new Path2D();
         outerCurbPath.moveTo(outer[0].x * gs, outer[0].y * gs);
-        for(let i=1; i<outer.length; i++) {
+        for (let i = 1; i < outer.length; i++) {
             outerCurbPath.lineTo(outer[i].x * gs, outer[i].y * gs);
         }
         outerCurbPath.closePath();
-        
+
         // Inner curb path
         const innerCurbPath = new Path2D();
         innerCurbPath.moveTo(inner[0].x * gs, inner[0].y * gs);
-        for(let i=1; i<inner.length; i++) {
+        for (let i = 1; i < inner.length; i++) {
             innerCurbPath.lineTo(inner[i].x * gs, inner[i].y * gs);
         }
         innerCurbPath.closePath();
-        
+
         this.trackPaths.surface = surfacePath;
         this.trackPaths.outerCurb = outerCurbPath;
         this.trackPaths.innerCurb = innerCurbPath;
@@ -484,25 +527,25 @@ export class RealTimeRacer {
             ctx.lineWidth = 2;
             ctx.stroke(path);
         };
-        
+
         drawCurb(outerCurbPath);
         drawCurb(innerCurbPath);
 
         const drawTires = (poly) => {
-            const step = 20; 
-            for(let i=0; i<poly.length; i+=step) {
+            const step = 20;
+            for (let i = 0; i < poly.length; i += step) {
                 const p = poly[i];
                 const px = p.x * gs;
                 const py = p.y * gs;
 
-                const offsets = [{x:0, y:0}, {x:6, y:4}, {x:-6, y:4}];
-                for(let o of offsets) {
+                const offsets = [{ x: 0, y: 0 }, { x: 6, y: 4 }, { x: -6, y: 4 }];
+                for (let o of offsets) {
                     ctx.fillStyle = '#171717';
-                    ctx.beginPath(); ctx.arc(px + o.x, py + o.y, 5, 0, Math.PI*2); ctx.fill();
-                    
-                    ctx.strokeStyle = (i % (step*2) === 0) ? CONFIG.curbRed : CONFIG.curbWhite;
+                    ctx.beginPath(); ctx.arc(px + o.x, py + o.y, 5, 0, Math.PI * 2); ctx.fill();
+
+                    ctx.strokeStyle = (i % (step * 2) === 0) ? CONFIG.curbRed : CONFIG.curbWhite;
                     ctx.lineWidth = 2;
-                    ctx.beginPath(); ctx.arc(px + o.x, py + o.y, 2.5, 0, Math.PI*2); ctx.stroke();
+                    ctx.beginPath(); ctx.arc(px + o.x, py + o.y, 2.5, 0, Math.PI * 2); ctx.stroke();
                 }
             }
         };
@@ -523,17 +566,17 @@ export class RealTimeRacer {
         if (TRACKS[trackKey]) {
             this.currentTrack = TRACKS[trackKey];
             this.currentTrackKey = trackKey;
-            
+
             // Sync selector
             this.trackSelect.value = trackKey;
 
             const cornerRadius = this.currentTrack.cornerRadius ?? 3;
             this.activeGeometry.outer = this.smoothPoly(this.currentTrack.outer, cornerRadius);
             this.activeGeometry.inner = this.smoothPoly(this.currentTrack.inner, cornerRadius);
-            
+
             // Build cached paths for performance
             this.buildTrackPaths();
-            
+
             // Load best lap time for this track
             try {
                 const trackData = await getTrackData(trackKey);
@@ -550,9 +593,9 @@ export class RealTimeRacer {
                 this.bestLapTime = null;
                 this.bestTimeDisplay.style.display = 'none';
             }
-            
+
             this.reset();
-            document.activeElement.blur(); 
+            document.activeElement.blur();
         }
     }
 
@@ -563,10 +606,10 @@ export class RealTimeRacer {
             this.reset(true);
             return;
         }
-        if(["ArrowLeft","ArrowRight","a","d"].indexOf(e.key.toLowerCase()) > -1 || ["ArrowLeft","ArrowRight"].indexOf(e.code) > -1) {
+        if (["ArrowLeft", "ArrowRight", "a", "d"].indexOf(e.key.toLowerCase()) > -1 || ["ArrowLeft", "ArrowRight"].indexOf(e.code) > -1) {
             if (e.preventDefault) e.preventDefault();
         }
-        switch(e.key.toLowerCase()) {
+        switch (e.key.toLowerCase()) {
             case 'a': case 'arrowleft': this.keys.left = isDown; break;
             case 'd': case 'arrowright': this.keys.right = isDown; break;
         }
@@ -587,14 +630,14 @@ export class RealTimeRacer {
 
             this.velocity.x += ax * dt;
             this.velocity.y += ay * dt;
-            
+
             // Frame-rate independent friction (tuned for 60fps baseline)
             const frictionFactor = Math.pow(CONFIG.friction, dt * 60);
             this.velocity.x *= frictionFactor;
             this.velocity.y *= frictionFactor;
 
             // Cache speed calculation (used multiple times)
-            this.cachedSpeed = Math.sqrt(this.velocity.x**2 + this.velocity.y**2);
+            this.cachedSpeed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2);
 
             const nextPos = {
                 x: this.pos.x + this.velocity.x * dt,
@@ -603,14 +646,14 @@ export class RealTimeRacer {
 
             // Check Collision
             const hitWall = this.checkWallCollision(this.pos, nextPos);
-            
+
             if (hitWall) {
                 if (this.cachedSpeed > CONFIG.crashSpeed) {
                     this.status = 'crashed';
-                    this.showModal('CRASHED', `Impact: ${Math.round(this.cachedSpeed*20)} KPH`);
+                    this.showModal('CRASHED', `Impact: ${Math.round(this.cachedSpeed * 20)} KPH`);
                     // Limit particle count on low-end devices
                     const particleCount = this.frameSkip > 0 ? 10 : 20;
-                    for(let k=0; k<particleCount; k++) this.spawnParticles('spark');
+                    for (let k = 0; k < particleCount; k++) this.spawnParticles('spark');
                 } else {
                     // Wall Scrape
                     this.velocity.x *= -0.5;
@@ -618,18 +661,22 @@ export class RealTimeRacer {
                     this.pos.x -= this.velocity.x * dt * 2;
                     this.pos.y -= this.velocity.y * dt * 2;
                     const particleCount = this.frameSkip > 0 ? 3 : 5;
-                    for(let k=0; k<particleCount; k++) this.spawnParticles('spark');
+                    for (let k = 0; k < particleCount; k++) this.spawnParticles('spark');
                 }
             } else {
-                const line = this.currentTrack.startLine;
-                const lineMid = { x: (line.p1.x + line.p2.x) / 2, y: (line.p1.y + line.p2.y) / 2 };
-                const dist = Math.hypot(nextPos.x - lineMid.x, nextPos.y - lineMid.y);
-                if (dist > this.lapMaxDist) this.lapMaxDist = dist;
+                const checkpoints = this.currentTrack.checkpoints || [];
+                if (this.nextCheckpointIndex < checkpoints.length) {
+                    const cp = checkpoints[this.nextCheckpointIndex];
+                    if (getIntersection(this.pos, nextPos, cp.p1, cp.p2)) {
+                        this.nextCheckpointIndex++;
+                    }
+                }
                 if (this.checkFinishLine(this.pos, nextPos)) {
-                    if (this.lapMaxDist > 18 && this.currentTime >= 5.0) {
+                    const allPassed = checkpoints.length === 0 || this.nextCheckpointIndex >= checkpoints.length;
+                    if (allPassed && this.currentTime >= 2.0) {
                         this.handleWin();
                     }
-                    this.lapMaxDist = 0;
+                    this.nextCheckpointIndex = 0;
                 }
                 this.pos = nextPos;
             }
@@ -642,14 +689,14 @@ export class RealTimeRacer {
             const vMag = this.cachedSpeed || 1;
             const vNormX = this.velocity.x / vMag;
             const vNormY = this.velocity.y / vMag;
-            
+
             const slip = 1 - (vx * vNormX + vy * vNormY);
-            
+
             // Slightly easier skid mark threshold
             if (slip > 0.05 && this.cachedSpeed > 2) {
                 this.skidMarks.push({
-                    x: this.pos.x, 
-                    y: this.pos.y, 
+                    x: this.pos.x,
+                    y: this.pos.y,
                     angle: this.angle,
                     alpha: 1.0
                 });
@@ -677,7 +724,7 @@ export class RealTimeRacer {
         if (this.particles.length > maxParticles) {
             this.particles.splice(0, this.particles.length - maxParticles);
         }
-        
+
         for (let i = this.particles.length - 1; i >= 0; i--) {
             const p = this.particles[i];
             p.x += p.vx * dt;
@@ -689,13 +736,13 @@ export class RealTimeRacer {
 
     spawnParticles(type) {
         const count = type === 'spark' ? 5 : 1;
-        for(let i=0; i<count; i++) {
+        for (let i = 0; i < count; i++) {
             const spread = 0.5;
             const px = this.pos.x + (Math.random() - 0.5) * spread;
             const py = this.pos.y + (Math.random() - 0.5) * spread;
-            
+
             let pvX, pvY, color, life;
-            
+
             if (type === 'spark') {
                 const angle = Math.random() * Math.PI * 2;
                 const speed = 2 + Math.random() * 5;
@@ -705,8 +752,8 @@ export class RealTimeRacer {
                 life = 0.2 + Math.random() * 0.2;
             } else {
                 // Smoke
-                pvX = (Math.random()-0.5) * 2;
-                pvY = (Math.random()-0.5) * 2;
+                pvX = (Math.random() - 0.5) * 2;
+                pvY = (Math.random() - 0.5) * 2;
                 color = CONFIG.smokeColor;
                 life = 0.5 + Math.random() * 0.5;
             }
@@ -730,23 +777,23 @@ export class RealTimeRacer {
             const maxX = Math.max(p1.x, p2.x) + CONFIG.carRadius;
             const minY = Math.min(p1.y, p2.y) - CONFIG.carRadius;
             const maxY = Math.max(p1.y, p2.y) + CONFIG.carRadius;
-            
+
             for (let i = 0; i < poly.length; i++) {
                 const w1 = poly[i];
                 const w2 = poly[(i + 1) % poly.length];
-                
+
                 // Quick bounding box check
                 const wallMinX = Math.min(w1.x, w2.x);
                 const wallMaxX = Math.max(w1.x, w2.x);
                 const wallMinY = Math.min(w1.y, w2.y);
                 const wallMaxY = Math.max(w1.y, w2.y);
-                
+
                 if (maxX < wallMinX || minX > wallMaxX || maxY < wallMinY || minY > wallMaxY) {
                     continue; // Skip this wall segment
                 }
-                
+
                 if (getIntersection(p1, p2, w1, w2)) return true;
-                
+
                 const A = p2.x - w1.x;
                 const B = p2.y - w1.y;
                 const C = w2.x - w1.x;
@@ -791,7 +838,7 @@ export class RealTimeRacer {
         const finalTime = this.currentTime;
         const trackName = this.currentTrackKey;
         this.recordRunPoint(this.pos);
-        
+
         // Save lap time
         let trackData;
         const previousBest = this.bestLapTime;
@@ -816,15 +863,15 @@ export class RealTimeRacer {
                 trackData.bestTime = finalTime;
             }
         }
-        
+
         // Format time display
         const formattedTime = finalTime.toFixed(2);
         const bestTime = trackData.bestTime ? trackData.bestTime.toFixed(2) : 'N/A';
-        
+
         // Check if this is a new best
         const isNewBest = trackData.bestTime === finalTime && (previousBest === null || previousBest === undefined || finalTime < previousBest);
         const title = isNewBest ? 'Personal Best' : 'FINISH LINE';
-        
+
         // Build lap times list
         let lapTimesHtml = '';
         if (trackData.lapTimes.length > 0) {
@@ -841,7 +888,7 @@ export class RealTimeRacer {
             });
             lapTimesHtml += '</div>';
         }
-        
+
         this.lastSharePayload = {
             title,
             trackName: this.currentTrack.name,
@@ -869,7 +916,7 @@ export class RealTimeRacer {
         this.prevAngle = this.currentTrack.startAngle;
         this.keys = { left: false, right: false }; // Reset keys
         this.status = 'ready'; // Reset to ready state
-        this.lapMaxDist = 0;
+        this.nextCheckpointIndex = 0;
         this.accumulator = 0;
         this.currentTime = 0;
         this.skidMarks = [];
@@ -883,7 +930,7 @@ export class RealTimeRacer {
         this.shareBlobPromise = null;
         this.modal.classList.remove('active');
         this.setShareState(false);
-        
+
         // Reset Visuals
         this.startLights.classList.remove('visible');
         this.goMessage.classList.remove('visible');
@@ -891,12 +938,12 @@ export class RealTimeRacer {
 
         this.uiTime.innerHTML = "0.00";
         this.uiSpeed.innerText = "0";
-        
+
         const cw = this.canvas.width;
         const ch = this.canvas.height;
         const gs = CONFIG.gridSize;
-        this.camera.x = (this.pos.x * gs) - cw/2;
-        this.camera.y = (this.pos.y * gs) - ch/2;
+        this.camera.x = (this.pos.x * gs) - cw / 2;
+        this.camera.y = (this.pos.y * gs) - ch / 2;
 
         if (autoStart) {
             this.startOverlay.style.display = 'none';
@@ -909,11 +956,11 @@ export class RealTimeRacer {
     showModal(title, msg, lapData = null) {
         this.modalTitle.innerText = title;
         this.modalMsg.innerText = msg;
-        
+
         if (lapData) {
             if (this.modalBestTime) {
-                 this.modalBestTime.innerHTML = `<strong>Best Time:</strong> ${lapData.bestTime}s`;
-                 this.modalBestTime.style.display = 'flex';
+                this.modalBestTime.innerHTML = `<strong>Best Time:</strong> ${lapData.bestTime}s`;
+                this.modalBestTime.style.display = 'flex';
             }
             if (lapData.lapTimes && this.modalLapTimes) {
                 this.modalLapTimes.innerHTML = lapData.lapTimes;
@@ -932,7 +979,7 @@ export class RealTimeRacer {
         }
 
         this.setShareState(Boolean(this.lastSharePayload));
-        
+
         this.modal.classList.add('active');
     }
 
@@ -961,7 +1008,7 @@ export class RealTimeRacer {
     }
 
     getShareCaption(payload) {
-        return `I ran ${payload.trackName} in ${payload.lapTime.toFixed(2)}s. Can you beat it? 🏁 \n 🏎️ vectorgp.run `;
+        return `I ran ${payload.trackName} in 🏁 ${payload.lapTime.toFixed(2)}s. Can you beat it? \n 🏎️ vectorgp.run `;
     }
 
     getReplayLayout(payload, width, height, hudHeight) {
@@ -1234,7 +1281,8 @@ export class RealTimeRacer {
             // 1. Native share with image file (mobile / supported browsers)
             const hasNativeShare = !!(navigator.share && file && navigator.canShare && navigator.canShare({ files: [file] }));
             if (hasNativeShare) {
-                await navigator.share({ text: caption, files: [file] });
+                // Omit 'text' when sharing files to prevent Safari/OS from duplicating the file in the share payload
+                await navigator.share({ files: [file] });
                 this.setShareState(true);
                 return;
             }
@@ -1293,19 +1341,19 @@ export class RealTimeRacer {
         const speed = this.cachedSpeed;
         const narrowViewport = window.innerWidth <= 768;
         this.zoom = narrowViewport ? 0.75 : 1.0;
-        
+
         // Target offset uses physical velocity, which takes time to change, 
         // unlike the immediate response of steering angle
         let targetLookAheadX = 0;
         let targetLookAheadY = 0;
-        
+
         if (speed > 1) {
             const multiplier = narrowViewport ? 12 : 5;
             const maxOffset = narrowViewport ? Math.min(cw, ch) / 2.5 : Math.min(cw, ch) / 5;
-            
+
             targetLookAheadX = this.velocity.x * multiplier;
             targetLookAheadY = this.velocity.y * multiplier;
-            
+
             const mag = Math.hypot(targetLookAheadX, targetLookAheadY);
             if (mag > maxOffset) {
                 targetLookAheadX = (targetLookAheadX / mag) * maxOffset;
@@ -1316,11 +1364,11 @@ export class RealTimeRacer {
         // Initialize smoothing variables if they don't exist
         this._lookAheadX = this._lookAheadX || 0;
         this._lookAheadY = this._lookAheadY || 0;
-        
+
         // Smoothly approach the target offset over time 
         // 1 - exp(-dt * 4) achieves ~98% of target within 1 second.
         const lerpFactor = 1 - Math.exp(-dt * 4);
-        
+
         this._lookAheadX += (targetLookAheadX - this._lookAheadX) * lerpFactor;
         this._lookAheadY += (targetLookAheadY - this._lookAheadY) * lerpFactor;
 
@@ -1342,8 +1390,8 @@ export class RealTimeRacer {
             ctx.fillStyle = CONFIG.skidColor;
             const skidCount = this.frameSkip > 0 ? Math.min(this.skidMarks.length, 50) : this.skidMarks.length;
             const startIdx = this.frameSkip > 0 ? Math.max(0, this.skidMarks.length - 50) : 0;
-            
-            for(let i = startIdx; i < skidCount; i++) {
+
+            for (let i = startIdx; i < skidCount; i++) {
                 const m = this.skidMarks[i];
                 ctx.save();
                 ctx.translate(m.x * gs, m.y * gs);
@@ -1376,13 +1424,13 @@ export class RealTimeRacer {
                 if (!particlesByColor[p.color]) particlesByColor[p.color] = [];
                 particlesByColor[p.color].push(p);
             }
-            
+
             for (const color in particlesByColor) {
                 ctx.fillStyle = color;
                 for (let p of particlesByColor[color]) {
                     ctx.globalAlpha = p.life / p.maxLife;
                     ctx.beginPath();
-                    ctx.arc(p.x * gs, p.y * gs, p.size, 0, Math.PI*2);
+                    ctx.arc(p.x * gs, p.y * gs, p.size, 0, Math.PI * 2);
                     ctx.fill();
                 }
             }
@@ -1395,9 +1443,9 @@ export class RealTimeRacer {
         ctx.save();
         ctx.translate(px, py);
         ctx.rotate(displayAngle);
-        
-        const scale = 1.0; 
-        ctx.drawImage(this.carSprite, -32*scale, -16*scale, 64*scale, 32*scale);
+
+        const scale = 1.0;
+        ctx.drawImage(this.carSprite, -32 * scale, -16 * scale, 64 * scale, 32 * scale);
 
         ctx.restore();
 
@@ -1409,9 +1457,9 @@ export class RealTimeRacer {
             const vx = -this.velocity.x * 2;
             const vy = -this.velocity.y * 2;
             const lineCount = this.frameSkip > 0 ? 3 : 5;
-            for(let k=0; k<lineCount; k++) {
-                const rx = displayPos.x * gs + (Math.random()-0.5)*200;
-                const ry = displayPos.y * gs + (Math.random()-0.5)*200;
+            for (let k = 0; k < lineCount; k++) {
+                const rx = displayPos.x * gs + (Math.random() - 0.5) * 200;
+                const ry = displayPos.y * gs + (Math.random() - 0.5) * 200;
                 ctx.moveTo(rx, ry);
                 ctx.lineTo(rx + vx, ry + vy);
             }
@@ -1427,18 +1475,18 @@ export class RealTimeRacer {
         const rawDt = Math.min((now - this.lastTime) / 1000, 0.1);
         const frameTime = now - this.lastTime;
         this.lastTime = now;
-        
+
         // Track frame time history for adaptive quality
         this.frameTimeHistory.push(frameTime);
         if (this.frameTimeHistory.length > 10) {
             this.frameTimeHistory.shift();
         }
-        
+
         // Calculate average frame time
         const avgFrameTime = this.frameTimeHistory.reduce((a, b) => a + b, 0) / this.frameTimeHistory.length;
         // If average frame time > 20ms (below 50fps), reduce quality
         this.frameSkip = avgFrameTime > 20 ? 1 : 0;
-        
+
         // Fixed timestep: run physics at 60Hz for consistent movement
         this.accumulator += rawDt;
         const maxSteps = 3; // Cap to avoid spiral of death
@@ -1452,9 +1500,9 @@ export class RealTimeRacer {
         }
         if (this.accumulator > this.FIXED_DT) this.accumulator = this.FIXED_DT; // Clamp
         const alpha = this.accumulator / this.FIXED_DT; // 0..1 for render interpolation
-        
+
         this.render(rawDt, alpha);
-        
+
         if (this.status === 'playing') {
             // Display current time
             let timeText = this.currentTime.toFixed(2);
@@ -1462,7 +1510,7 @@ export class RealTimeRacer {
                 this.uiTime.textContent = timeText;
                 this._lastTimeText = timeText;
             }
-            
+
             // Use cached speed instead of recalculating
             let speedText = Math.round(this.cachedSpeed * 20).toString();
             if (this._lastSpeedText !== speedText) {
@@ -1470,7 +1518,7 @@ export class RealTimeRacer {
                 this._lastSpeedText = speedText;
             }
         }
-        
+
         requestAnimationFrame((t) => this.loop(t));
     }
 }

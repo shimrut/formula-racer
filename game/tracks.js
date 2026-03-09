@@ -16,29 +16,35 @@ export const TRACKS = {
         ],
         startLine: { p1: Point(10, 2), p2: Point(10, 6) },
         startPos: Point(8, 4),
-        startAngle: 0
+        startAngle: 0,
+        checkpoints: [
+            { p1: Point(20, 5), p2: Point(16, 8) },
+            { p1: Point(30, 8), p2: Point(24, 10) },
+            { p1: Point(25, 20), p2: Point(20, 16) },
+            { p1: Point(5, 15), p2: Point(8, 13) }
+        ]
     },
     sunlitTemple: {
         name: "Sunlit Temple",
         outer: [
-            Point(10, 30), // Finish Line
-            Point(40, 30), // Main Straight
-            Point(43, 27), // T1 Entry
-            Point(45, 29), // T1 Exit
-            Point(50, 29), // Curva Grande Entry
-            Point(55, 20), // Curva Grande Apex
-            Point(55, 12), // Curva Grande Exit
-            Point(53, 9),  // Roggia Entry
-            Point(50, 7),  // Roggia Mid
-            Point(47, 9),  // Roggia Exit
-            Point(40, 5),  // Lesmo 1
-            Point(30, 5),  // Lesmo 2
-            Point(20, 5),  // Serraglio
-            Point(15, 3),  // Ascari Entry
-            Point(12, 7),  // Ascari Mid
-            Point(9, 5),   // Ascari Exit
-            Point(5, 15),  // Back Straight
-            Point(5, 25)   // Parabolica Entry
+            Point(10, 30),
+            Point(40, 30), 
+            Point(43, 27), 
+            Point(45, 29), 
+            Point(50, 29), 
+            Point(55, 20), 
+            Point(55, 12), 
+            Point(53, 9),  
+            Point(50, 7),  
+            Point(47, 9),  
+            Point(40, 5),  
+            Point(30, 5),  
+            Point(20, 5),  
+            Point(15, 3),  
+            Point(12, 7),  
+            Point(9, 5),   
+            Point(5, 15),  
+            Point(5, 25)   
         ],
         inner: [
             Point(10, 26), 
@@ -62,17 +68,24 @@ export const TRACKS = {
         ],
         startLine: { p1: Point(15, 25), p2: Point(15, 31) },
         startPos: Point(12, 28),
-        startAngle: 0
+        startAngle: 0,
+        checkpoints: [
+            { p1: Point(50, 29), p2: Point(48, 25) },
+            { p1: Point(55, 12), p2: Point(51, 14) },
+            { p1: Point(40, 5), p2: Point(40, 9) },
+            { p1: Point(15, 3), p2: Point(17, 7) },
+            { p1: Point(5, 20), p2: Point(9, 22) }
+        ]
     },
     royalPlateau: {
         name: "Royal Plateau",
         outer: [
             Point(15, 35),
             Point(35, 35),
-            Point(42, 32), // Copse (Widened & pushed out)
-            Point(50, 28), // Maggotts Entry (Widened)
-            Point(58, 20), // Becketts (Widened)
-            Point(55, 12), // Chapel Exit (Widened)
+            Point(42, 32), 
+            Point(50, 28), 
+            Point(58, 20), 
+            Point(55, 12), 
             Point(50, 10),
             Point(40, 5),
             Point(25, 5),
@@ -86,9 +99,9 @@ export const TRACKS = {
         inner: [
             Point(15, 31),
             Point(33, 31),
-            Point(38, 28), // Copse Inner (Tighter to create space)
-            Point(44, 24), // Maggotts Inner (Significantly tightened)
-            Point(50, 16), // Becketts Inner
+            Point(38, 28), 
+            Point(44, 24), 
+            Point(50, 16), 
             Point(47, 14),
             Point(38, 9),
             Point(25, 9),
@@ -101,41 +114,54 @@ export const TRACKS = {
         ],
         startLine: { p1: Point(20, 31), p2: Point(20, 35) },
         startPos: Point(18, 33),
-        startAngle: 0
+        startAngle: 0,
+        checkpoints: [
+            { p1: Point(50, 28), p2: Point(44, 24) },
+            { p1: Point(58, 20), p2: Point(50, 16) },
+            { p1: Point(40, 5), p2: Point(38, 9) },
+            { p1: Point(10, 10), p2: Point(12, 13) },
+            { p1: Point(5, 20), p2: Point(9, 23) }
+        ]
     },
     mistwoodSerpent: {
         name: "Mistwood Serpent",
         outer: [
-            Point(15, 38), // La Source
-            Point(5, 30),  // Downhill
-            Point(10, 25), // Eau Rouge Bottom
-            Point(15, 20), // Raidillon Top
-            Point(40, 5),  // Kemmel Straight End
-            Point(50, 5),  // Les Combes
-            Point(55, 10), // Malmedy
-            Point(55, 20), // Rivage
-            Point(45, 25), // Pouhon
-            Point(40, 30), // Fagnes
-            Point(35, 35), // Stavelot
-            Point(20, 35)  // Blanchimont / Bus Stop
+            Point(15, 38), 
+            Point(5, 30),  
+            Point(10, 25), 
+            Point(15, 20), 
+            Point(40, 5),  
+            Point(50, 5),  
+            Point(55, 10), 
+            Point(55, 20), 
+            Point(45, 25), 
+            Point(40, 30), 
+            Point(35, 35), 
+            Point(20, 35)  
         ],
         inner: [
-            Point(18, 34), // La Source In
+            Point(18, 34), 
             Point(10, 30),
-            Point(13, 25), // Eau Rouge In
+            Point(13, 25),
             Point(17, 22),
-            Point(40, 9),  // Kemmel In
+            Point(40, 9),  
             Point(48, 9),
             Point(51, 12),
             Point(51, 18),
-            Point(45, 21), // Pouhon In
+            Point(45, 21), 
             Point(40, 26),
             Point(35, 31),
             Point(20, 31)
         ],
         startLine: { p1: Point(19, 32.5), p2: Point(19, 35.6) },
         startPos: Point(21, 34), 
-        startAngle: 2.6 
+        startAngle: 2.6,
+        checkpoints: [
+            { p1: Point(15, 20), p2: Point(17, 22) },
+            { p1: Point(50, 5), p2: Point(48, 9) },
+            { p1: Point(55, 20), p2: Point(51, 18) },
+            { p1: Point(40, 30), p2: Point(40, 26) }
+        ]
     },
     harborParkLoop: {
         name: "Harbor Park Loop",
@@ -211,7 +237,15 @@ export const TRACKS = {
         ],
         startLine: { p1: Point(25, 32), p2: Point(25, 36) },
         startPos: Point(27, 34),
-        startAngle: 3.14159
+        startAngle: 3.14159,
+        checkpoints: [
+            { p1: Point(12, 35), p2: Point(17, 32) },
+            { p1: Point(6, 20), p2: Point(12, 21) },
+            { p1: Point(17, 3), p2: Point(14, 14) },
+            { p1: Point(37, 14), p2: Point(35, 20) },
+            { p1: Point(60, 21), p2: Point(56, 21) },
+            { p1: Point(56, 31), p2: Point(55, 27) }
+        ]
     },
     jadeSpiralCircuit: {
         name: "Jade Spiral Circuit",
@@ -312,6 +346,13 @@ export const TRACKS = {
         ],
         startLine: { p1: Point(13.25, 34), p2: Point(9.75, 34) },
         startPos: Point(11.5, 37),
-        startAngle: -1.5708
+        startAngle: -1.5708,
+        checkpoints: [
+            { p1: Point(20, 3), p2: Point(17.5, 8) },
+            { p1: Point(63, 7), p2: Point(58, 11) },
+            { p1: Point(35, 23), p2: Point(31, 22.5) },
+            { p1: Point(54, 40), p2: Point(54, 46) },
+            { p1: Point(34, 54), p2: Point(33, 49) }
+        ]
     }
 };
