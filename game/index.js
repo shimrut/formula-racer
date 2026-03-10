@@ -1,4 +1,4 @@
-import { RealTimeRacer } from './engine.js?v=0.21';
+import { RealTimeRacer } from './engine.js?v=0.3';
 
 const game = new RealTimeRacer();
 

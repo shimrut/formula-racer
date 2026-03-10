@@ -1,7 +1,7 @@
-import { getIntersection } from './math.js?v=0.2';
-import { CONFIG } from './config.js?v=0.2';
-import { TRACKS } from './tracks.js?v=0.2';
-import { saveLapTime, getTrackData } from './storage.js?v=0.2';
+import { getIntersection } from './math.js?v=0.3';
+import { CONFIG } from './config.js?v=0.3';
+import { TRACKS } from './tracks.js?v=0.3';
+import { saveLapTime, getTrackData } from './storage.js?v=0.3';
 
 // --- Game Engine ---
 export class RealTimeRacer {
@@ -103,10 +103,15 @@ export class RealTimeRacer {
         this.closeHtpBtn = document.getElementById('close-htp-btn');
         this.headerHtpBtn = document.getElementById('header-htp-btn');
 
+        // Session race stats (sent once on session end)
+        this.raceStats = { start: 0, crash: 0, win: 0 };
+        this.raceEventSent = false;
+
         // Listeners
         window.addEventListener('resize', () => this.resize());
         window.addEventListener('keydown', (e) => this.handleKey(e, true));
         window.addEventListener('keyup', (e) => this.handleKey(e, false));
+        window.addEventListener('pagehide', () => this.sendRaceEvent());
 
         // Track Selectors
         this.trackSelect.addEventListener('change', (e) => this.loadTrack(e.target.value));
@@ -168,7 +173,7 @@ export class RealTimeRacer {
         const startBtn = document.getElementById('start-btn');
         if (startBtn) {
             startBtn.addEventListener('click', () => {
-                if (typeof umami !== 'undefined') umami.track('start_race', { from: 'entry' });
+                this.raceStats.start++;
                 this.startSequence();
             });
         }
@@ -178,11 +183,7 @@ export class RealTimeRacer {
         const modalResetBtn = document.getElementById('modal-reset-btn');
         if (modalResetBtn) {
             modalResetBtn.addEventListener('click', () => {
-                if (typeof umami !== 'undefined') {
-                    umami.track('start_race', {
-                        from: this.status === 'crashed' ? 'crash' : 'win'
-                    });
-                }
+                this.raceStats.start++;
                 this.reset(true);
             });
         }
@@ -202,6 +203,18 @@ export class RealTimeRacer {
 
         this.lastTime = this.getNow();
         this.loop(this.lastTime);
+    }
+
+    sendRaceEvent() {
+        if (this.raceEventSent || this.raceStats.start === 0) return;
+        this.raceEventSent = true;
+        if (typeof umami !== 'undefined') {
+            umami.track('race-event', {
+                start: this.raceStats.start,
+                crash: this.raceStats.crash,
+                win: this.raceStats.win
+            });
+        }
     }
 
     getNow() {
@@ -602,11 +615,7 @@ export class RealTimeRacer {
         if (!e.key) return;
         if (e.key.toLowerCase() === 'r' && isDown && this.modal.classList.contains('active')) {
             e.preventDefault();
-            if (typeof umami !== 'undefined') {
-                umami.track('start_race', {
-                    from: this.status === 'crashed' ? 'crash' : 'win'
-                });
-            }
+            this.raceStats.start++;
             this.reset(true);
             return;
         }
@@ -654,6 +663,7 @@ export class RealTimeRacer {
             if (hitWall) {
                 if (this.cachedSpeed > CONFIG.crashSpeed) {
                     this.status = 'crashed';
+                    this.raceStats.crash++;
                     this.showModal('CRASHED', `Impact: ${Math.round(this.cachedSpeed * 20)} KPH`);
                     // Limit particle count on low-end devices
                     const particleCount = this.frameSkip > 0 ? 10 : 20;
@@ -839,6 +849,7 @@ export class RealTimeRacer {
 
     async handleWin() {
         this.status = 'won';
+        this.raceStats.win++;
         const finalTime = this.currentTime;
         const trackName = this.currentTrackKey;
         this.recordRunPoint(this.pos);
