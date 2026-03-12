@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <script>
+        if (location.hostname === 'vectorgp.run' || location.hostname === 'me.alfread.io') {
+            const s = document.createElement('script');
+            s.defer = true;
+            s.src = 'https://cloud.umami.is/script.js';
+            s.dataset.websiteId = 'd61b5069-df2c-4e9b-a7d2-125c7fb7c760';
+            document.head.appendChild(s);
+        }
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>About | Vector Grand Prix</title>
+    <meta name="description"
+        content="About Vector Grand Prix: a free browser-based formula racing game. Physics-based steering, weekly circuits, no sign-up.">
+    <meta name="keywords" content="vector grand prix about, formula racing game, browser racing, free racing game">
+    <meta name="author" content="Vector Grand Prix Team">
+
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Vector Grand Prix">
+    <meta property="og:url" content="https://vectorgp.run/about.html">
+    <meta property="og:title" content="About | Vector Grand Prix">
+    <meta property="og:description"
+        content="Free browser formula racing. Master circuits, set your best lap. New track every Wednesday.">
+    <meta property="og:image" content="https://vectorgp.run/social-preview.png">
+    <meta property="og:locale" content="en_US">
+
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://vectorgp.run/about.html">
+    <meta property="twitter:title" content="About | Vector Grand Prix">
+    <meta property="twitter:description"
+        content="Free browser formula racing. Master circuits, set your best lap. New track every Wednesday.">
+    <meta property="twitter:image" content="https://vectorgp.run/social-preview.png">
+
+    <link rel="canonical" href="https://vectorgp.run/about.html">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="stylesheet" href="styles.css?v=0.345">
+
+    <!-- Structured data (SEO + GEO: machine-readable, quotable summary for search and generative engines) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "About | Vector Grand Prix",
+      "description": "About Vector Grand Prix: free browser-based formula racing. Physics-based steering, weekly circuits, no sign-up. New track every Wednesday at 07:00 UTC. Play on desktop or mobile.",
+      "inLanguage": "en",
+      "url": "https://vectorgp.run/about.html",
+      "isPartOf": { "@type": "WebSite", "name": "Vector Grand Prix", "url": "https://vectorgp.run/" },
+      "about": {
+        "@type": "VideoGame",
+        "name": "Vector Grand Prix",
+        "description": "Free browser formula racing game. Steer with keyboard or touch, drift around circuits, set your best lap without crashing. New track weekly (Wednesday 07:00 UTC).",
+        "genre": "Racing",
+        "gamePlatform": "Web browser",
+        "playMode": "SinglePlayer",
+        "inLanguage": "en",
+        "author": { "@type": "Person", "name": "Alfonso B" },
+        "url": "https://vectorgp.run/"
+      },
+      "mainEntity": {
+        "@type": "VideoGame",
+        "name": "Vector Grand Prix",
+        "genre": "Racing",
+        "gamePlatform": "Web browser",
+        "playMode": "SinglePlayer"
+      },
+      "breadcrumb": {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Play", "item": "https://vectorgp.run/" },
+          { "@type": "ListItem", "position": 2, "name": "About", "item": "https://vectorgp.run/about.html" }
+        ]
+      }
+    }
+    </script>
+</head>
+
+<body class="about-page">
+
+    <header role="banner">
+        <a href="index.html" class="site-logo">Vector <span class="full-name">Grand Prix</span></a>
+        <nav class="header-right" aria-label="Site">
+            <a href="index.html"
+                style="color: #94a3b8; text-decoration: none; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; transition: color 0.2s;">Play</a>
+            <a href="changelog.html"
+                style="color: #94a3b8; text-decoration: none; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; transition: color 0.2s;">Changelog</a>
+        </nav>
+    </header>
+
+    <main class="about-page__main" role="main">
+        <section class="about-hero" aria-label="Introduction">
+            <h1 class="about-hero__title">Vector Grand Prix</h1>
+            <p class="about-hero__subtitle">A minimalist browser-based racing simulator focused on physics, precision,
+                and the pursuit of the perfect lap.</p>
+        </section>
+
+        <section class="about-section">
+            <span class="about-section__label">01 / Mechanics</span>
+            <div class="about-content">
+                <h2>Physics & Control</h2>
+                <p>Vector GP uses a simplified momentum-based physics model. Acceleration is automatic; your focus is on
+                    steering and finding the optimal racing line. The challenge lies in managing your speed through
+                    corners—if you carry too much momentum, the friction won't hold you, and the car will drift wide
+                    into the barriers.</p>
+            </div>
+        </section>
+
+        <section class="about-section">
+            <span class="about-section__label">02 / Competition</span>
+            <div class="about-content">
+                <h2>Weekly Rotation</h2>
+                <p>Vector GP follows a high-stakes circuit calendar. Every <strong>Wednesday at 07:00 UTC</strong>, the
+                    current track is retired and replaced. Each layout is available for one week before leaving rotation
+                    for a full year. Your challenge is to master the geometry and set your personal best before the
+                    cycle continues.</p>
+            </div>
+        </section>
+
+        <section class="about-section">
+            <span class="about-section__label">03 / Engineering</span>
+            <div class="about-content">
+                <h2>The Stack</h2>
+                <p>Built with Vanilla JS and HTML5 Canvas. The physics runs at a fixed 60Hz update rate to keep movement
+                    consistent across different screens. No frameworks, no engines, just raw code and some math to
+                    simulate basic momentum.</p>
+
+                <div class="about-specs">
+                    <div class="spec-item">
+                        <span class="spec-label">Engine</span>
+                        <span class="spec-value">Custom Vanilla JS</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">Logic</span>
+                        <span class="spec-value">60Hz Fixed Step</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">Storage</span>
+                        <span class="spec-value">LocalStorage</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">Rendering</span>
+                        <span class="spec-value">2D Canvas</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="about-section">
+            <span class="about-section__label">04 / Origin</span>
+            <div class="about-content">
+                <h2>Pen & Paper Roots</h2>
+                <p>This project started as a simple curiosity: what happens if you take the logic of the pen-and-paper
+                    game <a href="https://en.wikipedia.org/wiki/Racetrack_(game)" target="_blank"
+                        rel="noopener">Racetrack</a> and turn it into a real-time experience?</p>
+            </div>
+        </section>
+
+        <section class="about-section">
+            <span class="about-section__label">05 / Meta</span>
+            <div class="about-content">
+                <h2>The Project</h2>
+                <p>Made with passion by @shimrut. This is an evolving project focused on the core essence of racing.
+                    Check the <a href="changelog.html">Changelog</a> for recent updates and track additions.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer
+        style="text-align: left; max-width: 42rem; margin: 0 auto; padding: 4rem 1.5rem; color: #475569; font-size: 0.75rem; font-family: var(--mono-font); text-transform: uppercase; letter-spacing: 0.1em;">
+        &copy; 2026 Vector Grand Prix. ALL SYSTEMS NOMINAL.
+    </footer>
+
+</body>
+
+</html>

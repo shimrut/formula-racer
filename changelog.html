@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <script>
+        if (location.hostname === 'vectorgp.run' || location.hostname === 'me.alfread.io') {
+            const s = document.createElement('script');
+            s.defer = true;
+            s.src = 'https://cloud.umami.is/script.js';
+            s.dataset.websiteId = 'd61b5069-df2c-4e9b-a7d2-125c7fb7c760';
+            document.head.appendChild(s);
+        }
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Changelog | Vector Grand Prix</title>
+    <meta name="description" content="What's new in Vector Grand Prix: tracks, gameplay updates, and fixes.">
+    <meta name="keywords" content="vector grand prix changelog, racing game updates, new tracks, formula racing game">
+    <meta name="author" content="Vector Grand Prix Team">
+
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://vectorgp.run/changelog.html">
+    <meta property="og:title" content="Changelog | Vector Grand Prix">
+    <meta property="og:description" content="What's new in Vector Grand Prix: tracks, gameplay updates, and fixes.">
+    <meta property="og:image" content="https://vectorgp.run/social-preview.png">
+
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://vectorgp.run/changelog.html">
+    <meta property="twitter:title" content="Changelog | Vector Grand Prix">
+    <meta property="twitter:description" content="What's new in Vector Grand Prix: tracks, gameplay updates, and fixes.">
+    <meta property="twitter:image" content="https://vectorgp.run/social-preview.png">
+
+    <link rel="canonical" href="https://vectorgp.run/changelog.html">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="stylesheet" href="styles.css?v=0.345">
+
+    <!-- Structured data (SEO + GEO: machine-readable, quotable summary for search and generative engines) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "Changelog | Vector Grand Prix",
+      "description": "Official changelog for Vector Grand Prix, a browser-based formula racing game. Lists latest updates: new tracks (e.g. Jade Spiral Circuit), gameplay and lap-time fixes, smoother motion, countdown and skid-mark fixes, and mobile input improvements.",
+      "inLanguage": "en",
+      "url": "https://vectorgp.run/changelog.html",
+      "isPartOf": { "@type": "WebSite", "name": "Vector Grand Prix", "url": "https://vectorgp.run/" },
+      "about": {
+        "@type": "VideoGame",
+        "name": "Vector Grand Prix",
+        "description": "Browser-based formula racing game. Master circuits and set the fastest lap time."
+      }
+    }
+    </script>
+</head>
+
+<body class="about-page">
+
+    <header role="banner">
+        <a href="index.html" class="site-logo">Vector <span class="full-name">Grand Prix</span></a>
+        <nav class="header-right" aria-label="Site">
+            <a href="index.html"
+                style="color: #94a3b8; text-decoration: none; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; transition: color 0.2s;">Play</a>
+            <a href="about.html"
+                style="color: #94a3b8; text-decoration: none; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; transition: color 0.2s;">About</a>
+        </nav>
+    </header>
+
+    <main class="about-page__main" role="main">
+        <section class="about-hero" aria-label="Introduction">
+            <h1 class="about-hero__title">Changelog</h1>
+            <p class="about-hero__subtitle">Evolution of the simulator. Updates, fixes, and circuit releases.</p>
+        </section>
+
+        <section class="about-section">
+            <span class="about-section__label">v 0.344 / March 2026</span>
+            <div class="about-content">
+                <h2>Jade Spiral Release</h2>
+                <p><strong>New Track: Jade Spiral Circuit.</strong> Features a long pit straight, a tightening spiral at the top, a wide sweep on the right, and a lower infield loop.</p>
+                
+                <p><strong>Gameplay & Feel:</strong></p>
+                <ul style="list-style: none; padding: 0; margin: 0; color: #cbd5e1; font-size: 1.0625rem; line-height: 1.75;">
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span style="color: var(--accent-color);">/</span> Lap times now use simulation time — frame drops and backgrounded tabs no longer inflate your time.</li>
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span style="color: var(--accent-color);">/</span> Smoother motion — car position and rotation interpolated between physics steps, less jitter on lower-end devices.</li>
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span style="color: var(--accent-color);">/</span> Countdown — all three red lights show before green / GO.</li>
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span style="color: var(--accent-color);">/</span> Skid marks stay visible even when the game skips frames.</li>
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span style="color: var(--accent-color);">/</span> Finish line & checkpoints register correctly when scraping or hugging walls.</li>
+                </ul>
+
+                <p style="margin-top: 1.5rem;"><strong>Mobile & Input:</strong></p>
+                <ul style="list-style: none; padding: 0; margin: 0; color: #cbd5e1; font-size: 1.0625rem; line-height: 1.75;">
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span style="color: var(--accent-color);">/</span> Steering and buttons reset when the tab loses focus or you switch apps.</li>
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span style="color: var(--accent-color);">/</span> Best lap time stays correct when switching tracks quickly.</li>
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span style="color: var(--accent-color);">/</span> Share and input behavior improved on mobile.</li>
+                </ul>
+            </div>
+        </section>
+    </main>
+
+    <footer
+        style="text-align: left; max-width: 42rem; margin: 0 auto; padding: 4rem 1.5rem; color: #475569; font-size: 0.75rem; font-family: var(--mono-font); text-transform: uppercase; letter-spacing: 0.1em;">
+        &copy; 2026 Vector Grand Prix. ALL SYSTEMS NOMINAL.
+    </footer>
+
+</body>
+
+</html>
