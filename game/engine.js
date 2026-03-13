@@ -1,7 +1,7 @@
-import { getIntersection } from './math.js?v=0.344';
-import { CONFIG } from './config.js?v=0.344';
-import { TRACKS } from './tracks.js?v=0.344';
-import { saveLapTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.343';
+import { getIntersection } from './math.js?v=0.347';
+import { CONFIG } from './config.js?v=0.347';
+import { TRACKS } from './tracks.js?v=0.347';
+import { saveLapTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.347';
 
 // --- Game Engine ---
 export class RealTimeRacer {
@@ -128,6 +128,8 @@ export class RealTimeRacer {
         this.raceStats = { start: 0, crash: 0, win: 0 };
         this.raceEventSent = false;
         this.playerTypeSent = false;
+        this.mapStats = {};
+        this.mapEventSent = false;
 
         // Listeners
         new ResizeObserver(() => this.resize()).observe(this.container);
@@ -137,7 +139,10 @@ export class RealTimeRacer {
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) this.clearSteeringInput();
         });
-        window.addEventListener('pagehide', () => this.sendRaceEvent());
+        window.addEventListener('pagehide', () => {
+            this.sendRaceEvent();
+            this.sendMapEvent();
+        });
 
         // Track Selectors
         this.trackSelect.addEventListener('change', (e) => this.loadTrack(e.target.value));
@@ -253,6 +258,14 @@ export class RealTimeRacer {
                 crash: this.raceStats.crash,
                 win: this.raceStats.win
             });
+        }
+    }
+
+    sendMapEvent() {
+        if (this.mapEventSent || this.raceStats.start === 0 || Object.keys(this.mapStats).length === 0) return;
+        this.mapEventSent = true;
+        if (typeof umami !== 'undefined') {
+            umami.track('map-event', this.mapStats);
         }
     }
 
@@ -680,6 +693,9 @@ export class RealTimeRacer {
 
     async loadTrack(trackKey) {
         if (TRACKS[trackKey]) {
+            // Track map selection statistics
+            this.mapStats[trackKey] = (this.mapStats[trackKey] || 0) + 1;
+
             const requestId = ++this.trackLoadRequestId;
             this.currentTrack = TRACKS[trackKey];
             this.currentTrackKey = trackKey;
