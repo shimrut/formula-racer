@@ -1,16 +1,28 @@
-import { getIntersection } from './math.js?v=0.3';
-import { CONFIG } from './config.js?v=0.3';
-import { TRACKS } from './tracks.js?v=0.3';
-import { saveLapTime, getTrackData } from './storage.js?v=0.3';
+import { getIntersection } from './math.js?v=0.344';
+import { CONFIG } from './config.js?v=0.344';
+import { TRACKS } from './tracks.js?v=0.344';
+import { saveLapTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.343';
 
 // --- Game Engine ---
 export class RealTimeRacer {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
-        this.ctx = this.canvas.getContext('2d');
+        this.ctx = this.canvas.getContext('2d', { alpha: false, desynchronized: true }) || this.canvas.getContext('2d');
         this.container = document.getElementById('game-container');
         this.trackSelect = document.getElementById('track-select');
-        this.headerControls = document.getElementById('header-controls');
+        this.isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+
+        // Anchor fixed hud-bar below the header
+        const header = document.querySelector('header');
+        const hudBar = document.querySelector('.hud-bar');
+        if (header && hudBar) {
+            const setHudTop = () => {
+                const h = header.getBoundingClientRect().bottom;
+                hudBar.style.top = `${h + 12}px`;
+            };
+            setHudTop();
+            new ResizeObserver(setHudTop).observe(header);
+        }
 
         // Settings Controls (trace route is always enabled)
 
@@ -40,10 +52,10 @@ export class RealTimeRacer {
 
         // Game State
         this.status = 'ready';
-        this.startTime = 0;
         this.currentTime = 0;
         this.nextCheckpointIndex = 0; // next checkpoint to pass this lap
         this.bestLapTime = null; // Best lap time for current track
+        this.hasAnyData = false; // Whether any track has ever been raced
         this.activeTimers = []; // Keep track of active timeouts/intervals
 
         // Visuals
@@ -58,6 +70,8 @@ export class RealTimeRacer {
         // Viewport
         this.camera = { x: 0, y: 0 };
         this.zoom = 1;
+        this._lookAheadX = 0;
+        this._lookAheadY = 0;
 
         // Performance optimization: Cache values
         this.cachedSpeed = 0;
@@ -67,8 +81,8 @@ export class RealTimeRacer {
         // Fixed timestep for smooth physics (60Hz)
         this.FIXED_DT = 1 / 60;
         this.accumulator = 0;
-        this.prevPos = { x: 0, y: 0 };
-        this.prevAngle = 0;
+        this.prevPos = { ...this.currentTrack.startPos };
+        this.prevAngle = this.currentTrack.startAngle;
         this.timeOffsetMs = 0;
 
         // Detect device performance early (before track loading)
@@ -78,27 +92,34 @@ export class RealTimeRacer {
         this.uiTime = document.getElementById('time-val');
         this.uiSpeed = document.getElementById('speed-val');
         this.bestTimeDisplay = document.getElementById('best-time-display');
+        this.bestTimeDivider = document.getElementById('best-time-divider');
         this.bestTimeVal = document.getElementById('best-time-val');
         this.modal = document.getElementById('modal');
         this.modalTitle = document.getElementById('modal-title');
         this.modalMsg = document.getElementById('modal-msg');
         this.modalLapTimes = document.getElementById('modal-lap-times');
-        this.modalBestTime = document.getElementById('modal-best-time');
-        this.viewRunsBtn = document.getElementById('view-runs-btn');
+        this.modalStatsRow = document.getElementById('modal-stats-row');
+        this.modalPreviewWrap = document.getElementById('modal-preview-wrap');
+        this.modalPreviewImg = document.getElementById('modal-preview-img');
+        this.modalPreviewUrl = null;
         this.backToMainBtn = document.getElementById('back-to-main-btn');
         this.modalMainView = document.getElementById('modal-main-view');
         this.modalRunsView = document.getElementById('modal-runs-view');
         this.sharePanel = document.getElementById('share-panel');
         this.shareBtn = document.getElementById('share-btn');
         this.startOverlay = document.getElementById('start-overlay');
+        this.startGroup = document.getElementById('start-group');
+        this.firstTimeMsg = document.getElementById('first-time-msg');
         this.startLights = document.getElementById('start-lights');
         this.goMessage = document.getElementById('go-message');
         this.runHistory = [];
         this.runHistoryTimer = 0;
         this.lastSharePayload = null;
-        this.shareFile = null;
+        this.shareBaseBlob = null;
         this.shareFilename = '';
         this.shareBlobPromise = null;
+        this.sharingInProgress = false;
+        this.trackLoadRequestId = 0;
         this.htpModal = document.getElementById('how-to-play-modal');
         this.closeHtpBtn = document.getElementById('close-htp-btn');
         this.headerHtpBtn = document.getElementById('header-htp-btn');
@@ -106,11 +127,16 @@ export class RealTimeRacer {
         // Session race stats (sent once on session end)
         this.raceStats = { start: 0, crash: 0, win: 0 };
         this.raceEventSent = false;
+        this.playerTypeSent = false;
 
         // Listeners
-        window.addEventListener('resize', () => this.resize());
+        new ResizeObserver(() => this.resize()).observe(this.container);
         window.addEventListener('keydown', (e) => this.handleKey(e, true));
         window.addEventListener('keyup', (e) => this.handleKey(e, false));
+        window.addEventListener('blur', () => this.clearSteeringInput());
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) this.clearSteeringInput();
+        });
         window.addEventListener('pagehide', () => this.sendRaceEvent());
 
         // Track Selectors
@@ -118,8 +144,7 @@ export class RealTimeRacer {
 
         // Mobile workaround: native pickers ignore option[hidden]. Remove hidden options
         // before picker opens, restore after selection.
-        const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
-        if (isTouchDevice) {
+        if (this.isCoarsePointer) {
             let hiddenOptsRestore = null;
             const removeHidden = () => {
                 const opts = Array.from(this.trackSelect.querySelectorAll('option[hidden]'));
@@ -142,10 +167,12 @@ export class RealTimeRacer {
             this.trackSelect.addEventListener('blur', restoreHidden);
         }
 
-        if (this.viewRunsBtn) {
-            this.viewRunsBtn.addEventListener('click', () => {
-                if (this.modalMainView) this.modalMainView.classList.remove('active-view');
-                if (this.modalRunsView) this.modalRunsView.classList.add('active-view');
+        if (this.modalStatsRow) {
+            this.modalStatsRow.addEventListener('click', () => {
+                if (this.modalStatsRow.dataset.hasRuns === 'true') {
+                    if (this.modalMainView) this.modalMainView.classList.remove('active-view');
+                    if (this.modalRunsView) this.modalRunsView.classList.add('active-view');
+                }
             });
         }
         if (this.backToMainBtn) {
@@ -160,19 +187,31 @@ export class RealTimeRacer {
         // Button Listeners
         if (this.headerHtpBtn) {
             this.headerHtpBtn.addEventListener('click', () => {
-                if (this.htpModal) this.htpModal.classList.add('active');
+                if (this.htpModal) {
+                    this.htpModal.classList.add('active');
+                    this.activateModalFocusTrap(this.htpModal);
+                }
             });
         }
 
         if (this.closeHtpBtn) {
             this.closeHtpBtn.addEventListener('click', () => {
-                if (this.htpModal) this.htpModal.classList.remove('active');
+                if (this.htpModal) {
+                    this.htpModal.classList.remove('active');
+                    this.releaseModalFocusTrap(this.htpModal);
+                }
             });
         }
 
         const startBtn = document.getElementById('start-btn');
         if (startBtn) {
             startBtn.addEventListener('click', () => {
+                if (!this.playerTypeSent && !sessionStorage.getItem('playerTypeSent') && typeof umami !== 'undefined') {
+                    this.playerTypeSent = true;
+                    sessionStorage.setItem('playerTypeSent', '1');
+                    const hasLaps = this.bestLapTime !== null && this.bestLapTime !== undefined;
+                    umami.track(hasLaps ? 'returning-player' : 'new-player');
+                }
                 this.raceStats.start++;
                 this.startSequence();
             });
@@ -222,8 +261,11 @@ export class RealTimeRacer {
     }
 
     exposeTestHooks() {
-        window.render_game_to_text = () => this.renderGameToText();
-        window.advanceTime = (ms) => this.advanceTime(ms);
+        window.__RACER_DEBUG__ = {
+            game: this,
+            renderGameToText: () => this.renderGameToText(),
+            advanceTime: (ms) => this.advanceTime(ms)
+        };
     }
 
     renderGameToText() {
@@ -255,7 +297,6 @@ export class RealTimeRacer {
         }
 
         if (this.status === 'playing') {
-            this.currentTime = (this.getNow() - this.startTime) / 1000;
             this.uiTime.textContent = this.currentTime.toFixed(2);
             this.uiSpeed.textContent = Math.round(this.cachedSpeed * 20).toString();
         }
@@ -294,6 +335,51 @@ export class RealTimeRacer {
         this.activeTimers = [];
     }
 
+    getFocusables(root) {
+        const sel = 'button:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex^="-"])';
+        return Array.from(root.querySelectorAll(sel)).filter(el => el.offsetParent !== null);
+    }
+
+    activateModalFocusTrap(modalEl) {
+        if (!modalEl) return;
+        this._focusBeforeModal = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        this._activeTrapModal = modalEl;
+        const focusables = this.getFocusables(modalEl);
+        if (focusables.length) focusables[0].focus();
+        this._modalTrapKeydown = (e) => this.handleModalTrapKeydown(e);
+        document.addEventListener('keydown', this._modalTrapKeydown);
+    }
+
+    releaseModalFocusTrap(modalEl) {
+        if (this._activeTrapModal !== modalEl) return;
+        document.removeEventListener('keydown', this._modalTrapKeydown);
+        this._activeTrapModal = null;
+        this._modalTrapKeydown = null;
+        if (this._focusBeforeModal && this._focusBeforeModal !== document.body && document.contains(this._focusBeforeModal)) {
+            this._focusBeforeModal.focus();
+        }
+        this._focusBeforeModal = null;
+    }
+
+    handleModalTrapKeydown(e) {
+        if (e.key !== 'Tab' || !this._activeTrapModal) return;
+        const focusables = this.getFocusables(this._activeTrapModal);
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey) {
+            if (document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            }
+        } else {
+            if (document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+    }
+
     startSequence() {
         if (this.status !== 'ready') return;
 
@@ -308,9 +394,10 @@ export class RealTimeRacer {
         const l2 = document.getElementById('light-2');
         const l3 = document.getElementById('light-3');
 
-        // Sequence: 1s intervals
-        this.activeTimers.push(setTimeout(() => l1.classList.add('on'), 500));
-        this.activeTimers.push(setTimeout(() => l2.classList.add('on'), 1500));
+        // Sequence: 3 red lights, then GO.
+        this.activeTimers.push(setTimeout(() => l1.classList.add('on'), 400));
+        this.activeTimers.push(setTimeout(() => l2.classList.add('on'), 1100));
+        this.activeTimers.push(setTimeout(() => l3.classList.add('on'), 1800));
 
         this.activeTimers.push(setTimeout(() => {
             // Turn all green
@@ -321,18 +408,25 @@ export class RealTimeRacer {
             // Show GO
             this.goMessage.classList.add('visible');
 
-            // START
-            this.status = 'playing';
-            this.startTime = this.getNow();
+            // Defer status transition to the next rAF tick so the DOM mutations
+            // above flush before the game loop sees 'playing', and lastTime gets a
+            // clean baseline with no stale frameTimeHistory from the countdown.
+            requestAnimationFrame((t) => {
+                this.status = 'playing';
+                this.currentTime = 0;
+                this.lastTime = t;
+                this.frameTimeHistory = [];
+                this.frameSkip = 0;
 
-            // Cleanup visuals after start
-            this.activeTimers.push(setTimeout(() => {
-                this.startLights.classList.remove('visible');
-                this.goMessage.classList.remove('visible');
-                [l1, l2, l3].forEach(l => {
-                    l.className = 'light';
-                });
-            }, 1500));
+                // Cleanup visuals after start
+                this.activeTimers.push(setTimeout(() => {
+                    this.startLights.classList.remove('visible');
+                    this.goMessage.classList.remove('visible');
+                    [l1, l2, l3].forEach(l => {
+                        l.className = 'light';
+                    });
+                }, 1500));
+            });
         }, 2500));
     }
 
@@ -354,6 +448,7 @@ export class RealTimeRacer {
 
             btn.addEventListener('touchstart', down, { passive: false });
             btn.addEventListener('touchend', up, { passive: false });
+            btn.addEventListener('touchcancel', up, { passive: false });
             btn.addEventListener('mousedown', down);
             btn.addEventListener('mouseup', up);
             btn.addEventListener('mouseleave', up);
@@ -361,6 +456,15 @@ export class RealTimeRacer {
 
         setupBtn('btn-left', 'a');
         setupBtn('btn-right', 'd');
+    }
+
+    clearSteeringInput() {
+        this.keys.left = false;
+        this.keys.right = false;
+        ['btn-left', 'btn-right'].forEach((id) => {
+            const btn = document.getElementById(id);
+            if (btn) btn.classList.remove('active');
+        });
     }
 
     // Create F1 Car Sprite
@@ -576,6 +680,7 @@ export class RealTimeRacer {
 
     async loadTrack(trackKey) {
         if (TRACKS[trackKey]) {
+            const requestId = ++this.trackLoadRequestId;
             this.currentTrack = TRACKS[trackKey];
             this.currentTrackKey = trackKey;
 
@@ -592,22 +697,31 @@ export class RealTimeRacer {
             // Load best lap time for this track
             try {
                 const trackData = await getTrackData(trackKey);
+                if (requestId !== this.trackLoadRequestId) return;
                 this.bestLapTime = trackData.bestTime;
+                this.hasAnyData = await hasAnyTrackData();
+                if (requestId !== this.trackLoadRequestId) return;
                 // Update UI
                 if (this.bestLapTime !== null && this.bestLapTime !== undefined) {
                     this.bestTimeVal.textContent = this.bestLapTime.toFixed(2);
-                    this.bestTimeDisplay.style.display = 'block';
+                    this.bestTimeDisplay.style.display = 'flex';
+                    if (this.bestTimeDivider) this.bestTimeDivider.style.display = 'block';
                 } else {
                     this.bestTimeDisplay.style.display = 'none';
+                    if (this.bestTimeDivider) this.bestTimeDivider.style.display = 'none';
                 }
             } catch (error) {
                 console.error('Error loading track data:', error);
                 this.bestLapTime = null;
                 this.bestTimeDisplay.style.display = 'none';
+                if (this.bestTimeDivider) this.bestTimeDivider.style.display = 'none';
             }
 
+            if (requestId !== this.trackLoadRequestId) return;
             this.reset();
-            document.activeElement.blur();
+            if (document.activeElement && typeof document.activeElement.blur === 'function') {
+                document.activeElement.blur();
+            }
         }
     }
 
@@ -630,6 +744,8 @@ export class RealTimeRacer {
 
     update(dt) {
         if (this.status === 'playing') {
+            this.currentTime += dt;
+
             // Physics
             let ax = 0;
             let ay = 0;
@@ -660,11 +776,29 @@ export class RealTimeRacer {
             // Check Collision
             const hitWall = this.checkWallCollision(this.pos, nextPos);
 
+            // Checkpoints and finish line: always evaluate path (pos, nextPos) regardless of wall hit.
+            // When hugging walls, hitWall blocks the else branch—checkpoints/finish were never detected.
+            const checkpoints = this.currentTrack.checkpoints || [];
+            if (this.nextCheckpointIndex < checkpoints.length) {
+                const cp = checkpoints[this.nextCheckpointIndex];
+                if (getIntersection(this.pos, nextPos, cp.p1, cp.p2)) {
+                    this.nextCheckpointIndex++;
+                }
+            }
+            const crossedFinish = this.checkFinishLine(this.pos, nextPos);
+            const allPassed = checkpoints.length === 0 || this.nextCheckpointIndex >= checkpoints.length;
+            if (crossedFinish) {
+                if (allPassed && this.currentTime >= 2.0) {
+                    this.handleWin();
+                }
+                this.nextCheckpointIndex = 0;
+            }
+
             if (hitWall) {
                 if (this.cachedSpeed > CONFIG.crashSpeed) {
                     this.status = 'crashed';
                     this.raceStats.crash++;
-                    this.showModal('CRASHED', `Impact: ${Math.round(this.cachedSpeed * 20)} KPH`);
+                    this.showModal('CRASHED', null, { isCrash: true, impact: Math.round(this.cachedSpeed * 20) });
                     // Limit particle count on low-end devices
                     const particleCount = this.frameSkip > 0 ? 10 : 20;
                     for (let k = 0; k < particleCount; k++) this.spawnParticles('spark');
@@ -678,24 +812,8 @@ export class RealTimeRacer {
                     for (let k = 0; k < particleCount; k++) this.spawnParticles('spark');
                 }
             } else {
-                const checkpoints = this.currentTrack.checkpoints || [];
-                if (this.nextCheckpointIndex < checkpoints.length) {
-                    const cp = checkpoints[this.nextCheckpointIndex];
-                    if (getIntersection(this.pos, nextPos, cp.p1, cp.p2)) {
-                        this.nextCheckpointIndex++;
-                    }
-                }
-                if (this.checkFinishLine(this.pos, nextPos)) {
-                    const allPassed = checkpoints.length === 0 || this.nextCheckpointIndex >= checkpoints.length;
-                    if (allPassed && this.currentTime >= 2.0) {
-                        this.handleWin();
-                    }
-                    this.nextCheckpointIndex = 0;
-                }
                 this.pos = nextPos;
             }
-
-            this.currentTime = (this.getNow() - this.startTime) / 1000;
 
             // Skid marks (use cached speed)
             const vx = Math.cos(this.angle);
@@ -714,16 +832,17 @@ export class RealTimeRacer {
                     angle: this.angle,
                     alpha: 1.0
                 });
-                // Reduce max skid marks on low-end devices
-                const maxSkids = this.frameSkip > 0 ? 100 : 200;
+                // Keep the oldest marks trimmed aggressively on lower-end mobile devices.
+                const maxSkids = (this.frameSkip > 0 || this.qualityLevel > 0) ? 60 : 160;
                 if (this.skidMarks.length > maxSkids) this.skidMarks.shift();
             }
 
             // Trace Route Logic (always enabled)
             this.trailTimer += dt;
-            if (this.trailTimer > 0.05) {
+            const traceInterval = (this.frameSkip > 0 || this.qualityLevel > 0) ? 0.08 : 0.05;
+            if (this.trailTimer > traceInterval) {
                 this.routeTrace.push({ x: this.pos.x, y: this.pos.y });
-                this.trailTimer %= 0.05;
+                this.trailTimer %= traceInterval;
             }
 
             this.runHistoryTimer += dt;
@@ -851,6 +970,7 @@ export class RealTimeRacer {
         this.status = 'won';
         this.raceStats.win++;
         const finalTime = this.currentTime;
+        this.uiTime.textContent = finalTime.toFixed(2);
         const trackName = this.currentTrackKey;
         this.recordRunPoint(this.pos);
 
@@ -861,10 +981,12 @@ export class RealTimeRacer {
             trackData = await saveLapTime(trackName, finalTime);
             // Update best lap time in memory
             this.bestLapTime = trackData.bestTime;
+            this.hasAnyData = true;
             // Update UI
             if (this.bestLapTime !== null && this.bestLapTime !== undefined) {
                 this.bestTimeVal.textContent = this.bestLapTime.toFixed(2);
-                this.bestTimeDisplay.style.display = 'block';
+                this.bestTimeDisplay.style.display = 'flex';
+                if (this.bestTimeDivider) this.bestTimeDivider.style.display = 'block';
             }
         } catch (error) {
             console.error('Error saving lap time:', error);
@@ -879,30 +1001,9 @@ export class RealTimeRacer {
             }
         }
 
-        // Format time display
-        const formattedTime = finalTime.toFixed(2);
-        const bestTime = trackData.bestTime ? trackData.bestTime.toFixed(2) : 'N/A';
-
         // Check if this is a new best
         const isNewBest = trackData.bestTime === finalTime && (previousBest === null || previousBest === undefined || finalTime < previousBest);
-        const title = isNewBest ? 'Personal Best' : 'FINISH LINE';
-
-        // Build lap times list
-        let lapTimesHtml = '';
-        if (trackData.lapTimes.length > 0) {
-            lapTimesHtml = '<div class="lap-times-list">';
-            const recentRuns = trackData.lapTimes.slice().reverse().slice(0, 10);
-            recentRuns.forEach((time, index) => {
-                const isBest = Math.abs(time - trackData.bestTime) < 0.01; // Floating point comparison
-                const isCurrent = index === 0;
-                lapTimesHtml += `<div class="lap-time-item ${isBest ? 'best' : ''} ${isCurrent ? 'current' : ''}">`;
-                const realIndex = trackData.lapTimes.length - index;
-                lapTimesHtml += `${realIndex}. ${time.toFixed(2)}s`;
-                if (isBest) lapTimesHtml += ' <span class="best-badge">BEST</span>';
-                lapTimesHtml += '</div>';
-            });
-            lapTimesHtml += '</div>';
-        }
+        const title = isNewBest ? 'New PB!' : 'FINISH LINE';
 
         this.lastSharePayload = {
             title,
@@ -913,11 +1014,20 @@ export class RealTimeRacer {
             isNewBest,
             runHistory: this.runHistory.slice()
         };
-        this.showModal(title, `Lap Time: ${formattedTime}s`, {
-            bestTime: bestTime,
-            lapTimes: lapTimesHtml
+        this.showModal(title, null, {
+            lapTime: finalTime,
+            bestTime: trackData.bestTime ?? finalTime,
+            lapTimesArray: trackData.lapTimes || [],
+            isNewBest
         });
-        this.prepareShareAsset();
+        // Defer the heavy offscreen canvas work (single 640×640 render) until
+        // after the modal's first transition frame has been painted. Without
+        // this deferral the synchronous renderReplayFrame calls block the main
+        // thread in the same task as classList.add('active'), causing the
+        // opacity/transform transition to skip its first frame (visible stutter).
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => this.prepareShareAsset());
+        });
     }
 
     reset(autoStart = false) {
@@ -929,7 +1039,7 @@ export class RealTimeRacer {
         this.velocity = { x: 0, y: 0 };
         this.angle = this.currentTrack.startAngle;
         this.prevAngle = this.currentTrack.startAngle;
-        this.keys = { left: false, right: false }; // Reset keys
+        this.clearSteeringInput();
         this.status = 'ready'; // Reset to ready state
         this.nextCheckpointIndex = 0;
         this.accumulator = 0;
@@ -940,10 +1050,40 @@ export class RealTimeRacer {
         this.runHistoryTimer = 0;
         this.particles = [];
         this.lastSharePayload = null;
-        this.shareFile = null;
+        this.shareBaseBlob = null;
         this.shareFilename = '';
         this.shareBlobPromise = null;
         this.modal.classList.remove('active');
+        const modal = this.modal;
+        if (this._modalCloseFallbackTimer != null) {
+            clearTimeout(this._modalCloseFallbackTimer);
+            this._modalCloseFallbackTimer = null;
+        }
+        const cleanupAfterClose = () => {
+            modal.classList.remove('modal--crash');
+            if (this.modalPreviewUrl) {
+                URL.revokeObjectURL(this.modalPreviewUrl);
+                this.modalPreviewUrl = null;
+            }
+            if (this.modalPreviewImg) this.modalPreviewImg.src = '';
+            if (this.modalPreviewWrap) this.modalPreviewWrap.style.display = 'none';
+            this.releaseModalFocusTrap(modal);
+        };
+        const onTransitionEnd = (e) => {
+            if (e.target !== modal || e.propertyName !== 'opacity') return;
+            modal.removeEventListener('transitionend', onTransitionEnd);
+            if (this._modalCloseFallbackTimer != null) {
+                clearTimeout(this._modalCloseFallbackTimer);
+                this._modalCloseFallbackTimer = null;
+            }
+            cleanupAfterClose();
+        };
+        modal.addEventListener('transitionend', onTransitionEnd);
+        this._modalCloseFallbackTimer = setTimeout(() => {
+            this._modalCloseFallbackTimer = null;
+            modal.removeEventListener('transitionend', onTransitionEnd);
+            cleanupAfterClose();
+        }, 350);
         this.setShareState(false);
 
         // Reset Visuals
@@ -951,41 +1091,66 @@ export class RealTimeRacer {
         this.goMessage.classList.remove('visible');
         [...this.startLights.children].forEach(el => el.className = 'light');
 
-        this.uiTime.innerHTML = "0.00";
-        this.uiSpeed.innerText = "0";
+        this.uiTime.textContent = "0.00";
+        this.uiSpeed.textContent = "0";
 
         const cw = this.canvas.width;
         const ch = this.canvas.height;
         const gs = CONFIG.gridSize;
-        this.camera.x = (this.pos.x * gs) - cw / 2;
-        this.camera.y = (this.pos.y * gs) - ch / 2;
+        this.camera.x = (this.pos.x * gs) - cw / 2 / this.zoom;
+        this.camera.y = (this.pos.y * gs) - ch / 2 / this.zoom;
+        this._lookAheadX = 0;
+        this._lookAheadY = 0;
 
         if (autoStart) {
             this.startOverlay.style.display = 'none';
             this.startSequence();
         } else {
             this.startOverlay.style.display = 'flex';
+            if (this.startGroup) this.startGroup.style.display = 'flex';
+            if (this.firstTimeMsg) {
+                this.firstTimeMsg.style.display = this.hasAnyData ? 'none' : 'block';
+            }
         }
     }
 
     showModal(title, msg, lapData = null) {
-        this.modalTitle.innerText = title;
-        this.modalMsg.innerText = msg;
+        this.modalTitle.textContent = title;
+        this.modal.classList.toggle('modal--crash', Boolean(lapData?.isCrash));
 
         if (lapData) {
-            if (this.modalBestTime) {
-                this.modalBestTime.innerHTML = `<strong>Best Time:</strong> ${lapData.bestTime}s`;
-                this.modalBestTime.style.display = 'flex';
+            this.modalMsg.style.display = 'none';
+            if (this.modalStatsRow) {
+                if (lapData.isCrash) {
+                    this.setModalStatCenter('Impact', `${lapData.impact} KPH`, 'modal-stat-value--crash');
+                    this.modalStatsRow.dataset.hasRuns = '';
+                } else if (lapData.isNewBest) {
+                    this.setModalStatCenter('', `${lapData.bestTime.toFixed(2)}s`, 'modal-stat-value--best');
+                    this.modalStatsRow.dataset.hasRuns = lapData.lapTimesArray?.length ? 'true' : '';
+                } else {
+                    const delta = lapData.lapTime - lapData.bestTime;
+                    const deltaText = delta > 0.005 ? `+${delta.toFixed(2)}s` : '';
+                    this.setModalStatLeftRight(
+                        lapData.lapTime.toFixed(2) + 's',
+                        deltaText,
+                        lapData.bestTime.toFixed(2) + 's'
+                    );
+                    this.modalStatsRow.dataset.hasRuns = lapData.lapTimesArray?.length ? 'true' : '';
+                }
+                this.modalStatsRow.style.display = 'flex';
             }
-            if (lapData.lapTimes && this.modalLapTimes) {
-                this.modalLapTimes.innerHTML = lapData.lapTimes;
-            } else if (this.modalLapTimes) {
-                this.modalLapTimes.innerHTML = '';
-            }
-            if (this.viewRunsBtn) this.viewRunsBtn.style.display = lapData.lapTimes ? 'inline-block' : 'none';
         } else {
-            if (this.modalBestTime) this.modalBestTime.style.display = 'none';
-            if (this.viewRunsBtn) this.viewRunsBtn.style.display = 'none';
+            this.modalMsg.style.display = '';
+            this.modalMsg.textContent = msg || '';
+            if (this.modalStatsRow) this.modalStatsRow.style.display = 'none';
+        }
+
+        if (lapData?.lapTimesArray !== undefined && this.modalLapTimes) {
+            this.renderLapTimesList(this.modalLapTimes, lapData.lapTimesArray, lapData.bestTime, lapData.lapTime);
+        } else if (lapData && this.modalLapTimes) {
+            this.modalLapTimes.replaceChildren();
+        } else {
+            if (this.modalPreviewWrap) this.modalPreviewWrap.style.display = 'none';
         }
 
         if (this.modalMainView && this.modalRunsView) {
@@ -996,6 +1161,107 @@ export class RealTimeRacer {
         this.setShareState(Boolean(this.lastSharePayload));
 
         this.modal.classList.add('active');
+        // Defer focus trap activation to avoid a forced synchronous layout flush.
+        // getFocusables reads el.offsetParent on every candidate element, which
+        // forces the browser to resolve all pending style mutations (display, class
+        // changes above) before it can paint the first transition frame.
+        requestAnimationFrame(() => this.activateModalFocusTrap(this.modal));
+    }
+
+    setModalStatCenter(labelText, valueText, valueClass) {
+        if (!this.modalStatsRow) return;
+        this.modalStatsRow.replaceChildren();
+        const center = document.createElement('span');
+        center.className = 'modal-stat-center';
+        if (labelText) {
+            const label = document.createElement('span');
+            label.className = 'modal-stat-label';
+            label.textContent = labelText;
+            center.appendChild(label);
+        }
+        const value = document.createElement('span');
+        value.className = 'modal-stat-value' + (valueClass ? ' ' + valueClass : '');
+        value.textContent = valueText;
+        center.appendChild(value);
+        this.modalStatsRow.appendChild(center);
+    }
+
+    setModalStatLeftRight(lapText, deltaText, bestText) {
+        if (!this.modalStatsRow) return;
+        this.modalStatsRow.replaceChildren();
+        const left = document.createElement('span');
+        left.className = 'modal-stat-left';
+        const lapLabel = document.createElement('span');
+        lapLabel.className = 'modal-stat-label';
+        lapLabel.textContent = 'Lap';
+        left.appendChild(lapLabel);
+        const lapVal = document.createElement('span');
+        lapVal.className = 'modal-stat-value';
+        lapVal.textContent = lapText;
+        if (deltaText) {
+            const deltaSpan = document.createElement('span');
+            deltaSpan.className = 'modal-stat-delta';
+            deltaSpan.textContent = deltaText;
+            lapVal.appendChild(document.createTextNode(' '));
+            lapVal.appendChild(deltaSpan);
+        }
+        left.appendChild(lapVal);
+        this.modalStatsRow.appendChild(left);
+        const right = document.createElement('span');
+        right.className = 'modal-stat-right';
+        const bestLabel = document.createElement('span');
+        bestLabel.className = 'modal-stat-label';
+        bestLabel.textContent = 'Best';
+        right.appendChild(bestLabel);
+        const bestVal = document.createElement('span');
+        bestVal.className = 'modal-stat-value modal-stat-value--best';
+        bestVal.textContent = bestText;
+        right.appendChild(bestVal);
+        this.modalStatsRow.appendChild(right);
+    }
+
+    renderLapTimesList(container, lapTimesArray, bestTime, currentTime) {
+        container.replaceChildren();
+        if (!lapTimesArray || lapTimesArray.length === 0) return;
+        const headerRow = document.createElement('div');
+        headerRow.className = 'runs-header-row';
+        const headerTitle = document.createElement('span');
+        headerTitle.className = 'runs-header-title';
+        headerTitle.textContent = 'Your 5 PBs';
+        headerRow.appendChild(headerTitle);
+        container.appendChild(headerRow);
+        const list = document.createElement('div');
+        list.className = 'lap-times-list';
+        lapTimesArray.forEach((time, index) => {
+            const isBest = index === 0;
+            const isCurrent = Math.abs(time - currentTime) < 0.001;
+            const realIndex = index + 1;
+            const delta = time - bestTime;
+            const item = document.createElement('div');
+            item.className = 'lap-time-item' + (isBest ? ' best' : '') + (isCurrent ? ' current' : '');
+            const runLeft = document.createElement('span');
+            runLeft.className = 'run-left';
+            const runIndex = document.createElement('span');
+            runIndex.className = 'run-index';
+            runIndex.textContent = String(realIndex);
+            const runTime = document.createElement('span');
+            runTime.className = 'run-time';
+            runTime.textContent = time.toFixed(2) + 's';
+            runLeft.appendChild(runIndex);
+            runLeft.appendChild(runTime);
+            item.appendChild(runLeft);
+            const deltaWrap = document.createElement('span');
+            deltaWrap.className = 'run-delta-wrap';
+            if (!isBest) {
+                const deltaSpan = document.createElement('span');
+                deltaSpan.className = 'run-delta';
+                deltaSpan.textContent = '+' + delta.toFixed(2) + 's';
+                deltaWrap.appendChild(deltaSpan);
+            }
+            item.appendChild(deltaWrap);
+            list.appendChild(item);
+        });
+        container.appendChild(list);
     }
 
     recordRunPoint(point) {
@@ -1013,7 +1279,8 @@ export class RealTimeRacer {
             this.sharePanel.style.display = enabled ? 'flex' : 'none';
         }
         if (this.shareBtn) {
-            this.shareBtn.disabled = !enabled || Boolean(this.shareBlobPromise);
+            const canShare = Boolean(this.shareBaseBlob);
+            this.shareBtn.disabled = !enabled || !canShare || Boolean(this.shareBlobPromise || this.sharingInProgress);
             this.shareBtn.textContent = 'Challenge a Friend';
         }
     }
@@ -1188,9 +1455,10 @@ export class RealTimeRacer {
         return lines;
     }
 
-    buildShareImageBlob(payload) {
-        const width = 1080;
-        const height = 1080;
+    buildShareImageBlob(payload, options = {}) {
+        const { includeCaption = true } = options;
+        const width = 640;
+        const height = 640;
         const hudHeight = 0;
         const canvas = document.createElement('canvas');
         canvas.width = width;
@@ -1203,22 +1471,9 @@ export class RealTimeRacer {
             showMarker: false
         });
 
-        const caption = this.getShareCaption(payload);
-        const pad = 48;
-        const lineHeight = 52;
-        const fontSize = 42;
-        ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const lines = this.wrapText(ctx, caption, width - pad * 2);
-        const textBlockHeight = lines.length * lineHeight + pad * 2;
-        const y0 = height - textBlockHeight;
-        ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
-        ctx.fillRect(0, y0, width, textBlockHeight);
-        ctx.fillStyle = '#f8fafc';
-        lines.forEach((line, i) => {
-            ctx.fillText(line, width / 2, y0 + pad + lineHeight / 2 + i * lineHeight);
-        });
+        if (includeCaption) {
+            this.drawShareCaption(ctx, payload, width, height);
+        }
 
         return new Promise((resolve, reject) => {
             if (canvas.toBlob) {
@@ -1228,12 +1483,12 @@ export class RealTimeRacer {
                         return;
                     }
                     reject(new Error('Canvas export returned an empty blob.'));
-                }, 'image/png');
+                }, 'image/jpeg', 0.9);
                 return;
             }
 
             try {
-                const dataUrl = canvas.toDataURL('image/png');
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
                 fetch(dataUrl)
                     .then((response) => response.blob())
                     .then(resolve)
@@ -1253,66 +1508,131 @@ export class RealTimeRacer {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
+    drawShareCaption(ctx, payload, width, height) {
+        const caption = this.getShareCaption(payload);
+        const pad = 21;
+        const lineHeight = 32;
+        const fontSize = 24;
+        ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const lines = this.wrapText(ctx, caption, width - pad * 2);
+        const textBlockHeight = lines.length * lineHeight + pad * 2;
+        const y0 = height - textBlockHeight;
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
+        ctx.fillRect(0, y0, width, textBlockHeight);
+        ctx.fillStyle = '#f8fafc';
+        lines.forEach((line, i) => {
+            ctx.fillText(line, width / 2, y0 + pad + lineHeight / 2 + i * lineHeight);
+        });
+    }
+
+    addCaptionToBlob(blob, payload) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            const url = URL.createObjectURL(blob);
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                this.drawShareCaption(ctx, payload, canvas.width, canvas.height);
+                canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Canvas export failed'))), 'image/jpeg', 0.9);
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Failed to load image for caption'));
+            };
+            img.src = url;
+        });
+    }
+
     prepareShareAsset() {
         if (!this.lastSharePayload) return;
         if (this.shareBlobPromise) return this.shareBlobPromise;
-        if (this.shareFile) return Promise.resolve(this.shareFile);
+        if (this.shareBaseBlob) return Promise.resolve(this.shareBaseBlob);
 
         const payload = this.lastSharePayload;
-        this.shareFile = null;
-        this.shareFilename = `${payload.trackKey}-${payload.lapTime.toFixed(2).replace('.', '-')}.png`;
-        this.setShareState(true);
-
-        this.shareBlobPromise = this.buildShareImageBlob(payload)
+        this.shareBaseBlob = null;
+        this.shareFilename = `${payload.trackKey}-${payload.lapTime.toFixed(2).replace('.', '-')}.jpg`;
+        this.shareBlobPromise = this.buildShareImageBlob(payload, { includeCaption: false })
             .then((blob) => {
-                this.shareFile = typeof File === 'function'
-                    ? new File([blob], this.shareFilename, { type: 'image/png' })
-                    : blob;
+                this.shareBaseBlob = blob;
                 this.shareBlobPromise = null;
                 this.setShareState(true);
-                return this.shareFile;
+                if (this.modalPreviewUrl) URL.revokeObjectURL(this.modalPreviewUrl);
+                this.modalPreviewUrl = URL.createObjectURL(blob);
+                if (this.modalPreviewImg) {
+                    this.modalPreviewImg.src = this.modalPreviewUrl;
+                    if (this.modalPreviewWrap) this.modalPreviewWrap.style.display = 'block';
+                }
+                return blob;
             })
             .catch((error) => {
                 console.error('Error preparing share asset:', error);
                 this.shareBlobPromise = null;
-                this.shareFile = null;
+                this.shareBaseBlob = null;
                 this.setShareState(true);
                 throw error;
             });
+        this.setShareState(true);
+        return this.shareBlobPromise;
     }
 
     async shareLapResult() {
         if (!this.lastSharePayload) return;
+        if (this.sharingInProgress) return;
 
-        if (!this.shareFile) {
+        if (!this.shareBaseBlob) {
             this.setShareState(true);
             return;
         }
 
+        this.sharingInProgress = true;
         try {
-            const file = this.shareFile instanceof File ? this.shareFile : null;
+            const captionBlob = await this.addCaptionToBlob(this.shareBaseBlob, this.lastSharePayload);
+            const file = typeof File === 'function'
+                ? new File([captionBlob], this.shareFilename, { type: 'image/jpeg' })
+                : null;
             const caption = this.getShareCaption(this.lastSharePayload);
+            const hasNavigatorShare = typeof navigator.share === 'function';
 
             // 1. Native share with image file (mobile / supported browsers)
-            const hasNativeShare = !!(navigator.share && file && navigator.canShare && navigator.canShare({ files: [file] }));
-            if (hasNativeShare) {
-                // Omit 'text' when sharing files to prevent Safari/OS from duplicating the file in the share payload
-                await navigator.share({ files: [file] });
-                this.setShareState(true);
-                return;
+            if (hasNavigatorShare && file) {
+                let canShareFile = true;
+                if (typeof navigator.canShare === 'function') {
+                    try {
+                        canShareFile = navigator.canShare({ files: [file] });
+                    } catch (error) {
+                        canShareFile = false;
+                    }
+                }
+                if (canShareFile) {
+                    try {
+                        await navigator.share({ files: [file] });
+                        this.setShareState(true);
+                        return;
+                    } catch (error) {
+                        if (error?.name === 'AbortError') {
+                            throw error;
+                        }
+                    }
+                }
             }
 
             // 2. Native share without file (desktop browsers that support share but not file sharing)
-            if (navigator.share) {
+            if (hasNavigatorShare) {
                 await navigator.share({ text: caption, url: 'https://vectorgp.run' });
                 this.setShareState(true);
                 return;
             }
 
             // 3. Clipboard image fallback
-            const blob = this.shareFile instanceof Blob ? this.shareFile : null;
+            const blob = captionBlob;
             if (blob && navigator.clipboard?.write && typeof ClipboardItem === 'function') {
-                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                await navigator.clipboard.write([new ClipboardItem({ 'image/jpeg': blob })]);
                 this.setShareState(true);
                 return;
             }
@@ -1325,7 +1645,11 @@ export class RealTimeRacer {
                 this.setShareState(true);
             }
         } catch (error) {
-            console.error('Error sharing lap result:', error);
+            if (error?.name !== 'AbortError') {
+                console.error('Error sharing lap result:', error);
+            }
+        } finally {
+            this.sharingInProgress = false;
             this.setShareState(true);
         }
     }
@@ -1338,7 +1662,10 @@ export class RealTimeRacer {
 
         // Interpolated display position (between physics steps). Skip when not playing to avoid jitter.
         const displayPos = (this.status === 'playing')
-            ? { x: this.pos.x + this.velocity.x * this.accumulator, y: this.pos.y + this.velocity.y * this.accumulator }
+            ? {
+                x: this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha,
+                y: this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
+            }
             : { x: this.pos.x, y: this.pos.y };
         const lerpAngle = (a, b, t) => {
             let d = b - a;
@@ -1346,7 +1673,7 @@ export class RealTimeRacer {
             while (d < -Math.PI) d += 2 * Math.PI;
             return a + d * t;
         };
-        const displayAngle = (this.status === 'playing' && alpha < 1) ? lerpAngle(this.prevAngle, this.angle, 1 - alpha) : this.angle;
+        const displayAngle = (this.status === 'playing') ? lerpAngle(this.prevAngle, this.angle, alpha) : this.angle;
 
         // 1. Fill Off-Track
         ctx.fillStyle = CONFIG.offTrackColor;
@@ -1355,7 +1682,8 @@ export class RealTimeRacer {
         // 2. Camera: dynamic look-ahead based on velocity to prevent whipping
         const speed = this.cachedSpeed;
         const narrowViewport = window.innerWidth <= 768;
-        this.zoom = narrowViewport ? 0.75 : 1.0;
+        const mobileCameraMode = this.isCoarsePointer || narrowViewport;
+        this.zoom = mobileCameraMode ? 0.75 : 1.0;
 
         // Target offset uses physical velocity, which takes time to change, 
         // unlike the immediate response of steering angle
@@ -1363,8 +1691,8 @@ export class RealTimeRacer {
         let targetLookAheadY = 0;
 
         if (speed > 1) {
-            const multiplier = narrowViewport ? 12 : 5;
-            const maxOffset = narrowViewport ? Math.min(cw, ch) / 2.5 : Math.min(cw, ch) / 5;
+            const multiplier = mobileCameraMode ? 12 : 5;
+            const maxOffset = mobileCameraMode ? Math.min(cw, ch) / 2.5 : Math.min(cw, ch) / 5;
 
             targetLookAheadX = this.velocity.x * multiplier;
             targetLookAheadY = this.velocity.y * multiplier;
@@ -1376,12 +1704,7 @@ export class RealTimeRacer {
             }
         }
 
-        // Initialize smoothing variables if they don't exist
-        this._lookAheadX = this._lookAheadX || 0;
-        this._lookAheadY = this._lookAheadY || 0;
-
-        // Smoothly approach the target offset over time 
-        // 1 - exp(-dt * 4) achieves ~98% of target within 1 second.
+        // Keep the original camera lead response; only the rendered car uses corrected interpolation.
         const lerpFactor = 1 - Math.exp(-dt * 4);
 
         this._lookAheadX += (targetLookAheadX - this._lookAheadX) * lerpFactor;
@@ -1403,10 +1726,9 @@ export class RealTimeRacer {
         // 4. Skid Marks - removed slow clip operation
         if (this.skidMarks.length > 0) {
             ctx.fillStyle = CONFIG.skidColor;
-            const skidCount = this.frameSkip > 0 ? Math.min(this.skidMarks.length, 50) : this.skidMarks.length;
             const startIdx = this.frameSkip > 0 ? Math.max(0, this.skidMarks.length - 50) : 0;
 
-            for (let i = startIdx; i < skidCount; i++) {
+            for (let i = startIdx; i < this.skidMarks.length; i++) {
                 const m = this.skidMarks[i];
                 ctx.save();
                 ctx.translate(m.x * gs, m.y * gs);
@@ -1428,6 +1750,9 @@ export class RealTimeRacer {
             for (let i = traceStep; i < this.routeTrace.length; i += traceStep) {
                 ctx.lineTo(this.routeTrace[i].x * gs, this.routeTrace[i].y * gs);
             }
+            const lastTracePoint = this.routeTrace[this.routeTrace.length - 1];
+            ctx.lineTo(lastTracePoint.x * gs, lastTracePoint.y * gs);
+            ctx.lineTo(displayPos.x * gs, displayPos.y * gs);
             ctx.stroke();
         }
 

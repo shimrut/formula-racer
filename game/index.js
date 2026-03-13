@@ -1,6 +1,4 @@
-import { RealTimeRacer } from './engine.js?v=0.3';
+import { RealTimeRacer } from './engine.js?v=0.344';
 
 const game = new RealTimeRacer();
-
-// Make game available globally for onclick handlers in HTML
-window.game = game;
+// Debug/test hooks (including game reference) are on window.__RACER_DEBUG__
