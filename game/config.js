@@ -13,7 +13,7 @@ export const CONFIG = {
     carColor: '#ef4444', 
     carAccent: '#171717',
     
-    skidColor: 'rgba(0,0,0,0.4)',
+    skidColor: 'rgba(0, 0, 0, 0.4)',
     smokeColor: 'rgba(200,200,200,0.4)',
     sparkColor: '#fcd34d',
     

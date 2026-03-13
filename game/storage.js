@@ -47,12 +47,11 @@ export async function saveLapTime(trackName, lapTime) {
                 };
             }
             
-            // Add new lap time
+            // Add new lap time and keep only the 5 best
             trackData.lapTimes.push(lapTime);
-            
-            // Keep only last 10 lap times
-            if (trackData.lapTimes.length > 10) {
-                trackData.lapTimes = trackData.lapTimes.slice(-10);
+            trackData.lapTimes.sort((a, b) => a - b);
+            if (trackData.lapTimes.length > 5) {
+                trackData.lapTimes = trackData.lapTimes.slice(0, 5);
             }
             
             // Update best time (use proper floating point comparison)
@@ -66,6 +65,23 @@ export async function saveLapTime(trackName, lapTime) {
         };
         
         getRequest.onerror = () => reject(getRequest.error);
+    });
+}
+
+export async function hasAnyTrackData() {
+    const database = await initDB();
+
+    return new Promise((resolve, reject) => {
+        const transaction = database.transaction([STORE_NAME], 'readonly');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.openCursor();
+
+        request.onsuccess = (event) => {
+            const cursor = event.target.result;
+            resolve(cursor !== null);
+        };
+
+        request.onerror = () => reject(request.error);
     });
 }
 
