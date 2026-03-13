@@ -3,7 +3,7 @@
 
 <head>
     <script>
-        if (location.hostname === 'vectorgp.run') {
+        if (location.hostname === 'vectorgp.run' || location.hostname === 'me.alfread.io') {
             const s = document.createElement('script');
             s.defer = true;
             s.src = 'https://cloud.umami.is/script.js';
@@ -16,10 +16,10 @@
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Vector Grand Prix: Formula Racing Simulator</title>
     <meta name="description"
-        content="Vector Grand Prix: A high-stakes formula racing simulator. Master the physics of speed on challenging circuits in this precision-based vector racing game. Compete for the fastest lap times on every track.">
+        content="Vector Grand Prix is a free browser-based formula racing game. Steer with arrow keys or A/D, drift around circuits, and set your fastest lap without crashing. New track every Wednesday at 07:00 UTC.">
     <meta name="keywords"
         content="formula racing, grand prix game, vector racing, physics-based racing, circuit driver, retro racer, browser game, high speed racing, lap time challenge, global circuits">
-    <meta name="author" content="Vector Grand Prix Team">
+    <meta name="author" content="Bogdan Popa (@shimrut)">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
@@ -39,22 +39,27 @@
 
     <link rel="canonical" href="https://vectorgp.run/">
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=0.345">
 
-    <!-- Structured Data -->
+    <!-- Structured Data (GEO: quotable summary for generative engines) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "Vector Grand Prix",
-      "operatingSystem": "Web",
-      "applicationCategory": "GameApplication",
-      "genre": "Racing Game",
-      "description": "A precision-based vector racing game focused on formula racing mechanics and high-speed circuit mastery.",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
+      "@type": "WebPage",
+      "name": "Vector Grand Prix: Formula Racing Simulator",
+      "description": "Vector Grand Prix is a free browser-based formula racing game. You steer with arrow keys or A/D, drift around circuits, and try to set your fastest lap without crashing. New track every Wednesday at 07:00 UTC. Play in the browser on desktop or mobile.",
+      "inLanguage": "en",
+      "url": "https://vectorgp.run/",
+      "mainEntity": {
+        "@type": "VideoGame",
+        "name": "Vector Grand Prix",
+        "description": "Free browser formula racing game. Steer with keyboard or touch, drift around circuits, set the fastest lap without crashing. New track weekly (Wed 07:00 UTC).",
+        "genre": "Racing",
+        "gamePlatform": "Web browser",
+        "playMode": "SinglePlayer",
+        "inLanguage": "en",
+        "author": { "@type": "Person", "name": "Bogdan Popa (@shimrut)" },
+        "url": "https://vectorgp.run/"
       }
     }
     </script>
@@ -62,8 +67,8 @@
 
 <body>
 
-    <header>
-        <h1>Vector <span class="full-name">Grand Prix</span><span class="short-name" style="display: none;">GP</span>
+    <header role="banner">
+        <h1 id="site-title">Vector <span class="full-name">Grand Prix</span><span class="short-name" style="display: none;">GP</span>
         </h1>
 
         <div class="header-right">
@@ -72,38 +77,52 @@
                 <span class="htp-text">How to Play</span>
                 <span class="htp-icon" style="display: none;">?</span>
             </button>
-            <!-- Collapsible Controls -->
-            <div class="header-controls" id="header-controls">
-                <select id="track-select">
-                    <option value="circuit">Classic Circuit</option>
-                    <option value="sunlitTemple" hidden>Sunlit Temple</option>
-                    <option value="royalPlateau" hidden>Royal Plateau</option>
-                    <option value="mistwoodSerpent" hidden>Mistwood Serpent</option>
-                    <option value="harborParkLoop">Harbor Park Loop</option>
-                    <option value="jadeSpiralCircuit" hidden>Jade Spiral Circuit</option>
-                </select>
-            </div>
         </div>
     </header>
 
-    <div id="game-container">
-        <!-- Stats HUD Overlay -->
-        <div class="stats">
-            <div class="stat-item">LAP: <span id="time-val">0.00</span></div>
-            <div class="stat-item">KPH: <span id="speed-val">0</span></div>
-            <div class="stat-item" id="best-time-display" style="display: none;">BEST: <span
-                    id="best-time-val">--</span></div>
+    <main id="game-container" role="main" aria-label="Vector Grand Prix racing game">
+        <!-- HUD Bar -->
+        <div class="hud-bar">
+            <div class="hud-stats">
+                <div class="hud-stat"><span class="hud-label">KPH</span><span id="speed-val" class="hud-value">0</span></div>
+                <div class="hud-divider"></div>
+                <div class="hud-stat"><span class="hud-label">LAP</span><span id="time-val" class="hud-value">0.00</span></div>
+                <div class="hud-divider" id="best-time-divider" style="display: none;"></div>
+                <div class="hud-stat" id="best-time-display" style="display: none;"><span class="hud-label">BEST</span><span id="best-time-val" class="hud-value">--</span></div>
+            </div>
+            <select id="track-select">
+                <option value="circuit">Classic Circuit</option>
+                <option value="sunlitTemple" hidden>Sunlit Temple</option>
+                <option value="royalPlateau" hidden>Royal Plateau</option>
+                <option value="mistwoodSerpent" hidden>Mistwood Serpent</option>
+                <option value="harborParkLoop">Harbor Park Loop</option>
+                <option value="jadeSpiralCircuit">Jade Spiral Circuit</option>
+            </select>
         </div>
 
-        <canvas id="gameCanvas"></canvas>
+        <canvas id="gameCanvas" aria-label="Racing track and car"></canvas>
         <div class="key-hint">
             A / D or Arrows to Steer
-            <span class="version-label">v 0.21</span>
+            <span class="version-label">v 0.344</span>
         </div>
 
         <!-- Start Screen Overlay -->
-        <div id="start-overlay">
-            <button id="start-btn">Start Your Engines</button>
+        <div id="start-overlay" role="region" aria-labelledby="game-how-to-play-heading">
+            <div id="start-group">
+                <section id="first-time-msg" aria-labelledby="game-how-to-play-heading">
+                    <div class="ftu-header">
+                        <span class="ftu-eyebrow">Welcome to</span>
+                        <span class="ftu-title" id="game-how-to-play-heading">Vector GP</span>
+                    </div>
+                    <ul class="ftu-rules" id="game-rules">
+                        <li>Start your engine to auto-accelerate</li>
+                        <li>Steer with arrows and drift around corners</li>
+                        <li>Set your personal best without crashing</li>
+                    </ul>
+                    <div class="ftu-cadence">New track every Wednesday at 07:00 UTC</div>
+                </section>
+                <button id="start-btn">Start Your Engine</button>
+            </div>
         </div>
 
         <!-- F1 Lights (3 Steps) -->
@@ -127,47 +146,50 @@
 
 
 
-    <div id="modal" class="modal">
+    <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal-card">
             <div id="modal-main-view" class="modal-view active-view">
                 <h2 id="modal-title">CRASH</h2>
                 <p id="modal-msg">Terminal Damage</p>
+                <div id="modal-stats-row" class="modal-stats-row" style="display: none;"></div>
 
-                <div id="modal-best-time" class="modal-best-time" style="display: none;"></div>
+                <div id="modal-preview-wrap" class="modal-preview-wrap" style="display: none;">
+                    <img id="modal-preview-img" class="modal-preview-img" alt="Lap preview" />
+                </div>
 
                 <div id="share-panel" class="share-panel">
                     <button id="share-btn" type="button">Challenge a Friend</button>
                 </div>
 
                 <button id="modal-reset-btn">Box Box <kbd class="modal-btn-kbd">R</kbd></button>
-                <button id="view-runs-btn" class="text-link-btn" type="button" style="display: none;">View Last 10
-                    Runs</button>
             </div>
 
             <div id="modal-runs-view" class="modal-view">
-                <h3 class="modal-subtitle">Last 10 Runs</h3>
                 <div id="modal-lap-times" class="modal-lap-times-container"></div>
                 <button id="back-to-main-btn" class="text-link-btn" type="button">Back</button>
             </div>
         </div>
-    </div>
+    </main>
 
     <!-- How To Play Modal -->
-    <div id="how-to-play-modal" class="modal">
+    <div id="how-to-play-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="htp-title">
         <div class="modal-card">
-            <h2 style="font-size: 2.5rem;">How to Play</h2>
-            <div class="htp-instructions">
-                <p>🏎️ The car accelerates on its own.</p>
-                <p>🕹️ Use A/D or the Arrows to steer.</p>
-                <p>🏁 End a run without crashing into the walls.</p>
-            </div>
+            <h2 id="htp-title" style="font-size: 2.5rem;">How to Play</h2>
+            <section class="htp-instructions" aria-labelledby="htp-title">
+                <ul class="htp-rules">
+                    <li>Start your engine to auto-accelerate</li>
+                    <li>Steer with arrows and drift around corners</li>
+                    <li>Set your personal best without crashing</li>
+                </ul>
+                <div class="htp-cadence">New track every Wednesday at 07:00 UTC</div>
+            </section>
             <button id="close-htp-btn"
                 style="width: 100%; margin-top: 1rem; padding: 1rem; background: var(--accent-color); color: white; border: none; border-radius: 4px; font-weight: 800; text-transform: uppercase; cursor: pointer;">Got
                 it</button>
         </div>
     </div>
 
-    <script type="module" src="game/index.js?v=0.3"></script>
+    <script type="module" src="game/index.js?v=0.344"></script>
 </body>
 
 </html>
