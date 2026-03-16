@@ -4,19 +4,30 @@ const DB_VERSION = 1;
 const STORE_NAME = 'lapTimes';
 
 let db = null;
+let dbPromise = null;
+let hasAnyTrackDataCache = null;
 
 async function initDB() {
     if (db) return db;
-    
-    return new Promise((resolve, reject) => {
+
+    if (dbPromise) return dbPromise;
+
+    dbPromise = new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
-        
-        request.onerror = () => reject(request.error);
+
+        request.onerror = () => {
+            dbPromise = null;
+            reject(request.error);
+        };
         request.onsuccess = () => {
             db = request.result;
+            db.onclose = () => {
+                db = null;
+                dbPromise = null;
+            };
             resolve(db);
         };
-        
+
         request.onupgradeneeded = (event) => {
             const database = event.target.result;
             if (!database.objectStoreNames.contains(STORE_NAME)) {
@@ -25,6 +36,8 @@ async function initDB() {
             }
         };
     });
+
+    return dbPromise;
 }
 
 export async function saveLapTime(trackName, lapTime) {
@@ -60,7 +73,10 @@ export async function saveLapTime(trackName, lapTime) {
             }
             
             const putRequest = store.put(trackData);
-            putRequest.onsuccess = () => resolve(trackData);
+            putRequest.onsuccess = () => {
+                hasAnyTrackDataCache = true;
+                resolve(trackData);
+            };
             putRequest.onerror = () => reject(putRequest.error);
         };
         
@@ -69,6 +85,8 @@ export async function saveLapTime(trackName, lapTime) {
 }
 
 export async function hasAnyTrackData() {
+    if (hasAnyTrackDataCache === true) return true;
+
     const database = await initDB();
 
     return new Promise((resolve, reject) => {
@@ -78,7 +96,11 @@ export async function hasAnyTrackData() {
 
         request.onsuccess = (event) => {
             const cursor = event.target.result;
-            resolve(cursor !== null);
+            const hasAnyData = cursor !== null;
+            if (hasAnyData) {
+                hasAnyTrackDataCache = true;
+            }
+            resolve(hasAnyData);
         };
 
         request.onerror = () => reject(request.error);
