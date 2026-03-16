@@ -9,15 +9,17 @@ export const CONFIG = {
     // F1 Style Colors
     curbRed: '#ef4444',
     curbWhite: '#f8fafc',
-    
-    carColor: '#ef4444', 
-    carAccent: '#171717',
-    
+    carColor: '#dc2626',
+    carAccent: '#facc15',
+    tireColor: '#171717',
+
     skidColor: 'rgba(0, 0, 0, 0.4)',
     smokeColor: 'rgba(200,200,200,0.4)',
     sparkColor: '#fcd34d',
     
     finishLineColor: '#fff',
+    finishLineDarkColor: '#020617',
+    finishLineBorderColor: 'rgba(248, 250, 252, 0.45)',
     
     // Physics Constants
     accel: 28.0, // Tuned for ~220 kph top speed
