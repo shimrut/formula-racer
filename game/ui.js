@@ -1,6 +1,7 @@
 export class GameUi {
-    constructor({ isCoarsePointer, onTrackChange, onStart, onReset, onShare }) {
+    constructor({ isCoarsePointer, onTrackChange, onStart, onReset, onShare, onShowPersonalBests }) {
         this.trackSelect = document.getElementById('track-select');
+        this.hudStatsBtn = document.getElementById('hud-stats-btn');
         this.timeVal = document.getElementById('time-val');
         this.speedVal = document.getElementById('speed-val');
         this.bestTimeDisplay = document.getElementById('best-time-display');
@@ -43,12 +44,16 @@ export class GameUi {
         this._activeTrapModal = null;
         this._modalTrapKeydown = null;
         this._modalCloseFallbackTimer = null;
+        this._mainModalIsCrash = false;
+        this._hasPersonalBests = false;
+        this._hudPersonalBestsAllowed = true;
+        this._runsViewMode = 'back';
 
         this.anchorHudBar();
         this.bindTrackSelection(isCoarsePointer, onTrackChange);
         this.bindModalViewToggles();
         this.bindHowToPlay();
-        this.bindPrimaryActions(onStart, onReset, onShare);
+        this.bindPrimaryActions(onStart, onReset, onShare, onShowPersonalBests);
         this.updateShareState({ visible: false, ready: false, busy: false });
     }
 
@@ -95,19 +100,13 @@ export class GameUi {
     }
 
     bindModalViewToggles() {
-        if (this.modalStatsRow) {
-            this.modalStatsRow.addEventListener('click', () => {
-                if (this.modalStatsRow.dataset.hasRuns === 'true') {
-                    if (this.modalMainView) this.modalMainView.classList.remove('active-view');
-                    if (this.modalRunsView) this.modalRunsView.classList.add('active-view');
-                }
-            });
-        }
-
         if (this.backToMainBtn) {
             this.backToMainBtn.addEventListener('click', () => {
-                if (this.modalRunsView) this.modalRunsView.classList.remove('active-view');
-                if (this.modalMainView) this.modalMainView.classList.add('active-view');
+                if (this._runsViewMode === 'close') {
+                    this.closeModal();
+                    return;
+                }
+                this.showMainModalView();
             });
         }
     }
@@ -121,9 +120,12 @@ export class GameUi {
         }
     }
 
-    bindPrimaryActions(onStart, onReset, onShare) {
+    bindPrimaryActions(onStart, onReset, onShare, onShowPersonalBests) {
         if (this.startBtn && onStart) {
             this.startBtn.addEventListener('click', onStart);
+        }
+        if (this.hudStatsBtn && onShowPersonalBests) {
+            this.hudStatsBtn.addEventListener('click', onShowPersonalBests);
         }
         if (this.modalResetBtn && onReset) {
             this.modalResetBtn.addEventListener('click', onReset);
@@ -198,11 +200,26 @@ export class GameUi {
             this.bestTimeVal.textContent = bestLapTime.toFixed(2);
             this.bestTimeDisplay.style.display = 'flex';
             if (this.bestTimeDivider) this.bestTimeDivider.style.display = 'block';
+            this._hasPersonalBests = true;
+            this.updateHudStatsButtonState();
             return;
         }
 
         this.bestTimeDisplay.style.display = 'none';
         if (this.bestTimeDivider) this.bestTimeDivider.style.display = 'none';
+        this._hasPersonalBests = false;
+        this.updateHudStatsButtonState();
+    }
+
+    setHudPersonalBestsOpenAllowed(isAllowed) {
+        this._hudPersonalBestsAllowed = Boolean(isAllowed);
+        this.updateHudStatsButtonState();
+    }
+
+    updateHudStatsButtonState() {
+        if (this.hudStatsBtn) {
+            this.hudStatsBtn.disabled = !(this._hasPersonalBests && this._hudPersonalBestsAllowed);
+        }
     }
 
     refreshStartOverlay(status, hasAnyData) {
@@ -253,7 +270,8 @@ export class GameUi {
         if (!this.modal || !this.modalTitle) return;
 
         this.modalTitle.textContent = title;
-        this.modal.classList.toggle('modal--crash', Boolean(lapData?.isCrash));
+        this._mainModalIsCrash = Boolean(lapData?.isCrash);
+        this.modal.classList.toggle('modal--crash', this._mainModalIsCrash);
 
         if (lapData) {
             if (this.modalMsg) this.modalMsg.style.display = 'none';
@@ -292,12 +310,29 @@ export class GameUi {
         }
 
         if (this.modalMainView && this.modalRunsView) {
-            this.modalMainView.classList.add('active-view');
-            this.modalRunsView.classList.remove('active-view');
+            this.showMainModalView();
         }
 
         this.updateShareState({ visible: canShare, ready: false, busy: false });
         this.modal.classList.add('active');
+        requestAnimationFrame(() => this.activateModalFocusTrap(this.modal));
+    }
+
+    showRunsModal(lapTimesArray, bestTime, currentTime = null, returnMode = 'close') {
+        if (!this.modal || !this.modalTitle || !this.modalLapTimes || !this.modalRunsView || !this.modalMainView) return;
+
+        const wasActive = this.isModalActive();
+        this.modal.classList.remove('modal--crash');
+        this.renderLapTimesList(this.modalLapTimes, lapTimesArray, bestTime, currentTime);
+        this._runsViewMode = returnMode === 'back' ? 'back' : 'close';
+        if (this.backToMainBtn) this.backToMainBtn.textContent = this._runsViewMode === 'back' ? 'Back' : 'Close';
+        this.modalMainView.classList.remove('active-view');
+        this.modalRunsView.classList.add('active-view');
+        this.modal.classList.add('active');
+        if (wasActive) {
+            if (this.backToMainBtn) this.backToMainBtn.focus();
+            return;
+        }
         requestAnimationFrame(() => this.activateModalFocusTrap(this.modal));
     }
 
@@ -334,6 +369,18 @@ export class GameUi {
             modal.removeEventListener('transitionend', onTransitionEnd);
             cleanupAfterClose();
         }, 350);
+    }
+
+    showMainModalView() {
+        this._runsViewMode = 'back';
+        if (this.backToMainBtn) this.backToMainBtn.textContent = 'Back';
+        if (this.modal) this.modal.classList.toggle('modal--crash', this._mainModalIsCrash);
+        if (this.modalRunsView) this.modalRunsView.classList.remove('active-view');
+        if (this.modalMainView) this.modalMainView.classList.add('active-view');
+    }
+
+    isStandaloneRunsViewActive() {
+        return this.isModalActive() && this._runsViewMode === 'close' && Boolean(this.modalRunsView?.classList.contains('active-view'));
     }
 
     setModalStatCenter(labelText, valueText, valueClass) {

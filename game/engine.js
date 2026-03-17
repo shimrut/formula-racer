@@ -1,13 +1,13 @@
-import { getIntersection } from './math.js?v=0.4';
-import { CONFIG } from './config.js?v=0.4';
-import { TRACKS } from './tracks.js?v=0.4';
-import { buildTrackRuntime } from './core/track-runtime.js?v=0.4';
-import { recordRunPoint, updateSimulation } from './core/simulation.js?v=0.4';
-import { saveLapTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.4';
-import { AnalyticsService } from './services/analytics.js?v=0.4';
-import { SessionFlagStore } from './services/session-flags.js?v=0.4';
-import { ShareService } from './services/share.js?v=0.4';
-import { GameUi } from './ui.js?v=0.4';
+import { getIntersection } from './math.js?v=0.41';
+import { CONFIG } from './config.js?v=0.41';
+import { TRACKS } from './tracks.js?v=0.41';
+import { buildTrackRuntime } from './core/track-runtime.js?v=0.41';
+import { recordRunPoint, updateSimulation } from './core/simulation.js?v=0.41';
+import { saveLapTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.41';
+import { AnalyticsService } from './services/analytics.js?v=0.41';
+import { SessionFlagStore } from './services/session-flags.js?v=0.41';
+import { ShareService } from './services/share.js?v=0.41';
+import { GameUi } from './ui.js?v=0.41';
 
 // --- Game Engine ---
 export class RealTimeRacer {
@@ -93,6 +93,7 @@ export class RealTimeRacer {
             isCoarsePointer: this.isCoarsePointer,
             onTrackChange: (trackKey) => this.loadTrack(trackKey),
             onStart: () => this.handleStartButton(),
+            onShowPersonalBests: () => this.showPersonalBests(),
             onReset: () => {
                 this.raceStats.start++;
                 this.reset(true);
@@ -274,6 +275,7 @@ export class RealTimeRacer {
         if (this.status !== 'ready') return;
 
         this.status = 'starting';
+        this.ui.setHudPersonalBestsOpenAllowed(false);
         this.runHistory = [];
         this.runHistoryTimer = 0;
         this.recordRunPoint(this.pos);
@@ -674,6 +676,10 @@ export class RealTimeRacer {
         if (!e.key) return;
         if (e.key.toLowerCase() === 'r' && isDown && this.ui.isModalActive()) {
             e.preventDefault();
+            if (this.ui.isStandaloneRunsViewActive()) {
+                this.ui.closeModal();
+                return;
+            }
             this.raceStats.start++;
             this.reset(true);
             return;
@@ -730,6 +736,7 @@ export class RealTimeRacer {
 
         if (nextState.events.crashImpact !== null) {
             this.raceStats.crash++;
+            this.ui.setHudPersonalBestsOpenAllowed(true);
             this.ui.showModal('CRASHED', null, { isCrash: true, impact: nextState.events.crashImpact }, false);
         }
         if (nextState.events.winTriggered) {
@@ -782,6 +789,7 @@ export class RealTimeRacer {
         this.bestLapTime = trackData.bestTime;
         this.hasAnyData = true;
         this.ui.setBestTime(this.bestLapTime);
+        this.ui.setHudPersonalBestsOpenAllowed(true);
 
         // Check if this is a new best
         const isNewBest = trackData.bestTime === finalTime && (previousBest === null || previousBest === undefined || finalTime < previousBest);
@@ -815,6 +823,28 @@ export class RealTimeRacer {
         });
     }
 
+    async showPersonalBests() {
+        if (
+            this.status === 'playing'
+            || this.status === 'starting'
+            || this.ui.isStandaloneRunsViewActive()
+            || this.bestLapTime === null
+            || this.bestLapTime === undefined
+        ) return;
+
+        const trackKey = this.currentTrackKey;
+        const requestId = this.trackLoadRequestId;
+        try {
+            const trackData = await getTrackData(trackKey);
+            if (requestId !== this.trackLoadRequestId || this.currentTrackKey !== trackKey) return;
+            if (!trackData.lapTimes?.length || trackData.bestTime === null || trackData.bestTime === undefined) return;
+            const returnMode = this.ui.isModalActive() ? 'back' : 'close';
+            this.ui.showRunsModal(trackData.lapTimes, trackData.bestTime, null, returnMode);
+        } catch (error) {
+            console.error('Error loading personal bests:', error);
+        }
+    }
+
     reset(autoStart = false) {
         // Clear any running start sequences
         this.clearTimers();
@@ -841,6 +871,7 @@ export class RealTimeRacer {
         this.lastSharePayload = null;
         this.ui.closeModal();
         this.shareService.reset({ visible: false });
+        this.ui.setHudPersonalBestsOpenAllowed(!autoStart);
 
         // Reset Visuals
         this.ui.resetCountdown();

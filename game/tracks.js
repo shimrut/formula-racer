@@ -400,16 +400,17 @@ export const TRACKS = {
             Point(5, 24),
             Point(9, 21),
             Point(14, 19),
-            Point(20, 18),
-            Point(25, 16),
-            Point(25.758, 11.995),
+            Point(20.293, 18.297),
+            Point(23.47, 17.122),
+            Point(24.772, 14.96),
+            Point(25.294, 11.957),
             Point(25, 8),
             Point(25.087, 5.974),
             Point(26.586, 4.107),
             Point(29.684, 4.083)
         ],
         inner: [
-            Point(35.992, 9.261),
+            Point(36.171, 9.067),
             Point(44, 10),
             Point(54, 11),
             Point(60.015, 11.995),
@@ -433,23 +434,24 @@ export const TRACKS = {
             Point(13, 26),
             Point(18, 25),
             Point(23, 24),
-            Point(29, 22),
-            Point(30.352, 19.425),
-            Point(30.403, 15.541),
-            Point(30.361, 12.82),
-            Point(29.479, 10.51),
-            Point(29.804, 8.565),
+            Point(27.26, 22.146),
+            Point(29.009, 19.624),
+            Point(30.36, 15.608),
+            Point(30.237, 12.873),
+            Point(30.121, 10.897),
+            Point(30.072, 9.398),
+            Point(30.605, 8.699),
             Point(33, 8.721)
         ],
-        startLine: { p1: Point(38.975, 4.412), p2: Point(38.926, 9.558) },
+        startLine: { p1: Point(38.975, 4.412), p2: Point(38.934, 9.339) },
         startPos: Point(36, 7),
-        startAngle: 0,
+        startAngle: 0.1,
         checkpoints: [
             { p1: Point(64.01, 7.559), p2: Point(58.936, 12.468) },
             { p1: Point(57.854, 24.349), p2: Point(55.151, 19.382) },
             { p1: Point(28.158, 40.516), p2: Point(25.663, 32.75) },
             { p1: Point(2.642, 28.016), p2: Point(10.367, 28.074) },
-            { p1: Point(24.968, 10.177), p2: Point(30.194, 9.176) }
+            { p1: Point(24.968, 10.177), p2: Point(30.407, 9.184) }
         ]
     }
 };
