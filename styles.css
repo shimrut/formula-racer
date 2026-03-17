@@ -189,6 +189,24 @@ select:hover {
     align-items: center;
     gap: 0;
     font-family: 'Courier New', monospace;
+    background: transparent;
+    border: none;
+    color: inherit;
+    margin: 0;
+    pointer-events: auto;
+    cursor: pointer;
+    padding: 0;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+}
+
+.hud-stats:disabled {
+    cursor: default;
+    opacity: 1;
+}
+
+.hud-stats:not(:disabled):hover {
+    opacity: 0.92;
 }
 
 .hud-stat {
@@ -827,14 +845,6 @@ button.danger:hover {
     margin-bottom: -3rem;
     margin-top: 1rem;
     z-index: 1000;
-}
-
-.modal-stats-row[data-has-runs="true"] {
-    cursor: pointer;
-}
-
-.modal-stats-row[data-has-runs="true"]:hover {
-    opacity: 0.9;
 }
 
 .modal-stat-left {
