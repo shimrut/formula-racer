@@ -39,7 +39,7 @@
 
     <link rel="canonical" href="https://vectorgp.run/">
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="styles.css?v=0.4">
+    <link rel="stylesheet" href="styles.css?v=0.41">
 
     <!-- Structured Data (GEO: quotable summary for generative engines) -->
     <script type="application/ld+json">
@@ -83,28 +83,28 @@
     <main id="game-container" role="main" aria-label="Vector Grand Prix racing game">
         <!-- HUD Bar -->
         <div class="hud-bar">
-            <div class="hud-stats">
+            <button id="hud-stats-btn" class="hud-stats" type="button" aria-label="Show your 5 personal best lap times" disabled>
                 <div class="hud-stat"><span class="hud-label">KPH</span><span id="speed-val" class="hud-value">0</span></div>
                 <div class="hud-divider"></div>
                 <div class="hud-stat"><span class="hud-label">LAP</span><span id="time-val" class="hud-value">0.00</span></div>
                 <div class="hud-divider" id="best-time-divider" style="display: none;"></div>
                 <div class="hud-stat" id="best-time-display" style="display: none;"><span class="hud-label">BEST</span><span id="best-time-val" class="hud-value">--</span></div>
-            </div>
+            </button>
             <select id="track-select">
                 <option value="circuit">Classic Circuit</option>
                 <option value="sunlitTemple" hidden>Sunlit Temple</option>
                 <option value="royalPlateau" hidden>Royal Plateau</option>
                 <option value="mistwoodSerpent" hidden>Mistwood Serpent</option>
-                <option value="harborParkLoop">Harbor Park Loop</option>
+                <option value="harborParkLoop" hidden>Harbor Park Loop</option>
                 <option value="jadeSpiralCircuit">Jade Spiral Circuit</option>
-                <option value="cedarRidgeCircuit" hidden>Cedar Ridge Circuit</option>
+                <option value="cedarRidgeCircuit">Cedar Ridge Circuit</option>
             </select>
         </div>
 
         <canvas id="gameCanvas" aria-label="Racing track and car"></canvas>
         <div class="key-hint">
             A / D or Arrows to Steer
-            <span class="version-label">v 0.4</span>
+            <span class="version-label">v 0.41</span>
         </div>
 
         <!-- Start Screen Overlay -->
@@ -190,7 +190,7 @@
         </div>
     </div>
 
-    <script type="module" src="game/index.js?v=0.4"></script>
+    <script type="module" src="game/index.js?v=0.41"></script>
 </body>
 
 </html>
