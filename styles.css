@@ -10,6 +10,7 @@
     --text-color: #f8fafc;
     --accent-color: #ef4444; /* Racing Red */
     --danger-color: #ef4444;
+    --modal-stack-btn-min-height: 3.5rem;
     
     /* New Design Tokens */
     --glass-bg: rgba(15, 23, 42, 0.6);
@@ -25,7 +26,6 @@
 
 /* Keyboard focus: visible ring only when focusing via keyboard */
 button:focus-visible,
-select:focus-visible,
 .text-link-btn:focus-visible,
 .touch-btn:focus-visible,
 a:focus-visible {
@@ -52,9 +52,28 @@ body {
     /* iOS Safari */
 }
 
+body.start-overlay-active .hud-bar,
+body.start-overlay-active .key-hint,
+body.start-selection-active .hud-bar,
+body.start-selection-active .key-hint {
+    display: none !important;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 header {
     width: 100%;
-    padding: 0.8rem 1.5rem;
+    padding: 0.6rem 1.2rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -65,7 +84,12 @@ header {
     /* For absolute menu positioning */
 }
 
-h1 {
+h1#site-title {
+    min-width: 0;
+}
+
+h1,
+a.site-logo {
     margin: 0;
     font-size: 1.5rem;
     font-weight: 800;
@@ -76,22 +100,15 @@ h1 {
 }
 
 h1 .full-name,
-h1 .short-name {
+h1 .short-name,
+a.site-logo .full-name {
     color: var(--accent-color);
 }
 
 /* Site logo (non-heading, for subpages with single h1) */
 a.site-logo {
-    margin: 0;
-    font-size: 1.5rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    color: #fff;
-    text-transform: uppercase;
-    font-style: italic;
     text-decoration: none;
 }
-a.site-logo .full-name { color: var(--accent-color); }
 a.site-logo:hover { color: #fff; }
 
 /* Container for right-side header items */
@@ -99,6 +116,118 @@ a.site-logo:hover { color: #fff; }
     display: flex;
     align-items: center;
     gap: 1.5rem;
+}
+
+/* Same chrome as .header-menu-trigger: flat, shared hover */
+.header-support-link,
+.header-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    border: none;
+    border-radius: 0.35rem;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+    font: inherit;
+}
+
+.header-support-link {
+    min-height: 2.75rem;
+    padding: 0.4rem 0.65rem;
+    font-weight: 700;
+    font-size: 0.8725rem;
+    letter-spacing: 0.05em;
+    text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.15s ease;
+}
+
+.header-menu {
+    position: relative;
+}
+
+.header-menu-trigger {
+    padding: 0.4rem;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+}
+
+.header-support-link:hover,
+.header-menu-trigger:hover {
+    color: var(--accent-color);
+}
+
+.header-menu-trigger svg {
+    display: block;
+}
+
+.header-nav-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 11rem;
+    padding: 0;
+    margin: 0;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 0.5rem;
+    box-shadow: var(--card-shadow);
+    z-index: 1001;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.header-nav-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.35rem 0;
+}
+
+.header-nav-list li {
+    margin: 0;
+}
+
+.header-nav-item {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0.65rem 1rem;
+    border: none;
+    background: transparent;
+    color: var(--text-color);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: left;
+    text-decoration: none;
+    text-transform: none;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.header-nav-item:hover,
+.header-nav-item:focus-visible {
+    background: rgba(239, 68, 68, 0.12);
+    color: #fff;
+    outline: none;
+}
+
+.header-nav-item--credit {
+    margin-top: 0.2rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--glass-border);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #94a3b8;
+}
+
+.header-nav-item--credit:hover,
+.header-nav-item--credit:focus-visible {
+    color: #fff;
 }
 
 .settings-group {
@@ -123,23 +252,6 @@ a.site-logo:hover { color: #fff; }
     cursor: pointer;
 }
 
-select {
-    background-color: #1e293b;
-    color: var(--text-color);
-    border: 1px solid #334155;
-    padding: 0.5rem;
-    border-radius: 0.25rem;
-    font-family: inherit;
-    cursor: pointer;
-    outline: 2px solid transparent;
-    outline-offset: 2px;
-    font-weight: 600;
-}
-
-select:hover {
-    border-color: var(--accent-color);
-}
-
 .hud-bar {
     position: fixed;
     top: 4rem; /* overridden by JS to sit below header */
@@ -149,39 +261,39 @@ select:hover {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: rgba(2, 6, 23, 0.75);
-    border: 1px solid #1e293b;
-    border-radius: 6px;
-    padding: 0.4rem 0.75rem;
-    backdrop-filter: blur(5px);
+    padding: 0;
+    gap: 0.45rem;
     pointer-events: none;
     white-space: nowrap;
 }
 
-.hud-bar select {
+.hud-track-btn {
     pointer-events: auto;
-    background: transparent;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right center;
-    border: none;
-    border-left: 1px solid #1e293b;
-    padding: 0.1rem 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2, 6, 23, 0.75);
+    border: 1px solid #1e293b;
+    padding: 0.25rem 0.95rem;
+    min-height: 2.2rem;
+    line-height: 1;
     font-size: 0.8rem;
-    border-radius: 0;
+    border-radius: 0.65rem;
     color: #fff;
+    font-family: inherit;
     font-weight: 600;
     cursor: pointer;
     outline: 2px solid transparent;
     outline-offset: 2px;
+    text-transform: none;
+    letter-spacing: 0;
     appearance: none;
     -webkit-appearance: none;
 }
 
-.hud-bar select:hover {
+.hud-track-btn:hover {
     color: #fff;
-    border-left-color: var(--accent-color);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23fff' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+    border-color: var(--accent-color);
 }
 
 .hud-stats {
@@ -189,15 +301,20 @@ select:hover {
     align-items: center;
     gap: 0;
     font-family: 'Courier New', monospace;
-    background: transparent;
-    border: none;
+    background: rgba(2, 6, 23, 0.75);
+    border: 1px solid #1e293b;
+    border-radius: 0.65rem;
     color: inherit;
     margin: 0;
+    min-width: 0;
     pointer-events: auto;
     cursor: pointer;
-    padding: 0;
+    padding: 0.25rem 0;
+    min-height: 2.2rem;
+    line-height: 1;
     outline: 2px solid transparent;
     outline-offset: 2px;
+    backdrop-filter: blur(5px);
 }
 
 .hud-stats:disabled {
@@ -213,11 +330,11 @@ select:hover {
     display: flex;
     align-items: baseline;
     gap: 0.4rem;
-    padding: 0 0.75rem;
+    padding: 0 0.7rem;
 }
 
 .hud-stat:first-child {
-    padding-left: 0;
+    padding-left: 0.75rem;
 }
 
 .hud-label {
@@ -280,33 +397,38 @@ canvas {
     box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
 }
 
+#gameCanvas {
+    opacity: 1;
+    transition: opacity 0.32s cubic-bezier(0.25, 0.82, 0.2, 1);
+}
+
+#gameCanvas.canvas-opacity-instant {
+    transition: none !important;
+}
+
 
 
 button {
     background-color: #334155;
     color: var(--text-color);
     border: none;
-    border-bottom: 3px solid #1e293b;
     padding: 0.5rem 1rem;
-    border-radius: 0.25rem;
+    border-radius: 0.75rem;
     font-weight: 700;
     cursor: pointer;
-    transition: all 0.1s;
+    transition: transform 0.1s ease, background-color 0.1s ease, filter 0.1s ease;
     text-transform: uppercase;
     font-size: 0.8rem;
     letter-spacing: 0.05em;
 }
 
-
-
 button:active {
-    transform: translateY(2px);
-    border-bottom-width: 0;
+    transform: scale(0.98);
+    filter: brightness(0.92);
 }
 
 button.danger {
     background-color: #7f1d1d;
-    border-bottom-color: #450a0a;
 }
 
 button.danger:hover {
@@ -382,8 +504,10 @@ button.danger:hover {
     display: none; /* Hidden until loadTrack completes (avoids flash for both new and returning players) */
     flex-direction: column;
     align-items: center;
-    margin-top: 10vh;
-    gap: 8rem;
+    width: min(100%, 32rem);
+    padding: 0 0.75rem;
+    margin-top: 0;
+    gap: 1rem;
 }
 
 #first-time-msg {
@@ -442,48 +566,194 @@ button.danger:hover {
     padding: 0.3rem 0;
 }
 
-.ftu-rules li::before {
-    content: counter(rule, decimal-leading-zero);
+.ftu-rules li::before,
+.htp-rules li::before {
     font-family: 'Courier New', monospace;
-    font-size: 0.7rem;
     font-weight: 700;
     color: var(--accent-color);
     flex-shrink: 0;
     line-height: 1.6;
 }
 
-.ftu-cadence {
+.ftu-rules li::before {
+    content: counter(rule, decimal-leading-zero);
+    font-size: 0.7rem;
+}
+
+.ftu-cadence,
+.htp-cadence {
     display: block;
-    width: 100%;
-    text-align: left;
     font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.5);
     border-left: 2px solid rgba(239, 68, 68, 0.45);
+}
+
+.ftu-cadence {
+    width: 100%;
+    text-align: left;
+    color: rgba(255, 255, 255, 0.5);
     padding-left: 0.6rem;
     box-sizing: border-box;
 }
 
-#start-btn {
+#start-btn,
+.track-start-btn {
     margin-top: 0;
-    font-size: 1.5rem;
-    padding: 1.5rem 3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    font-size: 1rem;
+    padding: 1rem 1.25rem;
     background: var(--accent-color);
     color: white;
     border: none;
-    border-radius: 8px;
+    border-radius: 0.75rem;
     cursor: pointer;
     text-transform: uppercase;
     font-weight: 800;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
     box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
     animation: pulse 2s infinite;
-    max-width: 90vw;
-    white-space: nowrap;
+}
+
+.returning-player-panel {
+    width: min(100%, 27rem);
+    display: grid;
+    justify-items: center;
+    gap: 1rem;
+}
+
+.returning-player-panel[hidden] {
+    display: none !important;
+}
+
+.track-selector-frame {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.track-carousel-shell {
+    width: 100%;
+    max-width: 100%;
     overflow: hidden;
-    text-overflow: ellipsis;
+}
+
+.track-carousel {
+    display: flex;
+    gap: 0.75rem;
+    width: max-content;
+    padding: 0 0 0.4rem;
+    touch-action: pan-y;
+    will-change: transform;
+    transition: transform 220ms ease;
+}
+
+.track-card {
+    flex: 0 0 min(23rem, calc(100vw - 4rem));
+    display: block;
+    cursor: pointer;
+    opacity: 0.28;
+    transform: scale(0.94);
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.track-card.is-before,
+.track-card.is-after {
+    opacity: 0.5;
+    transform: scale(0.96);
+}
+
+.track-card.is-active {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.modal-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    background: linear-gradient(135deg, #020617 0%, #111827 100%);
+    border: 2px solid #334155;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+}
+
+.track-card-modal {
+    max-width: none;
+    padding: 2rem;
+    margin: 0;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.track-card.is-active .track-card-modal {
+    border-color: #475569;
+    box-shadow: 0 18px 46px rgba(0, 0, 0, 0.55);
+}
+
+.track-card:focus-visible {
+    outline: none;
+}
+
+.track-card:focus-visible .track-card-modal {
+    border-color: rgba(248, 250, 252, 0.65);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.18), 0 18px 46px rgba(0, 0, 0, 0.55);
+}
+
+.track-card-modal-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+.track-card-preview-wrap {
+    display: block;
+    margin-top: 1rem;
+}
+
+.track-card-preview-canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.track-carousel-nav {
+    min-width: 0;
+    width: 100%;
+    padding: 0.7rem 0;
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 0.65rem;
+    color: #f8fafc;
+}
+
+.track-carousel-nav--arrow {
+    font-size: 1.35rem;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.track-carousel-nav:hover:not(:disabled) {
+    border-color: rgba(239, 68, 68, 0.55);
+}
+
+.track-carousel-nav:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.track-start-btn {
+    justify-self: stretch;
+    width: 100%;
+    max-width: 23rem;
 }
 
 @keyframes pulse {
@@ -591,25 +861,24 @@ button.danger:hover {
 }
 
 .modal-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
     width: 100%;
     max-width: 420px;
-    background: linear-gradient(135deg, #020617 0%, #111827 100%);
-    border: 2px solid #334155;
-    border-radius: 8px;
     padding: 2rem;
     margin: auto;
+}
+
+.modal .modal-card {
     transform: scale(0.95) translateY(20px);
     transition: transform 0.3s ease;
 }
 
 .modal.active .modal-card {
     transform: scale(1) translateY(0);
+    overflow: auto;
 }
 
-.modal h2 {
+.modal h2,
+.track-card-modal-title {
     font-size: 3.5rem;
     margin: 0 0 0.25rem;
     color: #fff;
@@ -618,6 +887,7 @@ button.danger:hover {
     font-weight: 900;
     text-align: center;
     letter-spacing: 2px;
+    line-height: 0.92;
 }
 
 .modal p {
@@ -635,6 +905,7 @@ button.danger:hover {
     width: calc(100% + 4rem);
     margin-left: -2rem;
     margin-right: -2rem;
+    margin-bottom: 0;
 }
 
 .modal-preview-img {
@@ -645,37 +916,63 @@ button.danger:hover {
 
 .share-panel {
     width: 100%;
-    margin-bottom: 0.5rem;
-    margin-top: -1.5rem;
+    margin-top: -1.75rem;
+    margin-bottom: 0.4rem;
     display: none;
     flex-direction: column;
     align-items: stretch;
-    gap: 0.8rem;
+    gap: 0.5rem;
+}
+
+#modal-reset-btn {
+    border: none;
+    text-transform: uppercase;
+    cursor: pointer;
 }
 
 #share-btn {
     width: 100%;
-    padding: 1rem;
-    font-size: 0.95rem;
-    background: #334155;
-    border: none;
-    border-bottom: 3px solid #1e293b;
-    color: #f8fafc;
-    border-radius: 4px;
+    min-height: var(--modal-stack-btn-min-height);
+    padding: 0.9rem 1rem;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    cursor: pointer;
     text-transform: uppercase;
-    font-weight: bold;
-    transition: all 0.1s;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    font-family: inherit;
+    background: transparent;
+    color: #cbd5e1;
+    border: 2px solid #64748b;
+    border-radius: 0.75rem;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
-#share-btn:hover {
-    background: #475569;
-    border-bottom-color: #334155;
-    transform: translateY(-1px);
+#share-btn:hover:not(:disabled) {
+    background: transparent;
+    border-color: #94a3b8;
 }
 
-#share-btn:active {
-    transform: translateY(2px);
-    border-bottom-width: 0;
+#share-btn:active:not(:disabled) {
+    background: transparent;
+}
+
+#share-btn .share-btn-icon {
+    flex-shrink: 0;
+    color: #94a3b8;
+    transition: color 0.12s ease;
+}
+
+#share-btn:hover:not(:disabled) .share-btn-icon {
+    color: var(--accent-color);
+}
+
+#share-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 .modal-lap-times-container {
@@ -919,29 +1216,32 @@ button.danger:hover {
 
 #modal-reset-btn {
     background: var(--accent-color);
-    border: none;
-    border-bottom: 3px solid #991b1b;
+    min-height: var(--modal-stack-btn-min-height);
     padding: 1.1rem 2rem;
     font-size: 1.1rem;
-    border-radius: 4px;
-    text-transform: uppercase;
+    border-radius: 0.75rem;
     font-weight: 800;
     letter-spacing: 1.5px;
     color: white;
     width: 100%;
-    margin-top: 0.5rem;
+    margin-top: 0.45rem;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.1s ease, background-color 0.1s ease, box-shadow 0.1s ease;
 }
 
 #modal-reset-btn:hover {
     transform: translateY(-1px);
     background: #f87171;
-    border-bottom-color: #7f1d1d;
+    box-shadow: 0 6px 18px rgba(239, 68, 68, 0.35);
 }
 
 #modal-reset-btn:active {
-    transform: translateY(2px);
-    border-bottom-width: 0;
+    transform: translateY(0);
+    box-shadow: none;
+    filter: brightness(0.95);
 }
 
 .modal-btn-kbd {
@@ -986,6 +1286,64 @@ button.danger:hover {
         width: min(560px, calc(100vw - 2rem));
         transform: translateX(-50%);
     }
+
+    #start-group {
+        width: min(1100px, 100%);
+        padding: 0 1rem;
+        margin-top: clamp(2rem, 8vh, 10vh);
+        gap: 2rem;
+    }
+
+    #start-btn,
+    .track-start-btn {
+        width: auto;
+        min-width: 0;
+        max-width: 22rem;
+        justify-self: center;
+        font-size: 1.25rem;
+        padding: 1.05rem 1.9rem;
+        letter-spacing: 1.5px;
+    }
+
+    .returning-player-panel {
+        width: min(46rem, 100%);
+        gap: 1rem;
+    }
+
+    .track-selector-frame {
+        grid-template-columns: 3.25rem minmax(0, 1fr) 3.25rem;
+        gap: 1rem;
+    }
+
+    .track-carousel-shell {
+        max-width: 100%;
+        padding-inline: 1.1rem;
+        -webkit-mask-image: linear-gradient(to right, transparent 0, black 2.25rem, black calc(100% - 2.25rem), transparent 100%);
+        mask-image: linear-gradient(to right, transparent 0, black 2.25rem, black calc(100% - 2.25rem), transparent 100%);
+    }
+
+    .track-carousel {
+        gap: 1.1rem;
+        padding: 0 0 0.5rem;
+    }
+
+    .track-card {
+        flex-basis: min(23rem, calc(100vw - 24rem));
+    }
+
+    .track-card-modal-title {
+        font-size: 3rem;
+    }
+
+    .track-card-modal {
+        padding: 1.5rem;
+    }
+
+    .track-carousel-nav {
+        width: 3.25rem;
+        padding: 0.9rem 0;
+        align-self: center;
+    }
 }
 
 @media (max-width: 768px),
@@ -999,24 +1357,84 @@ button.danger:hover {
         display: inline !important;
     }
 
-    .htp-text {
-        display: none;
-    }
-
-    .htp-icon {
-        display: inline !important;
-        font-size: 1.2rem;
-    }
-
-    /* Slightly smaller CTA text on narrower screens so the copy wraps cleanly */
-    #start-btn {
-        font-size: 1.1rem;
-        padding: 1.1rem 2rem;
+    /* Keep the returning-player picker compact and readable on touch devices. */
+    #start-btn,
+    .track-start-btn {
+        font-size: 1rem;
+        padding: 1rem 1.15rem;
         letter-spacing: 1px;
     }
 
+    #start-group {
+        width: min(100%, 32rem);
+        gap: 1rem;
+        padding-inline: 0.75rem;
+    }
+
+    .returning-player-panel {
+        gap: 1rem;
+    }
+
+    .track-carousel-shell {
+        padding-inline: 0.35rem;
+    }
+
+    .track-carousel {
+        gap: 0.9rem;
+        transition: transform 420ms cubic-bezier(0.25, 0.82, 0.2, 1);
+    }
+
+    .track-card {
+        flex-basis: min(20rem, calc(100vw - 5.5rem));
+    }
+
+    .track-card-modal {
+        padding: 0.9rem;
+        min-height: 25.75rem;
+    }
+
+    .track-card-modal-title {
+        font-size: 1.85rem;
+        min-height: 1.65em;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .track-card-stats-row {
+        margin-top: 0.35rem;
+    }
+
+    .track-card-preview-wrap {
+        width: calc(100% + 1.8rem);
+        margin-top: 1.2rem;
+        margin-left: -0.9rem;
+        margin-right: -0.9rem;
+    }
+
+    .track-card-preview-canvas {
+        height: 12.5rem;
+        object-fit: fill;
+    }
+
+    .track-carousel-nav {
+        width: 100%;
+    }
+
+    .track-carousel-nav--arrow {
+        display: none;
+    }
+
+    .track-start-btn {
+        width: min(20rem, calc(100vw - 5.5rem));
+        max-width: none;
+        justify-self: center;
+        margin-top: 1.35rem;
+    }
+
     .header-right {
-        gap: 0.5rem;
+        gap: 0.65rem;
     }
 
     .settings-group {
@@ -1026,7 +1444,7 @@ button.danger:hover {
     .hud-bar {
         left: 0.5rem;
         right: 0.5rem;
-        padding: 0.5rem 0.6rem;
+        gap: 0.35rem;
     }
 
     .hud-label {
@@ -1041,9 +1459,15 @@ button.danger:hover {
         padding: 0 0.5rem;
     }
 
-    .hud-bar select {
+    .hud-stats {
+        padding: 0.2rem 0;
+        min-height: 2rem;
+    }
+
+    .hud-track-btn {
         font-size: 0.75rem;
-        padding-left: 0.5rem;
+        padding: 0.2rem 0.7rem;
+        min-height: 2rem;
     }
 
     /* Hide Menu Toggle */
@@ -1084,13 +1508,20 @@ button.danger:hover {
         width: 100%;
         margin-left: -1.5rem;
         margin-right: -1.5rem;
+        margin-bottom: 0;
+    }
+
+    .share-panel {
+        margin-top: -1.65rem;
+        margin-bottom: 0.35rem;
     }
 
     #modal-main-view {
         padding-bottom: 0;
     }
 
-    .modal h2 {
+    .modal h2,
+    .track-card-modal-title {
         font-size: 2rem;
         margin-bottom: 0.1rem;
         z-index: 1000;
@@ -1124,12 +1555,12 @@ button.danger:hover {
     .modal #modal-reset-btn {
         padding: 0.9rem 1.5rem;
         font-size: 1rem;
-        margin-top: 0.75rem;
+        margin-top: 0.4rem;
     }
 
     #share-btn {
         padding: 0.8rem;
-        font-size: 0.9rem;
+        font-size: 0.85rem;
     }
 }
 
@@ -1157,16 +1588,27 @@ button.danger:hover {
     .modal-card {
         padding: 0.75rem 1rem;
         margin: 0 auto;
+        --modal-stack-btn-min-height: 3.125rem;
+    }
+
+    .track-card-modal {
+        padding: 0.75rem 1rem;
     }
 
     .modal-preview-wrap {
         width: calc(100% + 2rem);
         margin-left: -1rem;
         margin-right: -1rem;
-        margin-bottom: 0.75rem;
+        margin-bottom: 0;
     }
 
-    .modal h2 {
+    .share-panel {
+        margin-top: -1.5rem;
+        margin-bottom: 0.3rem;
+    }
+
+    .modal h2,
+    .track-card-modal-title {
         font-size: 1.75rem;
         margin-bottom: 0.15rem;
     }
@@ -1179,6 +1621,13 @@ button.danger:hover {
     .modal #modal-reset-btn {
         padding: 0.5rem 1.25rem;
         font-size: 0.85rem;
+        margin-top: 0.35rem;
+    }
+
+    .track-card-preview-wrap {
+        width: calc(100% + 2rem);
+        margin-left: -1rem;
+        margin-right: -1rem;
     }
 
     #share-btn {
@@ -1230,22 +1679,11 @@ button.danger:hover {
 
 .htp-rules li::before {
     content: counter(htp-rule, decimal-leading-zero);
-    font-family: 'Courier New', monospace;
     font-size: 0.75rem;
-    font-weight: 700;
-    color: var(--accent-color);
-    flex-shrink: 0;
-    line-height: 1.6;
 }
 
 .htp-cadence {
-    display: block;
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
     color: rgba(255, 255, 255, 0.38);
-    border-left: 2px solid rgba(239, 68, 68, 0.45);
     margin-top: 1.25rem;
 }
 
