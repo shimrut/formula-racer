@@ -1,13 +1,17 @@
+import {
+    addCaptionToBlob,
+    buildShareImageBlob,
+    getShareCaption,
+    getShareFilename
+} from './share-renderer.js?v=0.77';
+
 export class ShareService {
-    constructor({ buildAsset, addCaptionToBlob, getCaption, getFilename, onStateChange, onPreviewChange }) {
-        this.buildAsset = buildAsset;
-        this.addCaptionToBlob = addCaptionToBlob;
-        this.getCaption = getCaption;
-        this.getFilename = getFilename;
+    constructor({ onStateChange, onPreviewChange }) {
         this.onStateChange = onStateChange;
         this.onPreviewChange = onPreviewChange;
 
         this.baseBlob = null;
+        this.previewBlob = null;
         this.pendingBlobPromise = null;
         this.filename = '';
         this.sharingInProgress = false;
@@ -15,6 +19,7 @@ export class ShareService {
 
     reset({ visible = false } = {}) {
         this.baseBlob = null;
+        this.previewBlob = null;
         this.pendingBlobPromise = null;
         this.filename = '';
         this.sharingInProgress = false;
@@ -37,18 +42,24 @@ export class ShareService {
         if (this.baseBlob) return Promise.resolve(this.baseBlob);
 
         this.baseBlob = null;
-        this.filename = this.getFilename(payload);
-        this.pendingBlobPromise = this.buildAsset(payload)
-            .then((blob) => {
-                this.baseBlob = blob;
+        this.previewBlob = null;
+        this.filename = getShareFilename(payload);
+        this.pendingBlobPromise = Promise.all([
+            buildShareImageBlob(payload, { includeCaption: false, includeHeader: false }),
+            buildShareImageBlob(payload, { includeCaption: false, includeHeader: true })
+        ])
+            .then(([previewBlob, shareBlob]) => {
+                this.previewBlob = previewBlob;
+                this.baseBlob = shareBlob;
                 this.pendingBlobPromise = null;
-                if (this.onPreviewChange) this.onPreviewChange(blob);
+                if (this.onPreviewChange) this.onPreviewChange(previewBlob);
                 this.emitState(true);
-                return blob;
+                return shareBlob;
             })
             .catch((error) => {
                 this.pendingBlobPromise = null;
                 this.baseBlob = null;
+                this.previewBlob = null;
                 this.emitState(true);
                 throw error;
             });
@@ -69,11 +80,11 @@ export class ShareService {
         this.emitState(true);
 
         try {
-            const captionBlob = await this.addCaptionToBlob(this.baseBlob, payload);
+            const captionBlob = await addCaptionToBlob(this.baseBlob, payload);
             const file = typeof File === 'function'
                 ? new File([captionBlob], this.filename, { type: 'image/jpeg' })
                 : null;
-            const caption = this.getCaption(payload);
+            const caption = getShareCaption(payload);
             const hasNavigatorShare = typeof navigator.share === 'function';
 
             if (hasNavigatorShare && file) {

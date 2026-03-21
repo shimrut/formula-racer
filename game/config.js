@@ -1,6 +1,7 @@
 // --- Game Config ---
 export const CONFIG = {
     gridSize: 40, 
+    visibleTrackKeys: ['circuit', 'jadeSpiralCircuit', 'cedarRidgeCircuit'],
     
     // Environment Colors
     offTrackColor: '#0f172a', // Deep Blue/Grey for runoff areas

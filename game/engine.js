@@ -1,13 +1,14 @@
-import { getIntersection } from './math.js?v=0.41';
-import { CONFIG } from './config.js?v=0.41';
-import { TRACKS } from './tracks.js?v=0.41';
-import { buildTrackRuntime } from './core/track-runtime.js?v=0.41';
-import { recordRunPoint, updateSimulation } from './core/simulation.js?v=0.41';
-import { saveLapTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.41';
-import { AnalyticsService } from './services/analytics.js?v=0.41';
-import { SessionFlagStore } from './services/session-flags.js?v=0.41';
-import { ShareService } from './services/share.js?v=0.41';
-import { GameUi } from './ui.js?v=0.41';
+import { getIntersection } from './math.js?v=0.71';
+import { CONFIG } from './config.js?v=0.71';
+import { TRACKS } from './tracks.js?v=0.80';
+import { buildTrackCanvas } from './core/track-canvas.js?v=0.71';
+import { buildTrackRuntime } from './core/track-runtime.js?v=0.71';
+import { recordRunPoint, updateSimulation } from './core/simulation.js?v=0.71';
+import { saveLapTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.71';
+import { AnalyticsService } from './services/analytics.js?v=0.71';
+import { SessionFlagStore } from './services/session-flags.js?v=0.71';
+import { ShareService } from './services/share.js?v=0.75';
+import { GameUi } from './ui.js?v=0.80';
 
 // --- Game Engine ---
 export class RealTimeRacer {
@@ -81,6 +82,8 @@ export class RealTimeRacer {
         this.trackLoadRequestId = 0;
         this.pendingStartFrame = null;
         this.startButtonPending = false;
+        this.currentTrackPageviewPending = false;
+        this.currentTrackMapSelectionPending = false;
 
         // Session race stats (sent once on session end)
         this.raceStats = { start: 0, crash: 0, win: 0 };
@@ -88,16 +91,25 @@ export class RealTimeRacer {
         this.playerTypeSent = false;
         this.mapStats = {};
         this.mapEventSent = false;
+        this._previewPresentationOpId = 0;
 
         this.ui = new GameUi({
             isCoarsePointer: this.isCoarsePointer,
-            onTrackChange: (trackKey) => this.loadTrack(trackKey),
-            onStart: () => this.handleStartButton(),
+            onOpenTrackSelection: () => this.reset(false),
+            onPreviewTrack: (trackKey) => {
+                this.fadeThenLoadTrackForPreview(trackKey);
+            },
+            onPreviewPresentation: ({ opacity, instant }) => {
+                this.applyPreviewPresentation({ opacity, instant });
+            },
+            onStart: (trackKey) => this.handleStartButton(trackKey),
             onShowPersonalBests: () => this.showPersonalBests(),
             onReset: () => {
                 this.raceStats.start++;
                 this.reset(true);
             },
+            previewQualityLevel: this.qualityLevel,
+            previewFrameSkip: this.frameSkip,
             onShare: () => {
                 this.analytics.trackChallengeShare();
                 this.shareService.share(this.lastSharePayload).catch((error) => {
@@ -110,10 +122,6 @@ export class RealTimeRacer {
         this.analytics = new AnalyticsService();
         this.sessionFlags = new SessionFlagStore();
         this.shareService = new ShareService({
-            buildAsset: (payload) => this.buildShareImageBlob(payload, { includeCaption: false }),
-            addCaptionToBlob: (blob, payload) => this.addCaptionToBlob(blob, payload),
-            getCaption: (payload) => this.getShareCaption(payload),
-            getFilename: (payload) => `${payload.trackKey}-${payload.lapTime.toFixed(2).replace('.', '-')}.jpg`,
             onStateChange: (state) => this.ui.updateShareState(state),
             onPreviewChange: (blob) => {
                 if (blob) {
@@ -154,7 +162,7 @@ export class RealTimeRacer {
         });
 
         this.resize();
-        this.loadTrack('circuit', { trackPageview: false });
+        this.loadTrack('circuit', { trackPageview: false, countMapSelection: false });
         this.exposeTestHooks();
 
         this.lastTime = this.getNow();
@@ -177,12 +185,27 @@ export class RealTimeRacer {
         return performance.now() + this.timeOffsetMs;
     }
 
-    async handleStartButton() {
+    async handleStartButton(trackKey = this.currentTrackKey) {
         if (this.status !== 'ready' || this.startButtonPending) return;
 
+        this.resetCanvasPresentation();
         this.startButtonPending = true;
         const playerTypeAlreadySent = this.sessionFlags.get('playerTypeSent');
         try {
+            if (trackKey && trackKey !== this.currentTrackKey) {
+                await this.loadTrack(trackKey, { trackPageview: false, countMapSelection: true });
+            }
+
+            if (this.currentTrackMapSelectionPending) {
+                this.mapStats[this.currentTrackKey] = (this.mapStats[this.currentTrackKey] || 0) + 1;
+                this.currentTrackMapSelectionPending = false;
+            }
+
+            if (this.currentTrackPageviewPending) {
+                this.analytics.trackPageview(`/track/${this.currentTrackKey}`, this.currentTrackKey);
+                this.currentTrackPageviewPending = false;
+            }
+
             if (!this.playerTypeSent && !playerTypeAlreadySent) {
                 const hasAnyData = await this.playerHistoryPromise;
                 this.playerTypeSent = true;
@@ -274,6 +297,7 @@ export class RealTimeRacer {
     startSequence() {
         if (this.status !== 'ready') return;
 
+        this.resetCanvasPresentation();
         this.status = 'starting';
         this.ui.setHudPersonalBestsOpenAllowed(false);
         this.runHistory = [];
@@ -357,117 +381,6 @@ export class RealTimeRacer {
         return c;
     }
 
-    drawCheckeredLine(ctx, p1, p2, width) {
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const length = Math.hypot(dx, dy);
-        if (length < 1) return;
-
-        const tx = dx / length;
-        const ty = dy / length;
-        const nx = -ty;
-        const ny = tx;
-        const rows = 2;
-        const columns = Math.max(2, Math.ceil(length / Math.max(6, width * 0.8)));
-        const cellLength = length / columns;
-        const rowHeight = width / rows;
-
-        ctx.save();
-        ctx.lineCap = 'butt';
-        ctx.lineJoin = 'miter';
-
-        ctx.strokeStyle = 'rgba(2, 6, 23, 0.45)';
-        ctx.lineWidth = width + 4;
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.stroke();
-
-        for (let row = 0; row < rows; row++) {
-            const innerOffset = -width / 2 + row * rowHeight;
-            const outerOffset = innerOffset + rowHeight;
-
-            for (let col = 0; col < columns; col++) {
-                const startDist = col * cellLength;
-                const endDist = (col + 1) * cellLength;
-                const sx = p1.x + tx * startDist;
-                const sy = p1.y + ty * startDist;
-                const ex = p1.x + tx * endDist;
-                const ey = p1.y + ty * endDist;
-
-                ctx.fillStyle = (row + col) % 2 === 0
-                    ? CONFIG.finishLineColor
-                    : CONFIG.finishLineDarkColor;
-                ctx.beginPath();
-                ctx.moveTo(sx + nx * innerOffset, sy + ny * innerOffset);
-                ctx.lineTo(ex + nx * innerOffset, ey + ny * innerOffset);
-                ctx.lineTo(ex + nx * outerOffset, ey + ny * outerOffset);
-                ctx.lineTo(sx + nx * outerOffset, sy + ny * outerOffset);
-                ctx.closePath();
-                ctx.fill();
-            }
-        }
-
-        ctx.strokeStyle = CONFIG.finishLineBorderColor;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(p1.x + nx * (width / 2), p1.y + ny * (width / 2));
-        ctx.lineTo(p2.x + nx * (width / 2), p2.y + ny * (width / 2));
-        ctx.moveTo(p1.x - nx * (width / 2), p1.y - ny * (width / 2));
-        ctx.lineTo(p2.x - nx * (width / 2), p2.y - ny * (width / 2));
-        ctx.stroke();
-        ctx.restore();
-    }
-
-    drawTireBarrier(ctx, x, y, angle) {
-        const tireOffsets = [-12, 0, 12];
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(angle);
-
-        for (let i = 0; i < tireOffsets.length; i++) {
-            const offset = tireOffsets[i];
-            const yOffset = i === 1 ? 0 : 2;
-
-            ctx.fillStyle = 'rgba(2, 6, 23, 0.28)';
-            ctx.beginPath();
-            ctx.ellipse(offset + 1.5, yOffset + 2, 8, 6.5, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            const sidewall = ctx.createRadialGradient(offset - 2, yOffset - 2, 1, offset, yOffset, 8);
-            sidewall.addColorStop(0, '#4b5563');
-            sidewall.addColorStop(0.3, '#1f2937');
-            sidewall.addColorStop(0.75, '#0f172a');
-            sidewall.addColorStop(1, '#020617');
-            ctx.fillStyle = sidewall;
-            ctx.beginPath();
-            ctx.ellipse(offset, yOffset, 7.5, 6, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.ellipse(offset, yOffset, 5.5, 4.4, 0, 0, Math.PI * 2);
-            ctx.stroke();
-
-            ctx.fillStyle = '#020617';
-            ctx.beginPath();
-            ctx.ellipse(offset, yOffset, 2.2, 1.8, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.strokeStyle = 'rgba(226, 232, 240, 0.12)';
-            ctx.lineWidth = 1;
-            for (let tread = -3; tread <= 3; tread += 3) {
-                ctx.beginPath();
-                ctx.moveTo(offset + tread, yOffset - 4.8);
-                ctx.lineTo(offset + tread, yOffset + 4.8);
-                ctx.stroke();
-            }
-        }
-
-        ctx.restore();
-    }
-
     resetFrameTimingHistory() {
         this.frameTimeHistory = [];
         this.frameTimeHistoryIndex = 0;
@@ -480,150 +393,24 @@ export class RealTimeRacer {
         this.isNarrowViewport = window.innerWidth <= 768;
     }
 
-    // Build the offscreen track canvas used by the main render loop
-    buildTrackPaths() {
-        const gs = CONFIG.gridSize;
-        const outer = this.activeGeometry.outer;
-        const inner = this.activeGeometry.inner;
-
-        if (outer.length < 3 || inner.length < 3) {
-            this.trackCanvasOrigin = { x: 0, y: 0 };
-            this.trackCanvas = null;
-            this.trackCtx = null;
-            return;
-        }
-
-        // Find bounds for the offscreen canvas
-        let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
-        for (let p of [...outer, ...inner]) {
-            const px = p.x * gs;
-            const py = p.y * gs;
-            if (px < minX) minX = px;
-            if (py < minY) minY = py;
-            if (px > maxX) maxX = px;
-            if (py > maxY) maxY = py;
-        }
-        const padding = gs * 5;
-        this.trackCanvasOrigin = {
-            x: minX - padding,
-            y: minY - padding
-        };
-
-        // Create or resize canvas
-        if (!this.trackCanvas) {
-            this.trackCanvas = document.createElement('canvas');
-            this.trackCtx = this.trackCanvas.getContext('2d', { alpha: false });
-        }
-
-        this.trackCanvas.width = Math.ceil((maxX - minX) + padding * 2);
-        this.trackCanvas.height = Math.ceil((maxY - minY) + padding * 2);
-
-        const ctx = this.trackCtx;
-        const offsetX = -this.trackCanvasOrigin.x;
-        const offsetY = -this.trackCanvasOrigin.y;
-        const mapTrackPoint = (point) => ({
-            x: point.x * gs + offsetX,
-            y: point.y * gs + offsetY
-        });
-
-        // Off-track background
-        ctx.fillStyle = CONFIG.offTrackColor;
-        ctx.fillRect(0, 0, this.trackCanvas.width, this.trackCanvas.height);
-
-        // Track surface path (for fill)
-        const surfacePath = new Path2D();
-        let mappedPoint = mapTrackPoint(outer[0]);
-        surfacePath.moveTo(mappedPoint.x, mappedPoint.y);
-        for (let i = 1; i < outer.length; i++) {
-            mappedPoint = mapTrackPoint(outer[i]);
-            surfacePath.lineTo(mappedPoint.x, mappedPoint.y);
-        }
-        surfacePath.closePath();
-        mappedPoint = mapTrackPoint(inner[0]);
-        surfacePath.moveTo(mappedPoint.x, mappedPoint.y);
-        for (let i = 1; i < inner.length; i++) {
-            mappedPoint = mapTrackPoint(inner[i]);
-            surfacePath.lineTo(mappedPoint.x, mappedPoint.y);
-        }
-        surfacePath.closePath();
-
-        // Outer curb path
-        const outerCurbPath = new Path2D();
-        mappedPoint = mapTrackPoint(outer[0]);
-        outerCurbPath.moveTo(mappedPoint.x, mappedPoint.y);
-        for (let i = 1; i < outer.length; i++) {
-            mappedPoint = mapTrackPoint(outer[i]);
-            outerCurbPath.lineTo(mappedPoint.x, mappedPoint.y);
-        }
-        outerCurbPath.closePath();
-
-        // Inner curb path
-        const innerCurbPath = new Path2D();
-        mappedPoint = mapTrackPoint(inner[0]);
-        innerCurbPath.moveTo(mappedPoint.x, mappedPoint.y);
-        for (let i = 1; i < inner.length; i++) {
-            mappedPoint = mapTrackPoint(inner[i]);
-            innerCurbPath.lineTo(mappedPoint.x, mappedPoint.y);
-        }
-        innerCurbPath.closePath();
-
-        // Draw static track elements statically
-        ctx.fillStyle = CONFIG.trackColor;
-        ctx.fill(surfacePath, 'evenodd');
-
-        const drawCurb = (path) => {
-            ctx.lineWidth = 6;
-            ctx.lineJoin = 'round';
-            ctx.lineCap = 'round';
-            ctx.setLineDash([20, 20]);
-            ctx.strokeStyle = CONFIG.curbRed;
-            ctx.stroke(path);
-            ctx.lineDashOffset = 20;
-            ctx.strokeStyle = CONFIG.curbWhite;
-            ctx.stroke(path);
-            ctx.setLineDash([]);
-            ctx.lineDashOffset = 0;
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.stroke(path);
-        };
-
-        drawCurb(outerCurbPath);
-        drawCurb(innerCurbPath);
-
-        const drawTires = (poly) => {
-            const step = 18;
-            for (let i = 0; i < poly.length; i += step) {
-                const p = poly[i];
-                const px = p.x * gs + offsetX;
-                const py = p.y * gs + offsetY;
-                const prev = poly[(i - 1 + poly.length) % poly.length];
-                const next = poly[(i + 1) % poly.length];
-                const angle = Math.atan2(next.y - prev.y, next.x - prev.x);
-                this.drawTireBarrier(ctx, px, py, angle);
-            }
-        };
-        drawTires(outer);
-
-        const sl = this.currentTrack.startLine;
-        this.drawCheckeredLine(
-            ctx,
-            { x: sl.p1.x * gs + offsetX, y: sl.p1.y * gs + offsetY },
-            { x: sl.p2.x * gs + offsetX, y: sl.p2.y * gs + offsetY },
-            10
-        );
-    }
-
-    async loadTrack(trackKey, { trackPageview = true } = {}) {
+    async loadTrack(trackKey, { trackPageview = true, countMapSelection = true } = {}) {
         const nextTrack = TRACKS[trackKey];
         if (!nextTrack) return;
 
         if (trackPageview) {
             this.analytics.trackPageview(`/track/${trackKey}`, trackKey);
+            this.currentTrackPageviewPending = false;
+        } else {
+            this.currentTrackPageviewPending = true;
         }
 
         // Track map selection statistics
-        this.mapStats[trackKey] = (this.mapStats[trackKey] || 0) + 1;
+        if (countMapSelection) {
+            this.mapStats[trackKey] = (this.mapStats[trackKey] || 0) + 1;
+            this.currentTrackMapSelectionPending = false;
+        } else {
+            this.currentTrackMapSelectionPending = true;
+        }
 
         const requestId = ++this.trackLoadRequestId;
         this.currentTrack = nextTrack;
@@ -639,20 +426,16 @@ export class RealTimeRacer {
         this.activeGeometry.outer = runtime.outer;
         this.activeGeometry.inner = runtime.inner;
         this.collisionSegments = runtime.collisionSegments;
-
-        // Build cached paths for performance
-        this.buildTrackPaths();
+        const trackCanvasRuntime = buildTrackCanvas(this.currentTrack, this.activeGeometry);
+        this.trackCanvas = trackCanvasRuntime.canvas;
+        this.trackCanvasOrigin = trackCanvasRuntime.origin;
 
         // Stop the current run immediately so physics and collision checks
         // cannot continue against the new track geometry while storage loads.
         this.bestLapTime = null;
-        this.ui.setBestTime(null);
-        this.reset();
-        if (document.activeElement && typeof document.activeElement.blur === 'function') {
-            document.activeElement.blur();
-        }
+        // Show cached PB immediately so the HUD/carousel do not flash hidden between IDB reads.
+        this.ui.setBestTime(this.ui.getCachedPersonalBestForTrack(trackKey));
 
-        // Load best lap time for this track
         try {
             const [trackData, hasAnyData] = await Promise.all([
                 getTrackData(trackKey),
@@ -662,13 +445,16 @@ export class RealTimeRacer {
             this.bestLapTime = trackData.bestTime;
             this.hasAnyData = hasAnyData;
             this.ui.setBestTime(this.bestLapTime);
-            this.ui.refreshStartOverlay(this.status, this.hasAnyData);
         } catch (error) {
             console.error('Error loading track data:', error);
             if (requestId !== this.trackLoadRequestId) return;
             this.bestLapTime = null;
             this.ui.setBestTime(null);
-            this.ui.refreshStartOverlay(this.status, this.hasAnyData);
+        }
+
+        this.reset();
+        if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
         }
     }
 
@@ -815,11 +601,15 @@ export class RealTimeRacer {
         }, Boolean(this.lastSharePayload));
         // Defer the heavy offscreen canvas work (single 640×640 render) until
         // after the modal's first transition frame has been painted. Without
-        // this deferral the synchronous renderReplayFrame calls block the main
+        // this deferral the synchronous share-render canvas work blocks the main
         // thread in the same task as classList.add('active'), causing the
         // opacity/transform transition to skip its first frame (visible stutter).
         requestAnimationFrame(() => {
-            requestAnimationFrame(() => this.prepareShareAsset());
+            requestAnimationFrame(() => {
+                this.shareService.prepare(this.lastSharePayload).catch((error) => {
+                    console.error('Error preparing share asset:', error);
+                });
+            });
         });
     }
 
@@ -890,6 +680,73 @@ export class RealTimeRacer {
             this.startSequence();
         } else {
             this.ui.showStartOverlay(this.hasAnyData);
+            this.resetCanvasPresentation();
+        }
+    }
+
+    resetCanvasPresentation() {
+        if (!this.canvas) return;
+        this.canvas.classList.remove('canvas-opacity-instant');
+        this.canvas.style.transition = '';
+        this.canvas.style.opacity = '1';
+    }
+
+    applyPreviewPresentation({ opacity, instant }) {
+        if (this.status !== 'ready' || !this.canvas) return;
+        const c = this.canvas;
+        if (instant) {
+            c.classList.add('canvas-opacity-instant');
+            c.style.opacity = String(opacity);
+        } else {
+            c.classList.remove('canvas-opacity-instant');
+            c.style.opacity = String(opacity);
+        }
+    }
+
+    _animateCanvasOpacity(target, durationMs) {
+        return new Promise((resolve) => {
+            const c = this.canvas;
+            if (!c) {
+                resolve();
+                return;
+            }
+            c.classList.remove('canvas-opacity-instant');
+            const ms = Math.max(0, durationMs);
+            c.style.transition = `opacity ${ms}ms cubic-bezier(0.25, 0.82, 0.2, 1)`;
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                c.removeEventListener('transitionend', onEnd);
+                resolve();
+            };
+            const onEnd = (e) => {
+                if (e.target !== c || e.propertyName !== 'opacity') return;
+                finish();
+            };
+            c.addEventListener('transitionend', onEnd);
+            requestAnimationFrame(() => {
+                c.style.opacity = String(target);
+            });
+            setTimeout(finish, ms + 70);
+        });
+    }
+
+    async fadeThenLoadTrackForPreview(trackKey) {
+        if (this.status !== 'ready' || !trackKey || trackKey === this.currentTrackKey) return;
+
+        const op = ++this._previewPresentationOpId;
+        try {
+            await this._animateCanvasOpacity(0, 175);
+            if (op !== this._previewPresentationOpId || this.status !== 'ready') return;
+            await this.loadTrack(trackKey, { trackPageview: false, countMapSelection: false });
+            if (op !== this._previewPresentationOpId || this.status !== 'ready') return;
+            await this._animateCanvasOpacity(1, 320);
+        } catch (error) {
+            console.error('Error fading preview track:', error);
+            if (this.status === 'ready') {
+                this.resetCanvasPresentation();
+            }
         }
     }
 
@@ -897,255 +754,6 @@ export class RealTimeRacer {
         this.runHistory = recordRunPoint(this.runHistory, point, {
             frameSkip: this.frameSkip,
             qualityLevel: this.qualityLevel
-        });
-    }
-
-    getShareCaption(payload) {
-        return `I ran ${payload.trackName} in 🏁 ${payload.lapTime.toFixed(2)}s. Can you beat it? \n 🏎️ vectorgp.run `;
-    }
-
-    getReplayLayout(payload, width, height, hudHeight) {
-        const padding = 28;
-        const trackOuter = payload.trackGeometry?.outer ?? this.activeGeometry.outer;
-        const trackInner = payload.trackGeometry?.inner ?? this.activeGeometry.inner;
-        const startPos = payload.startPos ?? this.currentTrack.startPos;
-        const run = payload.runHistory.length > 1 ? payload.runHistory : [startPos, this.pos];
-        const points = [...trackOuter, ...trackInner, ...run];
-        const xs = points.map((point) => point.x);
-        const ys = points.map((point) => point.y);
-        const minX = Math.min(...xs);
-        const maxX = Math.max(...xs);
-        const minY = Math.min(...ys);
-        const maxY = Math.max(...ys);
-        const usableWidth = width - padding * 2;
-        const usableHeight = height - hudHeight - padding * 2;
-        const scale = Math.min(usableWidth / Math.max(1, maxX - minX), usableHeight / Math.max(1, maxY - minY));
-        const offsetX = padding + (usableWidth - (maxX - minX) * scale) / 2;
-        const offsetY = padding + (usableHeight - (maxY - minY) * scale) / 2;
-
-        return {
-            hudHeight,
-            run,
-            mapPoint: (point) => ({
-                x: offsetX + (point.x - minX) * scale,
-                y: offsetY + (point.y - minY) * scale
-            })
-        };
-    }
-
-    getReplayProgressPoint(run, progress) {
-        if (run.length === 1) {
-            return run[0];
-        }
-
-        const scaledIndex = progress * (run.length - 1);
-        const baseIndex = Math.floor(scaledIndex);
-        const nextIndex = Math.min(run.length - 1, baseIndex + 1);
-        const t = scaledIndex - baseIndex;
-        const start = run[baseIndex];
-        const end = run[nextIndex];
-
-        return {
-            x: start.x + (end.x - start.x) * t,
-            y: start.y + (end.y - start.y) * t
-        };
-    }
-
-    traceMappedPath(ctx, points, mapPoint, closePath = false) {
-        if (!points.length) return;
-        const first = mapPoint(points[0]);
-        ctx.beginPath();
-        ctx.moveTo(first.x, first.y);
-        for (let i = 1; i < points.length; i++) {
-            const point = mapPoint(points[i]);
-            ctx.lineTo(point.x, point.y);
-        }
-        if (closePath) {
-            ctx.closePath();
-        }
-    }
-
-    renderReplayFrame(ctx, payload, layout, width, height, progress, options = {}) {
-        const { hudHeight, run, mapPoint } = layout;
-        const showHud = options.showHud ?? true;
-        const showMarker = options.showMarker ?? true;
-        const trackOuter = payload.trackGeometry?.outer ?? this.activeGeometry.outer;
-        const trackInner = payload.trackGeometry?.inner ?? this.activeGeometry.inner;
-        const startLine = payload.startLine ?? this.currentTrack.startLine;
-        const currentPoint = this.getReplayProgressPoint(run, progress);
-        const drawCount = Math.max(1, Math.floor(progress * (run.length - 1)));
-        const revealedPoints = run.slice(0, drawCount + 1);
-        if (revealedPoints[revealedPoints.length - 1] !== currentPoint) {
-            revealedPoints.push(currentPoint);
-        }
-
-        ctx.clearRect(0, 0, width, height);
-
-        const gradient = ctx.createLinearGradient(0, 0, width, height);
-        gradient.addColorStop(0, '#020617');
-        gradient.addColorStop(1, '#111827');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, width, height);
-
-        if (showHud && hudHeight > 0) {
-            ctx.fillStyle = '#020617';
-            ctx.fillRect(0, height - hudHeight, width, hudHeight);
-        }
-
-        this.traceMappedPath(ctx, trackOuter, mapPoint, true);
-        ctx.fillStyle = '#334155';
-        ctx.fill();
-
-        this.traceMappedPath(ctx, trackInner, mapPoint, true);
-        ctx.fillStyle = '#020617';
-        ctx.fill();
-
-        this.traceMappedPath(ctx, trackOuter, mapPoint, true);
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = '#f8fafc';
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-
-        this.traceMappedPath(ctx, trackInner, mapPoint, true);
-        ctx.strokeStyle = '#cbd5e1';
-        ctx.stroke();
-
-        const lineStart = mapPoint(startLine.p1);
-        const lineEnd = mapPoint(startLine.p2);
-        this.drawCheckeredLine(ctx, lineStart, lineEnd, 8);
-
-        ctx.strokeStyle = 'rgba(251, 113, 133, 0.2)';
-        ctx.lineWidth = 10;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        this.traceMappedPath(ctx, run, mapPoint);
-        ctx.stroke();
-
-        ctx.strokeStyle = '#fb7185';
-        ctx.lineWidth = 8;
-        this.traceMappedPath(ctx, revealedPoints, mapPoint);
-        ctx.stroke();
-
-        if (showMarker) {
-            const marker = mapPoint(currentPoint);
-            ctx.fillStyle = '#f8fafc';
-            ctx.beginPath();
-            ctx.arc(marker.x, marker.y, 8, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
-
-    wrapText(ctx, text, maxWidth) {
-        const paragraphs = text.split(/\n/);
-        const lines = [];
-        for (const para of paragraphs) {
-            const words = para.split(/\s+/).filter((w) => w.length > 0);
-            let line = '';
-            for (const w of words) {
-                const test = line ? `${line} ${w}` : w;
-                const m = ctx.measureText(test);
-                if (m.width > maxWidth && line) {
-                    lines.push(line);
-                    line = w;
-                } else {
-                    line = test;
-                }
-            }
-            if (line) lines.push(line);
-        }
-        return lines;
-    }
-
-    buildShareImageBlob(payload, options = {}) {
-        const { includeCaption = true } = options;
-        const width = 640;
-        const height = 640;
-        const hudHeight = 0;
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        const layout = this.getReplayLayout(payload, width, height, hudHeight);
-
-        this.renderReplayFrame(ctx, payload, layout, width, height, 1, {
-            showHud: false,
-            showMarker: false
-        });
-
-        if (includeCaption) {
-            this.drawShareCaption(ctx, payload, width, height);
-        }
-
-        return new Promise((resolve, reject) => {
-            if (canvas.toBlob) {
-                canvas.toBlob((blob) => {
-                    if (blob) {
-                        resolve(blob);
-                        return;
-                    }
-                    reject(new Error('Canvas export returned an empty blob.'));
-                }, 'image/jpeg', 0.9);
-                return;
-            }
-
-            try {
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-                fetch(dataUrl)
-                    .then((response) => response.blob())
-                    .then(resolve)
-                    .catch(reject);
-            } catch (error) {
-                reject(error);
-            }
-        });
-    }
-
-    drawShareCaption(ctx, payload, width, height) {
-        const caption = this.getShareCaption(payload);
-        const pad = 21;
-        const lineHeight = 32;
-        const fontSize = 24;
-        ctx.font = `600 ${fontSize}px system-ui, -apple-system, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const lines = this.wrapText(ctx, caption, width - pad * 2);
-        const textBlockHeight = lines.length * lineHeight + pad * 2;
-        const y0 = height - textBlockHeight;
-        ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
-        ctx.fillRect(0, y0, width, textBlockHeight);
-        ctx.fillStyle = '#f8fafc';
-        lines.forEach((line, i) => {
-            ctx.fillText(line, width / 2, y0 + pad + lineHeight / 2 + i * lineHeight);
-        });
-    }
-
-    addCaptionToBlob(blob, payload) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            const url = URL.createObjectURL(blob);
-            img.onload = () => {
-                URL.revokeObjectURL(url);
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                this.drawShareCaption(ctx, payload, canvas.width, canvas.height);
-                canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Canvas export failed'))), 'image/jpeg', 0.9);
-            };
-            img.onerror = () => {
-                URL.revokeObjectURL(url);
-                reject(new Error('Failed to load image for caption'));
-            };
-            img.src = url;
-        });
-    }
-
-    prepareShareAsset() {
-        if (!this.lastSharePayload) return;
-        return this.shareService.prepare(this.lastSharePayload).catch((error) => {
-            console.error('Error preparing share asset:', error);
-            throw error;
         });
     }
 

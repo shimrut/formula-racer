@@ -39,7 +39,7 @@
 
     <link rel="canonical" href="https://vectorgp.run/">
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="styles.css?v=0.41">
+    <link rel="stylesheet" href="styles.css?v=0.82">
 
     <!-- Structured Data (GEO: quotable summary for generative engines) -->
     <script type="application/ld+json">
@@ -65,18 +65,48 @@
     </script>
 </head>
 
-<body>
+<body class="start-overlay-active">
 
     <header role="banner">
         <h1 id="site-title">Vector <span class="full-name">Grand Prix</span><span class="short-name" style="display: none;">GP</span>
         </h1>
 
         <div class="header-right">
-            <button id="header-htp-btn" class="text-link-btn" type="button"
-                style="margin-top: 0; color: #fff; text-decoration: none; font-weight: bold;">
-                <span class="htp-text">How to Play</span>
-                <span class="htp-icon" style="display: none;">?</span>
-            </button>
+            <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="header-support-link"
+                target="_blank" rel="noopener noreferrer" title="Support VectorGP for future updates and functionalities">Support 1€</a>
+            <div class="header-menu">
+                <button id="header-htp-btn" class="header-menu-trigger" type="button"
+                    aria-expanded="false" aria-haspopup="true" aria-controls="header-nav-menu"
+                    title="Menu">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" aria-hidden="true">
+                        <path
+                            d="M22 12.2a10 10 0 1 0-19.4 3.2c.2.5.8 1.1 1.3 1.3l13.2 5.1c.5.2 1.2 0 1.6-.3l2.6-2.6c.4-.4.7-1.2.7-1.7Z" />
+                        <path d="m21.8 18-10.5-4a2 2.06 0 0 1 .7-4h9.8" />
+                    </svg>
+                    <span class="sr-only">Open menu</span>
+                </button>
+                <div id="header-nav-menu" class="header-nav-dropdown" hidden>
+                    <ul class="header-nav-list">
+                        <li>
+                            <button type="button" id="menu-how-to-play" class="header-nav-item">How to play</button>
+                        </li>
+                        <li>
+                            <a href="about.html" class="header-nav-item" target="_blank"
+                                rel="noopener noreferrer">About</a>
+                        </li>
+                        <li>
+                            <a href="changelog.html" class="header-nav-item" target="_blank"
+                                rel="noopener noreferrer">Changelog</a>
+                        </li>
+                        <li>
+                            <a href="https://x.com/shimrut" class="header-nav-item header-nav-item--credit"
+                                target="_blank" rel="noopener noreferrer">Made by @shimrut</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -90,21 +120,13 @@
                 <div class="hud-divider" id="best-time-divider" style="display: none;"></div>
                 <div class="hud-stat" id="best-time-display" style="display: none;"><span class="hud-label">BEST</span><span id="best-time-val" class="hud-value">--</span></div>
             </button>
-            <select id="track-select">
-                <option value="circuit">Classic Circuit</option>
-                <option value="sunlitTemple" hidden>Sunlit Temple</option>
-                <option value="royalPlateau" hidden>Royal Plateau</option>
-                <option value="mistwoodSerpent" hidden>Mistwood Serpent</option>
-                <option value="harborParkLoop" hidden>Harbor Park Loop</option>
-                <option value="jadeSpiralCircuit">Jade Spiral Circuit</option>
-                <option value="cedarRidgeCircuit">Cedar Ridge Circuit</option>
-            </select>
+            <button id="track-change-btn" class="hud-track-btn" type="button" aria-label="Change track">Change Track</button>
         </div>
 
         <canvas id="gameCanvas" aria-label="Racing track and car"></canvas>
         <div class="key-hint">
             A / D or Arrows to Steer
-            <span class="version-label">v 0.41</span>
+            <span class="version-label">v 0.71</span>
         </div>
 
         <!-- Start Screen Overlay -->
@@ -122,7 +144,18 @@
                     </ul>
                     <div class="ftu-cadence">New track every Wednesday at 07:00 UTC</div>
                 </section>
-                <button id="start-btn">Start Your Engine</button>
+                <section id="returning-player-panel" class="returning-player-panel" aria-labelledby="returning-player-heading" hidden>
+                    <h2 id="returning-player-heading" class="sr-only">Classic Circuit</h2>
+                    <div class="track-selector-frame">
+                        <button id="track-prev-btn" class="track-carousel-nav track-carousel-nav--arrow" type="button" aria-label="Show previous track">‹</button>
+                        <div class="track-carousel-shell">
+                            <div id="track-carousel" class="track-carousel" role="listbox" aria-labelledby="returning-player-heading"></div>
+                        </div>
+                        <button id="track-next-btn" class="track-carousel-nav track-carousel-nav--arrow" type="button" aria-label="Show next track">›</button>
+                    </div>
+                    <button id="returning-start-btn" class="track-start-btn" type="button">Start Your Engine</button>
+                </section>
+                <button id="start-btn">Got It</button>
             </div>
         </div>
 
@@ -159,7 +192,10 @@
                 </div>
 
                 <div id="share-panel" class="share-panel">
-                    <button id="share-btn" type="button">Challenge a Friend</button>
+                    <button id="share-btn" type="button">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="share-btn-icon" aria-hidden="true"><path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/></svg>
+                        <span>share your time</span>
+                    </button>
                 </div>
 
                 <button id="modal-reset-btn">Box Box <kbd class="modal-btn-kbd">R</kbd></button>
@@ -190,7 +226,7 @@
         </div>
     </div>
 
-    <script type="module" src="game/index.js?v=0.41"></script>
+    <script type="module" src="game/index.js?v=0.75"></script>
 </body>
 
 </html>
