@@ -15,19 +15,24 @@ export class ShareService {
         this.pendingBlobPromise = null;
         this.filename = '';
         this.sharingInProgress = false;
+        this.generation = 0;
+        this.visible = false;
     }
 
-    reset({ visible = false } = {}) {
+    reset({ visible = false, preservePreview = false, preserveVisibility = false } = {}) {
+        this.generation += 1;
         this.baseBlob = null;
         this.previewBlob = null;
         this.pendingBlobPromise = null;
         this.filename = '';
         this.sharingInProgress = false;
-        if (this.onPreviewChange) this.onPreviewChange(null);
-        this.emitState(visible);
+        this.visible = preserveVisibility ? this.visible : visible;
+        if (!preservePreview && this.onPreviewChange) this.onPreviewChange(null);
+        this.emitState(this.visible);
     }
 
     emitState(visible) {
+        this.visible = visible;
         if (!this.onStateChange) return;
         this.onStateChange({
             visible,
@@ -41,31 +46,44 @@ export class ShareService {
         if (this.pendingBlobPromise) return this.pendingBlobPromise;
         if (this.baseBlob) return Promise.resolve(this.baseBlob);
 
+        const generation = this.generation;
         this.baseBlob = null;
         this.previewBlob = null;
         this.filename = getShareFilename(payload);
-        this.pendingBlobPromise = Promise.all([
+        const pendingPromise = Promise.all([
             buildShareImageBlob(payload, { includeCaption: false, includeHeader: false }),
             buildShareImageBlob(payload, { includeCaption: false, includeHeader: true })
         ])
             .then(([previewBlob, shareBlob]) => {
+                if (generation !== this.generation) {
+                    return shareBlob;
+                }
+
                 this.previewBlob = previewBlob;
                 this.baseBlob = shareBlob;
-                this.pendingBlobPromise = null;
+                if (this.pendingBlobPromise === pendingPromise) {
+                    this.pendingBlobPromise = null;
+                }
                 if (this.onPreviewChange) this.onPreviewChange(previewBlob);
                 this.emitState(true);
                 return shareBlob;
             })
             .catch((error) => {
-                this.pendingBlobPromise = null;
+                if (this.pendingBlobPromise === pendingPromise) {
+                    this.pendingBlobPromise = null;
+                }
+                if (generation !== this.generation) {
+                    return undefined;
+                }
                 this.baseBlob = null;
                 this.previewBlob = null;
                 this.emitState(true);
                 throw error;
             });
 
+        this.pendingBlobPromise = pendingPromise;
         this.emitState(true);
-        return this.pendingBlobPromise;
+        return pendingPromise;
     }
 
     async share(payload) {

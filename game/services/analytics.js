@@ -10,8 +10,8 @@ export class AnalyticsService {
         umami.track(eventName, payload);
     }
 
-    trackPlayerType(hasLaps) {
-        this.track(hasLaps ? 'returning-player' : 'new-player');
+    trackPlayerType(isReturningPlayer) {
+        this.track(isReturningPlayer ? 'returning-player' : 'new-player');
     }
 
     trackChallengeShare() {
