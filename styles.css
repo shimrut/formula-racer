@@ -100,7 +100,6 @@ a.site-logo {
 }
 
 h1 .full-name,
-h1 .short-name,
 a.site-logo .full-name {
     color: var(--accent-color);
 }
@@ -810,11 +809,6 @@ button.danger:hover {
 }
 
 /* Green Light Style */
-.light.green {
-    background: #22c55e;
-    box-shadow: 0 0 20px #22c55e;
-}
-
 /* GO Message Styling - Positioned higher */
 #go-message {
     position: absolute;
@@ -914,6 +908,12 @@ button.danger:hover {
     height: auto;
 }
 
+#modal-preview-wrap.pending-share {
+    display: block !important;
+    aspect-ratio: 1 / 1;
+    visibility: hidden;
+}
+
 .share-panel {
     width: 100%;
     margin-top: -1.75rem;
@@ -922,6 +922,11 @@ button.danger:hover {
     flex-direction: column;
     align-items: stretch;
     gap: 0.5rem;
+}
+
+#share-panel.pending-share {
+    display: flex !important;
+    visibility: hidden;
 }
 
 #modal-reset-btn {
@@ -1261,16 +1266,14 @@ button.danger:hover {
     bottom: 1rem;
     right: 1rem;
     color: rgba(255, 255, 255, 0.4);
-    font-size: 0.8rem;
+    font-size: 0.65rem;
     text-align: right;
     font-family: monospace;
 }
 
 .key-hint .version-label {
     display: block;
-    font-size: 0.65rem;
     opacity: 0.6;
-    margin-top: 0.25rem;
 }
 
 /* Desktop: center header and HUD content */
@@ -1349,14 +1352,6 @@ button.danger:hover {
 @media (max-width: 768px),
 (hover: none) and (pointer: coarse),
 (max-height: 600px) and (orientation: landscape) {
-    .full-name {
-        display: none;
-    }
-
-    .short-name {
-        display: inline !important;
-    }
-
     /* Keep the returning-player picker compact and readable on touch devices. */
     #start-btn,
     .track-start-btn {

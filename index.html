@@ -14,27 +14,27 @@
     <meta charset="UTF-8">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Vector Grand Prix: Formula Racing Simulator</title>
+    <title>Vector GP</title>
     <meta name="description"
-        content="Vector Grand Prix is a free browser-based formula racing game. Steer with arrow keys or A/D, drift around circuits, and set your fastest lap without crashing. New track every Wednesday at 07:00 UTC.">
+        content="Play Vector GP - a minimalist web vector racing game. Set your fastest lap through short time trials, precise controls, and quick retries. New track every Wednesday at 07:00 UTC.">
     <meta name="keywords"
-        content="formula racing, grand prix game, vector racing, physics-based racing, circuit driver, retro racer, browser game, high speed racing, lap time challenge, global circuits">
+        content="vector gp, vector racing, free racing game, physics-based racing, circuit driver, retro racer, web game, browser game, high speed racing, lap time challenge, global circuits, quick retry, racetrack game, trackmania like game, trackmania, grand prix, time attack racing, indie games, formula racing game, open wheel racing game">
     <meta name="author" content="Bogdan Popa (@shimrut)">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://vectorgp.run/">
-    <meta property="og:title" content="Vector Grand Prix: Formula Racing Simulator">
+    <meta property="og:title" content="Vector GP">
     <meta property="og:description"
-        content="High-stakes vector formula racing. Master the circuits and set the ultimate lap time.">
+        content="A minimalist web vector racing game with short time trials, precise controls, and quick retries.">
     <meta property="og:image" content="https://vectorgp.run/social-preview.png">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://vectorgp.run/">
-    <meta property="twitter:title" content="Vector Grand Prix: Formula Racing Simulator">
+    <meta property="twitter:title" content="Vector GP">
     <meta property="twitter:description"
-        content="High-stakes vector formula racing. Master the circuits and set the ultimate lap time.">
+        content="A minimalist web vector racing game. Short tracks, fast retries, and lap-time improvement.">
     <meta property="twitter:image" content="https://vectorgp.run/social-preview.png">
 
     <link rel="canonical" href="https://vectorgp.run/">
@@ -46,14 +46,14 @@
     {
       "@context": "https://schema.org",
       "@type": "WebPage",
-      "name": "Vector Grand Prix: Formula Racing Simulator",
-      "description": "Vector Grand Prix is a free browser-based formula racing game. You steer with arrow keys or A/D, drift around circuits, and try to set your fastest lap without crashing. New track every Wednesday at 07:00 UTC. Play in the browser on desktop or mobile.",
+      "name": "Vector GP",
+      "description": "Vector GP is a free minimalist browser-based vector racing game inspired by the pen and paper Racetrack game. Set your fastest lap through short time trials, precise controls, and quick retries. New track every Wednesday at 07:00 UTC.",
       "inLanguage": "en",
       "url": "https://vectorgp.run/",
       "mainEntity": {
         "@type": "VideoGame",
-        "name": "Vector Grand Prix",
-        "description": "Free browser formula racing game. Steer with keyboard or touch, drift around circuits, set the fastest lap without crashing. New track weekly (Wed 07:00 UTC).",
+        "name": "Vector GP",
+        "description": "Vector GP is a free minimalist browser vector racing game inspired by the pen and paper Racetrack game and built around short time trials. Tracks usually take around 6 to 30 seconds to complete, and the goal is to improve lap times through precision, clean lines, and quick retries.",
         "genre": "Racing",
         "gamePlatform": "Web browser",
         "playMode": "SinglePlayer",
@@ -68,12 +68,11 @@
 <body class="start-overlay-active">
 
     <header role="banner">
-        <h1 id="site-title">Vector <span class="full-name">Grand Prix</span><span class="short-name" style="display: none;">GP</span>
-        </h1>
+        <h1 id="site-title">Vector <span class="full-name">GP</span></h1>
 
         <div class="header-right">
             <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="header-support-link"
-                target="_blank" rel="noopener noreferrer" title="Support VectorGP for future updates and functionalities">Support 1€</a>
+                target="_blank" rel="noopener noreferrer" title="Support Vector GP for future updates and functionalities">Support 1€</a>
             <div class="header-menu">
                 <button id="header-htp-btn" class="header-menu-trigger" type="button"
                     aria-expanded="false" aria-haspopup="true" aria-controls="header-nav-menu"
@@ -110,7 +109,7 @@
         </div>
     </header>
 
-    <main id="game-container" role="main" aria-label="Vector Grand Prix racing game">
+    <main id="game-container" role="main" aria-label="Vector GP racing game">
         <!-- HUD Bar -->
         <div class="hud-bar">
             <button id="hud-stats-btn" class="hud-stats" type="button" aria-label="Show your 5 personal best lap times" disabled>
@@ -125,8 +124,7 @@
 
         <canvas id="gameCanvas" aria-label="Racing track and car"></canvas>
         <div class="key-hint">
-            A / D or Arrows to Steer
-            <span class="version-label">v 0.71</span>
+            <span class="version-label">v 0.43</span>
         </div>
 
         <!-- Start Screen Overlay -->
@@ -198,7 +196,7 @@
                     </button>
                 </div>
 
-                <button id="modal-reset-btn">Box Box <kbd class="modal-btn-kbd">R</kbd></button>
+                <button id="modal-reset-btn">Race Again <kbd class="modal-btn-kbd">R</kbd></button>
             </div>
 
             <div id="modal-runs-view" class="modal-view">
@@ -226,7 +224,7 @@
         </div>
     </div>
 
-    <script type="module" src="game/index.js?v=0.75"></script>
+    <script type="module" src="game/index.js?v=0.90"></script>
 </body>
 
 </html>
