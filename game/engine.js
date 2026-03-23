@@ -5,10 +5,11 @@ import { buildTrackCanvas } from './core/track-canvas.js?v=0.71';
 import { buildTrackRuntime } from './core/track-runtime.js?v=0.71';
 import { recordRunPoint, updateSimulation } from './core/simulation.js?v=0.71';
 import { saveLapTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.71';
-import { AnalyticsService } from './services/analytics.js?v=0.71';
+import { AnalyticsService } from './services/analytics.js?v=0.72';
+import { PlayerStatusStore } from './services/player-status.js?v=0.84';
 import { SessionFlagStore } from './services/session-flags.js?v=0.71';
-import { ShareService } from './services/share.js?v=0.75';
-import { GameUi } from './ui.js?v=0.80';
+import { ShareService } from './services/share.js?v=0.79';
+import { GameUi } from './ui.js?v=0.87';
 
 // --- Game Engine ---
 export class RealTimeRacer {
@@ -41,6 +42,7 @@ export class RealTimeRacer {
         this.nextCheckpointIndex = 0; // next checkpoint to pass this lap
         this.bestLapTime = null; // Best lap time for current track
         this.hasAnyData = false; // Whether any track has ever been raced
+        this.isReturningPlayer = false;
         this.activeTimers = []; // Keep track of active timeouts/intervals
 
         // Visuals
@@ -120,6 +122,7 @@ export class RealTimeRacer {
             }
         });
         this.analytics = new AnalyticsService();
+        this.playerStatus = new PlayerStatusStore();
         this.sessionFlags = new SessionFlagStore();
         this.shareService = new ShareService({
             onStateChange: (state) => this.ui.updateShareState(state),
@@ -134,12 +137,19 @@ export class RealTimeRacer {
         this.playerHistoryPromise = hasAnyTrackData()
             .then((hasAnyData) => {
                 this.hasAnyData = hasAnyData;
+                this.isReturningPlayer = this.playerStatus.isReturningPlayer(hasAnyData);
                 this.ui.refreshStartOverlay(this.status, this.hasAnyData);
-                return hasAnyData;
+                return {
+                    hasAnyData,
+                    isReturningPlayer: this.isReturningPlayer
+                };
             })
             .catch((error) => {
                 console.error('Error loading player history:', error);
-                return false;
+                return {
+                    hasAnyData: false,
+                    isReturningPlayer: false
+                };
             });
 
         // Listeners
@@ -207,10 +217,10 @@ export class RealTimeRacer {
             }
 
             if (!this.playerTypeSent && !playerTypeAlreadySent) {
-                const hasAnyData = await this.playerHistoryPromise;
+                const { isReturningPlayer } = await this.playerHistoryPromise;
                 this.playerTypeSent = true;
                 this.sessionFlags.set('playerTypeSent', '1');
-                this.analytics.trackPlayerType(hasAnyData);
+                this.analytics.trackPlayerType(isReturningPlayer);
             }
 
             this.raceStats.start++;
@@ -312,7 +322,7 @@ export class RealTimeRacer {
         this.activeTimers.push(setTimeout(() => this.ui.turnOnCountdownLight(2), 1800));
 
         this.activeTimers.push(setTimeout(() => {
-            this.ui.turnCountdownLightsGreen();
+            this.ui.hideStartLights();
             this.ui.showGoMessage();
 
             // Defer status transition to the next rAF tick so the DOM mutations
@@ -444,11 +454,13 @@ export class RealTimeRacer {
             if (requestId !== this.trackLoadRequestId) return;
             this.bestLapTime = trackData.bestTime;
             this.hasAnyData = hasAnyData;
+            this.isReturningPlayer = this.playerStatus.isReturningPlayer(hasAnyData);
             this.ui.setBestTime(this.bestLapTime);
         } catch (error) {
             console.error('Error loading track data:', error);
             if (requestId !== this.trackLoadRequestId) return;
             this.bestLapTime = null;
+            this.isReturningPlayer = false;
             this.ui.setBestTime(null);
         }
 
@@ -574,6 +586,7 @@ export class RealTimeRacer {
         // Update best lap time in memory/UI only if the player is still on the same track.
         this.bestLapTime = trackData.bestTime;
         this.hasAnyData = true;
+        this.isReturningPlayer = this.playerStatus.isReturningPlayer(true);
         this.ui.setBestTime(this.bestLapTime);
         this.ui.setHudPersonalBestsOpenAllowed(true);
 
@@ -599,11 +612,10 @@ export class RealTimeRacer {
             lapTimesArray: trackData.lapTimes || [],
             isNewBest
         }, Boolean(this.lastSharePayload));
-        // Defer the heavy offscreen canvas work (single 640×640 render) until
-        // after the modal's first transition frame has been painted. Without
-        // this deferral the synchronous share-render canvas work blocks the main
-        // thread in the same task as classList.add('active'), causing the
-        // opacity/transform transition to skip its first frame (visible stutter).
+        // Keep the first modal frame cheap, then build the share preview after
+        // the entrance transition has started. The UI reserves the win-modal
+        // preview/share layout in advance so this async work no longer causes
+        // a visible second-step resize when it completes.
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 this.shareService.prepare(this.lastSharePayload).catch((error) => {
@@ -643,6 +655,8 @@ export class RealTimeRacer {
             this.pendingStartFrame = null;
         }
 
+        const wasModalActive = this.ui.isModalActive();
+
         this.pos = { ...this.currentTrack.startPos };
         this.prevPos = { ...this.currentTrack.startPos };
         this.velocity = { x: 0, y: 0 };
@@ -660,7 +674,7 @@ export class RealTimeRacer {
         this.particles = [];
         this.lastSharePayload = null;
         this.ui.closeModal();
-        this.shareService.reset({ visible: false });
+        this.shareService.reset({ visible: false, preservePreview: wasModalActive, preserveVisibility: wasModalActive });
         this.ui.setHudPersonalBestsOpenAllowed(!autoStart);
 
         // Reset Visuals
@@ -881,25 +895,6 @@ export class RealTimeRacer {
         ctx.drawImage(this.carSprite, -32 * scale, -16 * scale, 64 * scale, 32 * scale);
 
         ctx.restore();
-
-        // 10. Speed Lines - reduce on low-end
-        if (speed > 4 && this.status === 'playing' && this.frameSkip === 0) {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            const vx = -this.velocity.x * 2;
-            const vy = -this.velocity.y * 2;
-            const lineCount = this.frameSkip > 0 ? 3 : 5;
-            for (let k = 0; k < lineCount; k++) {
-                const rx = displayPos.x * gs + (Math.random() - 0.5) * 200;
-                const ry = displayPos.y * gs + (Math.random() - 0.5) * 200;
-                ctx.moveTo(rx, ry);
-                ctx.lineTo(rx + vx, ry + vy);
-            }
-            ctx.stroke();
-        }
-
-
 
         ctx.restore();
     }

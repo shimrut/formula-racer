@@ -64,6 +64,7 @@ export class GameUi {
         this._activeTrapModal = null;
         this._modalTrapKeydown = null;
         this._modalCloseFallbackTimer = null;
+        this._modalCloseTransitionEndHandler = null;
         this._mainModalIsCrash = false;
         this._hasPersonalBests = false;
         this._hudPersonalBestsAllowed = true;
@@ -749,11 +750,11 @@ export class GameUi {
         if (light) light.classList.add('on');
     }
 
-    turnCountdownLightsGreen() {
+    hideStartLights() {
+        if (this.startLights) this.startLights.classList.remove('visible');
         this.countdownLights.forEach((light) => {
             if (!light) return;
-            light.classList.remove('on');
-            light.classList.add('green');
+            light.className = 'light';
         });
     }
 
@@ -762,16 +763,28 @@ export class GameUi {
     }
 
     resetCountdown() {
-        if (this.startLights) this.startLights.classList.remove('visible');
+        this.hideStartLights();
         if (this.goMessage) this.goMessage.classList.remove('visible');
-        this.countdownLights.forEach((light) => {
-            if (light) light.className = 'light';
-        });
+    }
+
+    cancelPendingModalClose() {
+        if (!this.modal) return;
+
+        if (this._modalCloseFallbackTimer != null) {
+            clearTimeout(this._modalCloseFallbackTimer);
+            this._modalCloseFallbackTimer = null;
+        }
+
+        if (this._modalCloseTransitionEndHandler) {
+            this.modal.removeEventListener('transitionend', this._modalCloseTransitionEndHandler);
+            this._modalCloseTransitionEndHandler = null;
+        }
     }
 
     showModal(title, msg, lapData, canShare) {
         if (!this.modal || !this.modalTitle) return;
 
+        this.cancelPendingModalClose();
         this.modalTitle.textContent = title;
         this._mainModalIsCrash = Boolean(lapData?.isCrash);
         this.modal.classList.toggle('modal--crash', this._mainModalIsCrash);
@@ -803,7 +816,6 @@ export class GameUi {
                 this.modalMsg.textContent = msg || '';
             }
             if (this.modalStatsRow) this.modalStatsRow.style.display = 'none';
-            if (this.modalPreviewWrap) this.modalPreviewWrap.style.display = 'none';
         }
 
         if (lapData?.lapTimesArray !== undefined && this.modalLapTimes) {
@@ -816,7 +828,13 @@ export class GameUi {
             this.showMainModalView();
         }
 
-        this.updateShareState({ visible: canShare, ready: false, busy: false });
+        if (canShare) {
+            this.preparePendingShareLayout();
+            this.updateShareState({ visible: true, ready: false, busy: true });
+        } else {
+            this.clearModalPreview();
+            this.updateShareState({ visible: false, ready: false, busy: false });
+        }
         this.modal.classList.add('active');
         requestAnimationFrame(() => this.activateModalFocusTrap(this.modal));
     }
@@ -824,6 +842,7 @@ export class GameUi {
     showRunsModal(lapTimesArray, bestTime, currentTime = null, returnMode = 'close') {
         if (!this.modal || !this.modalTitle || !this.modalLapTimes || !this.modalRunsView || !this.modalMainView) return;
 
+        this.cancelPendingModalClose();
         const wasActive = this.isModalActive();
         this.modal.classList.remove('modal--crash');
         this.renderLapTimesList(this.modalLapTimes, lapTimesArray, bestTime, currentTime);
@@ -845,13 +864,12 @@ export class GameUi {
         const modal = this.modal;
         modal.classList.remove('active');
 
-        if (this._modalCloseFallbackTimer != null) {
-            clearTimeout(this._modalCloseFallbackTimer);
-            this._modalCloseFallbackTimer = null;
-        }
+        this.cancelPendingModalClose();
 
         const cleanupAfterClose = () => {
+            this._modalCloseTransitionEndHandler = null;
             modal.classList.remove('modal--crash');
+            this.updateShareState({ visible: false, ready: false, busy: false });
             this.clearModalPreview();
             this.releaseModalFocusTrap(modal);
         };
@@ -859,6 +877,7 @@ export class GameUi {
         const onTransitionEnd = (e) => {
             if (e.target !== modal || e.propertyName !== 'opacity') return;
             modal.removeEventListener('transitionend', onTransitionEnd);
+            this._modalCloseTransitionEndHandler = null;
             if (this._modalCloseFallbackTimer != null) {
                 clearTimeout(this._modalCloseFallbackTimer);
                 this._modalCloseFallbackTimer = null;
@@ -866,6 +885,7 @@ export class GameUi {
             cleanupAfterClose();
         };
 
+        this._modalCloseTransitionEndHandler = onTransitionEnd;
         modal.addEventListener('transitionend', onTransitionEnd);
         this._modalCloseFallbackTimer = setTimeout(() => {
             this._modalCloseFallbackTimer = null;
@@ -990,11 +1010,25 @@ export class GameUi {
     }
 
     updateShareState({ visible, ready, busy }) {
+        if (!visible) {
+            this.sharePanel?.classList.remove('pending-share');
+        }
         if (this.sharePanel) {
             this.sharePanel.style.display = visible ? 'flex' : 'none';
         }
         if (this.shareBtn) {
             this.shareBtn.disabled = !visible || !ready || busy;
+        }
+    }
+
+    preparePendingShareLayout() {
+        if (this.modalPreviewWrap) {
+            this.modalPreviewWrap.classList.add('pending-share');
+            this.modalPreviewWrap.style.display = 'block';
+        }
+        if (this.sharePanel) {
+            this.sharePanel.classList.add('pending-share');
+            this.sharePanel.style.display = 'flex';
         }
     }
 
@@ -1004,6 +1038,8 @@ export class GameUi {
         this._modalPreviewUrl = URL.createObjectURL(blob);
         this.modalPreviewImg.src = this._modalPreviewUrl;
         if (this.modalPreviewWrap) this.modalPreviewWrap.style.display = 'block';
+        this.modalPreviewWrap?.classList.remove('pending-share');
+        this.sharePanel?.classList.remove('pending-share');
     }
 
     clearModalPreview() {
@@ -1012,7 +1048,10 @@ export class GameUi {
             this._modalPreviewUrl = null;
         }
         if (this.modalPreviewImg) this.modalPreviewImg.src = '';
-        if (this.modalPreviewWrap) this.modalPreviewWrap.style.display = 'none';
+        if (this.modalPreviewWrap) {
+            this.modalPreviewWrap.classList.remove('pending-share');
+            this.modalPreviewWrap.style.display = 'none';
+        }
     }
 
     showHowToPlayModal() {
@@ -1039,6 +1078,12 @@ export class GameUi {
 
     activateModalFocusTrap(modalEl) {
         if (!modalEl) return;
+
+        if (this._modalTrapKeydown) {
+            document.removeEventListener('keydown', this._modalTrapKeydown);
+            this._modalTrapKeydown = null;
+        }
+
         this._focusBeforeModal = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         this._activeTrapModal = modalEl;
         const focusables = this.getFocusables(modalEl);

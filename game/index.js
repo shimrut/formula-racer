@@ -1,4 +1,4 @@
-import { RealTimeRacer } from './engine.js?v=0.80';
+import { RealTimeRacer } from './engine.js?v=0.90';
 
 function setupMobileViewportGuards() {
     if (!window.matchMedia('(pointer: coarse)').matches) return;
