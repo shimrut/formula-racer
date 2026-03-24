@@ -178,7 +178,7 @@ export const TRACKS = {
         ]
     },
     harborParkLoop: {
-        name: "Harbor Park Loop",
+        name: "Harbor Park",
         cornerRadius: 2.2,
         outer: [
             Point(40, 36),
