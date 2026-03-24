@@ -2,6 +2,7 @@ import { CONFIG } from '../config.js?v=0.71';
 
 const SHARE_HEADER_HEIGHT = 128;
 const SHARE_EXPORT_SIDE_INSET = 36;
+const MODAL_SURFACE_COLOR = '#020617';
 
 function getShareCaption(payload) {
     return `I ran ${payload.trackName} in 🏁 ${payload.lapTime.toFixed(2)}s. Can you beat it? \n 🏎️ vectorgp.run `;
@@ -236,14 +237,11 @@ function renderReplayFrame(ctx, payload, layout, width, height, progress, option
 
     ctx.clearRect(0, 0, width, height);
 
-    const gradient = ctx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, '#020617');
-    gradient.addColorStop(1, '#111827');
-    ctx.fillStyle = gradient;
+    ctx.fillStyle = MODAL_SURFACE_COLOR;
     ctx.fillRect(0, 0, width, height);
 
     if (showHud && bottomInset > 0) {
-        ctx.fillStyle = '#020617';
+        ctx.fillStyle = MODAL_SURFACE_COLOR;
         ctx.fillRect(0, height - bottomInset, width, bottomInset);
     }
 

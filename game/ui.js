@@ -2,7 +2,7 @@ import { CONFIG } from './config.js?v=0.71';
 import { TRACKS } from './tracks.js?v=0.80';
 import { getTrackData } from './storage.js?v=0.71';
 import { buildTrackRuntime } from './core/track-runtime.js?v=0.71';
-import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=0.77';
+import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=0.78';
 
 /** Horizontal swipe distance (px) to change track on mobile carousel. */
 const MOBILE_CAROUSEL_SWIPE_PX = 42;
@@ -34,6 +34,7 @@ export class GameUi {
         this.firstTimeMsg = document.getElementById('first-time-msg');
         this.returningPlayerPanel = document.getElementById('returning-player-panel');
         this.returningPlayerHeading = document.getElementById('returning-player-heading');
+        this.trackCountIndicator = document.getElementById('track-count-indicator');
         this.trackSelectorFrame = document.querySelector('.track-selector-frame');
         this.trackCarouselShell = document.querySelector('.track-carousel-shell');
         this.trackCarousel = document.getElementById('track-carousel');
@@ -624,6 +625,7 @@ export class GameUi {
                 this._onPreviewTrack(trackKey);
             }
             this.updateReturningTrackControls();
+            this.updateTrackCountIndicator();
             this.updateReturningPlayerStartButton();
             return;
         }
@@ -644,6 +646,7 @@ export class GameUi {
         }
 
         this.updateReturningTrackControls();
+        this.updateTrackCountIndicator();
         this.updateReturningPlayerStartButton();
     }
 
@@ -680,6 +683,15 @@ export class GameUi {
         }
     }
 
+    updateTrackCountIndicator() {
+        if (!this.trackCountIndicator || !this._returningTrackKeys.length) return;
+
+        const currentIndex = Math.max(0, this._returningTrackKeys.indexOf(this._selectedReturningTrackKey));
+        const totalTracks = this._returningTrackKeys.length;
+        this.trackCountIndicator.textContent = `${currentIndex + 1} / ${totalTracks}`;
+        this.trackCountIndicator.setAttribute('aria-label', `Track ${currentIndex + 1} of ${totalTracks}`);
+    }
+
     updateReturningPlayerStartButton() {
         if (!this._selectedReturningTrackKey) return;
         const trackName = TRACKS[this._selectedReturningTrackKey]?.name || 'Track';
@@ -706,13 +718,18 @@ export class GameUi {
     updateReturningTrackPersonalBest(trackKey, bestTime) {
         if (!trackKey || !this._returningTrackCards.has(trackKey)) return;
 
-        this._returningTrackPersonalBests.set(trackKey, bestTime);
+        const currentBest = this._returningTrackPersonalBests.get(trackKey);
+        const nextBest = bestTime !== null && bestTime !== undefined
+            ? (currentBest !== null && currentBest !== undefined ? Math.min(currentBest, bestTime) : bestTime)
+            : (currentBest !== null && currentBest !== undefined ? currentBest : null);
+
+        this._returningTrackPersonalBests.set(trackKey, nextBest);
         const card = this._returningTrackCards.get(trackKey);
         const pbEl = card?.querySelector('[data-track-pb]');
         if (!pbEl) return;
 
-        pbEl.textContent = bestTime !== null && bestTime !== undefined
-            ? `${bestTime.toFixed(2)}s`
+        pbEl.textContent = nextBest !== null && nextBest !== undefined
+            ? `${nextBest.toFixed(2)}s`
             : '--';
     }
 

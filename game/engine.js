@@ -8,8 +8,8 @@ import { saveLapTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.71'
 import { AnalyticsService } from './services/analytics.js?v=0.72';
 import { PlayerStatusStore } from './services/player-status.js?v=0.84';
 import { SessionFlagStore } from './services/session-flags.js?v=0.71';
-import { ShareService } from './services/share.js?v=0.79';
-import { GameUi } from './ui.js?v=0.87';
+import { ShareService } from './services/share.js?v=0.80';
+import { GameUi } from './ui.js?v=0.90';
 
 // --- Game Engine ---
 export class RealTimeRacer {
@@ -592,7 +592,7 @@ export class RealTimeRacer {
 
         // Check if this is a new best
         const isNewBest = trackData.bestTime === finalTime && (previousBest === null || previousBest === undefined || finalTime < previousBest);
-        const title = isNewBest ? 'New PB!' : 'FINISH LINE';
+        const title = isNewBest ? 'New PB!' : trackSnapshot.name;
 
         this.lastSharePayload = {
             title,

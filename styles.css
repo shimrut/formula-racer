@@ -11,6 +11,7 @@
     --accent-color: #ef4444; /* Racing Red */
     --danger-color: #ef4444;
     --modal-stack-btn-min-height: 3.5rem;
+    --modal-surface-color: #020617;
     
     /* New Design Tokens */
     --glass-bg: rgba(15, 23, 42, 0.6);
@@ -629,6 +630,23 @@ button.danger:hover {
     display: none !important;
 }
 
+.track-count-indicator {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 4.75rem;
+    padding: 0.35rem 0.8rem;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.72);
+    color: rgba(226, 232, 240, 0.94);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    line-height: 1;
+}
+
 .track-selector-frame {
     width: 100%;
     display: grid;
@@ -678,7 +696,7 @@ button.danger:hover {
     flex-direction: column;
     align-items: center;
     width: 100%;
-    background: linear-gradient(135deg, #020617 0%, #111827 100%);
+    background: var(--modal-surface-color);
     border: 2px solid #334155;
     border-radius: 8px;
     overflow: hidden;
@@ -716,12 +734,14 @@ button.danger:hover {
 .track-card-preview-wrap {
     display: block;
     margin-top: 1rem;
+    background: var(--modal-surface-color);
 }
 
 .track-card-preview-canvas {
     display: block;
     width: 100%;
     height: auto;
+    background: var(--modal-surface-color);
 }
 
 .track-carousel-nav {
@@ -873,7 +893,6 @@ button.danger:hover {
 
 .modal h2,
 .track-card-modal-title {
-    font-size: 3.5rem;
     margin: 0 0 0.25rem;
     color: #fff;
     text-transform: uppercase;
@@ -882,6 +901,14 @@ button.danger:hover {
     text-align: center;
     letter-spacing: 2px;
     line-height: 0.92;
+}
+
+.modal h2 {
+    font-size: 2.25rem;
+}
+
+.track-card-modal-title {
+    font-size: 3.5rem;
 }
 
 .modal p {
@@ -902,10 +929,17 @@ button.danger:hover {
     margin-bottom: 0;
 }
 
+/* Win modal share preview only — track cards also use .modal-preview-wrap */
+#modal-preview-wrap {
+    width: 100%;
+    margin: 0;
+}
+
 .modal-preview-img {
     display: block;
     width: 100%;
     height: auto;
+    background: var(--modal-surface-color);
 }
 
 #modal-preview-wrap.pending-share {
@@ -1368,6 +1402,11 @@ button.danger:hover {
 
     .returning-player-panel {
         gap: 1rem;
+    }
+
+    .track-count-indicator {
+        font-size: 0.72rem;
+        letter-spacing: 0.18em;
     }
 
     .track-carousel-shell {
