@@ -26,8 +26,9 @@ export function recordRunPoint(runHistory, point, { frameSkip, qualityLevel }) {
         return runHistory;
     }
 
+    runHistory.push({ x, y });
     return compactPathPoints(
-        [...runHistory, { x, y }],
+        runHistory,
         (frameSkip > 0 || qualityLevel > 0) ? 900 : 1400,
         160
     );
@@ -152,23 +153,18 @@ export function updateSimulation({
         if (state.keys.left) angle -= config.turnSpeed * dt;
         if (state.keys.right) angle += config.turnSpeed * dt;
 
-        velocity = {
-            x: velocity.x + ax * dt,
-            y: velocity.y + ay * dt
-        };
+        velocity.x += ax * dt;
+        velocity.y += ay * dt;
 
         const frictionFactor = Math.pow(config.friction, dt * 60);
-        velocity = {
-            x: velocity.x * frictionFactor,
-            y: velocity.y * frictionFactor
-        };
+        velocity.x *= frictionFactor;
+        velocity.y *= frictionFactor;
 
         cachedSpeed = Math.sqrt(velocity.x ** 2 + velocity.y ** 2);
 
-        const nextPos = {
-            x: pos.x + velocity.x * dt,
-            y: pos.y + velocity.y * dt
-        };
+        const nextPosX = pos.x + velocity.x * dt;
+        const nextPosY = pos.y + velocity.y * dt;
+        const nextPos = { x: nextPosX, y: nextPosY };
 
         const hitWall = checkWallCollision(pos, nextPos, collisionSegments, config.carRadius, getIntersection);
 
@@ -195,21 +191,20 @@ export function updateSimulation({
                 status = 'crashed';
                 crashImpact = Math.round(cachedSpeed * 20);
                 const particleCount = frameSkip > 0 ? 10 : 20;
-                particles = [...particles, ...createSparkParticles(pos, particleCount * 5, config.sparkColor)];
+                const crashSparks = createSparkParticles(pos, particleCount * 5, config.sparkColor);
+                for (let j = 0; j < crashSparks.length; j++) particles.push(crashSparks[j]);
             } else {
-                velocity = {
-                    x: velocity.x * -0.5,
-                    y: velocity.y * -0.5
-                };
-                pos = {
-                    x: pos.x - velocity.x * dt * 2,
-                    y: pos.y - velocity.y * dt * 2
-                };
+                velocity.x *= -0.5;
+                velocity.y *= -0.5;
+                pos.x -= velocity.x * dt * 2;
+                pos.y -= velocity.y * dt * 2;
                 const particleCount = frameSkip > 0 ? 3 : 5;
-                particles = [...particles, ...createSparkParticles(pos, particleCount * 5, config.sparkColor)];
+                const bounceSparks = createSparkParticles(pos, particleCount * 5, config.sparkColor);
+                for (let j = 0; j < bounceSparks.length; j++) particles.push(bounceSparks[j]);
             }
         } else {
-            pos = nextPos;
+            pos.x = nextPosX;
+            pos.y = nextPosY;
         }
 
         const vx = Math.cos(angle);
@@ -220,24 +215,17 @@ export function updateSimulation({
         const slip = 1 - (vx * vNormX + vy * vNormY);
 
         if (slip > 0.05 && cachedSpeed > 2) {
-            skidMarks = [
-                ...skidMarks,
-                {
-                    x: pos.x,
-                    y: pos.y,
-                    angle,
-                    alpha: 1.0
-                }
-            ];
+            skidMarks.push({ x: pos.x, y: pos.y, angle, alpha: 1.0 });
             const maxSkids = (frameSkip > 0 || qualityLevel > 0) ? 60 : 160;
-            if (skidMarks.length > maxSkids) skidMarks = skidMarks.slice(1);
+            if (skidMarks.length > maxSkids) skidMarks.shift();
         }
 
         trailTimer += dt;
         const traceInterval = (frameSkip > 0 || qualityLevel > 0) ? 0.08 : 0.05;
         if (trailTimer > traceInterval) {
+            routeTrace.push({ x: pos.x, y: pos.y });
             routeTrace = compactPathPoints(
-                [...routeTrace, { x: pos.x, y: pos.y }],
+                routeTrace,
                 (frameSkip > 0 || qualityLevel > 0) ? 240 : 480,
                 96
             );
@@ -252,22 +240,18 @@ export function updateSimulation({
     }
 
     const maxParticles = frameSkip > 0 ? 30 : 50;
-    if (particles.length > maxParticles) {
-        particles = particles.slice(particles.length - maxParticles);
-    }
-
-    particles = particles.reduceRight((nextParticles, particle) => {
-        const nextParticle = {
-            ...particle,
-            x: particle.x + particle.vx * dt,
-            y: particle.y + particle.vy * dt,
-            life: particle.life - dt
-        };
-        if (nextParticle.life > 0) {
-            nextParticles.unshift(nextParticle);
+    const particleStart = Math.max(0, particles.length - maxParticles);
+    let writeIdx = 0;
+    for (let i = particleStart; i < particles.length; i++) {
+        const p = particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.life -= dt;
+        if (p.life > 0) {
+            particles[writeIdx++] = p;
         }
-        return nextParticles;
-    }, []);
+    }
+    particles.length = writeIdx;
 
     return {
         status,

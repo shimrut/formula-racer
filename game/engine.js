@@ -1,5 +1,12 @@
 import { getIntersection } from './math.js?v=0.71';
 import { CONFIG } from './config.js?v=0.71';
+
+function lerpAngle(a, b, t) {
+    let d = b - a;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    return a + d * t;
+}
 import { TRACKS } from './tracks.js?v=0.80';
 import { buildTrackCanvas } from './core/track-canvas.js?v=0.71';
 import { buildTrackRuntime } from './core/track-runtime.js?v=0.71';
@@ -134,6 +141,7 @@ export class RealTimeRacer {
                 }
             }
         });
+
         this.playerHistoryPromise = hasAnyTrackData()
             .then((hasAnyData) => {
                 this.hasAnyData = hasAnyData;
@@ -153,7 +161,11 @@ export class RealTimeRacer {
             });
 
         // Listeners
-        new ResizeObserver(() => this.resize()).observe(this.container);
+        let resizeRafId = 0;
+        new ResizeObserver(() => {
+            cancelAnimationFrame(resizeRafId);
+            resizeRafId = requestAnimationFrame(() => this.resize());
+        }).observe(this.container);
         window.addEventListener('keydown', (e) => this.handleKey(e, true));
         window.addEventListener('keyup', (e) => this.handleKey(e, false));
         window.addEventListener('blur', () => this.clearSteeringInput());
@@ -261,7 +273,8 @@ export class RealTimeRacer {
 
         for (let i = 0; i < totalSteps; i++) {
             this.timeOffsetMs += stepMs;
-            this.prevPos = { x: this.pos.x, y: this.pos.y };
+            this.prevPos.x = this.pos.x;
+            this.prevPos.y = this.pos.y;
             this.prevAngle = this.angle;
             this.update(this.FIXED_DT);
         }
@@ -771,6 +784,27 @@ export class RealTimeRacer {
         });
     }
 
+    getDesiredLookAhead(speed, cw, ch, mobileCameraMode) {
+        let targetLookAheadX = 0;
+        let targetLookAheadY = 0;
+
+        if (speed > 1) {
+            const multiplier = mobileCameraMode ? 12 : 5;
+            const maxOffset = mobileCameraMode ? Math.min(cw, ch) / 2.5 : Math.min(cw, ch) / 5;
+
+            targetLookAheadX = this.velocity.x * multiplier;
+            targetLookAheadY = this.velocity.y * multiplier;
+
+            const magnitude = Math.hypot(targetLookAheadX, targetLookAheadY);
+            if (magnitude > maxOffset) {
+                targetLookAheadX = (targetLookAheadX / magnitude) * maxOffset;
+                targetLookAheadY = (targetLookAheadY / magnitude) * maxOffset;
+            }
+        }
+
+        return { x: targetLookAheadX, y: targetLookAheadY };
+    }
+
     render(dt, alpha = 1) {
         const ctx = this.ctx;
         const cw = this.canvas.width;
@@ -784,12 +818,6 @@ export class RealTimeRacer {
                 y: this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
             }
             : { x: this.pos.x, y: this.pos.y };
-        const lerpAngle = (a, b, t) => {
-            let d = b - a;
-            while (d > Math.PI) d -= 2 * Math.PI;
-            while (d < -Math.PI) d += 2 * Math.PI;
-            return a + d * t;
-        };
         const displayAngle = (this.status === 'playing') ? lerpAngle(this.prevAngle, this.angle, alpha) : this.angle;
 
         // 1. Fill Off-Track
@@ -801,33 +829,18 @@ export class RealTimeRacer {
         const mobileCameraMode = this.isCoarsePointer || this.isNarrowViewport;
         this.zoom = mobileCameraMode ? 0.75 : 1.0;
 
-        // Target offset uses physical velocity, which takes time to change, 
-        // unlike the immediate response of steering angle
-        let targetLookAheadX = 0;
-        let targetLookAheadY = 0;
-
-        if (speed > 1) {
-            const multiplier = mobileCameraMode ? 12 : 5;
-            const maxOffset = mobileCameraMode ? Math.min(cw, ch) / 2.5 : Math.min(cw, ch) / 5;
-
-            targetLookAheadX = this.velocity.x * multiplier;
-            targetLookAheadY = this.velocity.y * multiplier;
-
-            const mag = Math.hypot(targetLookAheadX, targetLookAheadY);
-            if (mag > maxOffset) {
-                targetLookAheadX = (targetLookAheadX / mag) * maxOffset;
-                targetLookAheadY = (targetLookAheadY / mag) * maxOffset;
-            }
-        }
+        const desiredLookAhead = this.getDesiredLookAhead(speed, cw, ch, mobileCameraMode);
 
         // Keep the original camera lead response; only the rendered car uses corrected interpolation.
         const lerpFactor = 1 - Math.exp(-dt * 4);
 
-        this._lookAheadX += (targetLookAheadX - this._lookAheadX) * lerpFactor;
-        this._lookAheadY += (targetLookAheadY - this._lookAheadY) * lerpFactor;
+        this._lookAheadX += (desiredLookAhead.x - this._lookAheadX) * lerpFactor;
+        this._lookAheadY += (desiredLookAhead.y - this._lookAheadY) * lerpFactor;
 
         this.camera.x = (displayPos.x * gs) + this._lookAheadX - (cw / 2 / this.zoom);
         this.camera.y = (displayPos.y * gs) + this._lookAheadY - (ch / 2 / this.zoom);
+
+
 
         ctx.save();
         // Apply Zoom and Camera Transform
@@ -843,16 +856,24 @@ export class RealTimeRacer {
         if (this.skidMarks.length > 0) {
             ctx.fillStyle = CONFIG.skidColor;
             const startIdx = this.frameSkip > 0 ? Math.max(0, this.skidMarks.length - 50) : 0;
+            const z = this.zoom;
+            const cx = this.camera.x;
+            const cy = this.camera.y;
 
             for (let i = startIdx; i < this.skidMarks.length; i++) {
                 const m = this.skidMarks[i];
-                ctx.save();
-                ctx.translate(m.x * gs, m.y * gs);
-                ctx.rotate(m.angle);
+                const mx = m.x * gs;
+                const my = m.y * gs;
+                const cos = Math.cos(m.angle);
+                const sin = Math.sin(m.angle);
+                const a = z * cos;
+                const b = z * sin;
+                ctx.setTransform(a, b, -b, a, z * (mx - cx), z * (my - cy));
                 ctx.fillRect(-10, -5, 4, 10);
                 ctx.fillRect(-10, 5, 4, 10);
-                ctx.restore();
             }
+            // Restore parent transform (zoom + camera offset)
+            ctx.setTransform(z, 0, 0, z, -cx * z, -cy * z);
         }
 
         // 4.5 Route Trace (Always Visible)
@@ -897,9 +918,11 @@ export class RealTimeRacer {
         ctx.restore();
 
         ctx.restore();
+
     }
 
     loop(now) {
+
         const rawDt = Math.min((now - this.lastTime) / 1000, 0.1);
         const frameTime = now - this.lastTime;
         this.lastTime = now;
@@ -925,7 +948,8 @@ export class RealTimeRacer {
         const maxSteps = 3; // Cap to avoid spiral of death
         let steps = 0;
         while (this.accumulator >= this.FIXED_DT && steps < maxSteps) {
-            this.prevPos = { x: this.pos.x, y: this.pos.y };
+            this.prevPos.x = this.pos.x;
+            this.prevPos.y = this.pos.y;
             this.prevAngle = this.angle;
             this.update(this.FIXED_DT);
             this.accumulator -= this.FIXED_DT;
@@ -939,6 +963,8 @@ export class RealTimeRacer {
         if (this.status === 'playing') {
             this.ui.syncHud({ time: this.currentTime, speed: this.cachedSpeed });
         }
+
+
 
         requestAnimationFrame((t) => this.loop(t));
     }
