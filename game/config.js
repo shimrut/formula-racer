@@ -27,6 +27,8 @@ export const CONFIG = {
     turnSpeed: 5.0,  // Balanced steering response
     friction: 0.96, // Lower drag for higher top speed
     crashSpeed: 2.0, // Higher impact tolerance
+    resumeRelaunchDelay: 0.5, // Brief buffer before throttle resumes after unpausing
+    crashRelaunchDelay: 0.25, // Brief buffer before throttle resumes after crash reset
     
     // Collision radius (approximate car half-width in grid units)
     carRadius: 0.2 
