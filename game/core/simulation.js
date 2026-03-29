@@ -1,37 +1,32 @@
-export function compactPathPoints(points, maxPoints, preserveTail) {
-    if (points.length <= maxPoints) return points;
+/**
+ * Mutate-in-place simulation. The `state` object (the engine instance) is
+ * modified directly — no packing, no return-object copy-back. Only the
+ * lightweight events descriptor is returned.
+ *
+ * Trail data (skidMarks, routeTrace, runHistory) are RingBuffers with
+ * pre-allocated slots, so the hot loop produces zero garbage.
+ */
 
-    const tailCount = Math.min(preserveTail, points.length);
-    const headEnd = points.length - tailCount;
-    const compacted = [];
+// Pre-allocated nextPos — reused every tick, never returned.
+const _nextPos = { x: 0, y: 0 };
 
-    for (let i = 0; i < headEnd; i += 2) {
-        compacted.push(points[i]);
-    }
-    for (let i = headEnd; i < points.length; i++) {
-        compacted.push(points[i]);
-    }
+// Pre-allocated events object — reused every tick.
+const _events = {
+    winTriggered: false,
+    lapCompleted: false,
+    completedLapTime: null,
+    crashImpact: null,
+    crashEndedRun: false,
+    practiceCrashReset: false
+};
 
-    if (compacted.length > maxPoints) {
-        return compacted.slice(compacted.length - maxPoints);
-    }
-    return compacted;
-}
-
-export function recordRunPoint(runHistory, point, { frameSkip, qualityLevel }) {
-    const x = Number(point.x.toFixed(3));
-    const y = Number(point.y.toFixed(3));
-    const lastPoint = runHistory[runHistory.length - 1];
-    if (lastPoint && Math.abs(lastPoint.x - x) < 0.001 && Math.abs(lastPoint.y - y) < 0.001) {
-        return runHistory;
-    }
-
-    runHistory.push({ x, y });
-    return compactPathPoints(
-        runHistory,
-        (frameSkip > 0 || qualityLevel > 0) ? 900 : 1400,
-        160
-    );
+function resetEvents() {
+    _events.winTriggered = false;
+    _events.lapCompleted = false;
+    _events.completedLapTime = null;
+    _events.crashImpact = null;
+    _events.crashEndedRun = false;
+    _events.practiceCrashReset = false;
 }
 
 export function createSparkParticles(pos, count, sparkColor) {
@@ -63,8 +58,11 @@ export function createSparkParticles(pos, count, sparkColor) {
     return particles;
 }
 
-export function checkWallCollision(p1, p2, collisionSegments, carRadius, getIntersection) {
-    if (collisionSegments.length === 0) return false;
+// Reusable buffer for spatial hash query results (zero alloc after first use)
+const _queryBuffer = [];
+
+export function checkWallCollision(p1, p2, collisionHash, carRadius, getIntersection) {
+    if (!collisionHash || collisionHash.length === 0) return false;
 
     const carRadiusSq = carRadius * carRadius;
     const minX = Math.min(p1.x, p2.x) - carRadius;
@@ -72,10 +70,13 @@ export function checkWallCollision(p1, p2, collisionSegments, carRadius, getInte
     const minY = Math.min(p1.y, p2.y) - carRadius;
     const maxY = Math.max(p1.y, p2.y) + carRadius;
 
-    for (const segment of collisionSegments) {
-        if (maxX < segment.minX || minX > segment.maxX || maxY < segment.minY || minY > segment.maxY) {
-            continue;
-        }
+    // Query spatial hash for only nearby segments
+    const nearby = collisionHash.query
+        ? collisionHash.query(minX, minY, maxX, maxY, _queryBuffer)
+        : collisionHash; // Fallback: plain array (no spatial hash)
+
+    for (let i = 0; i < nearby.length; i++) {
+        const segment = nearby[i];
 
         if (getIntersection(p1, p2, segment.start, segment.end)) return true;
 
@@ -113,133 +114,136 @@ export function checkFinishLine(p1, p2, startLine, getIntersection) {
     return !!getIntersection(p1, p2, startLine.p1, startLine.p2);
 }
 
-export function updateSimulation({
-    dt,
-    state,
-    config,
-    currentTrack,
-    collisionSegments,
-    frameSkip,
-    qualityLevel,
-    getIntersection
-}) {
-    let {
-        status,
-        currentTime,
-        angle,
-        pos,
-        velocity,
-        cachedSpeed,
-        nextCheckpointIndex,
-        skidMarks,
-        routeTrace,
-        particles,
-        trailTimer,
-        runHistory,
-        runHistoryTimer
-    } = state;
-    let winTriggered = false;
-    let crashImpact = null;
+/**
+ * Run one simulation tick, mutating `state` in-place.
+ * Returns the shared `_events` descriptor (valid until the next call).
+ */
+export function updateSimulation(
+    state, dt, config, currentTrack, collisionSegments, getIntersection
+) {
+    resetEvents();
 
-    if (status === 'playing') {
-        currentTime += dt;
-
-        let ax = 0;
-        let ay = 0;
-
-        ax += Math.cos(angle) * config.accel;
-        ay += Math.sin(angle) * config.accel;
-
-        if (state.keys.left) angle -= config.turnSpeed * dt;
-        if (state.keys.right) angle += config.turnSpeed * dt;
-
-        velocity.x += ax * dt;
-        velocity.y += ay * dt;
-
-        const frictionFactor = Math.pow(config.friction, dt * 60);
-        velocity.x *= frictionFactor;
-        velocity.y *= frictionFactor;
-
-        cachedSpeed = Math.sqrt(velocity.x ** 2 + velocity.y ** 2);
-
-        const nextPosX = pos.x + velocity.x * dt;
-        const nextPosY = pos.y + velocity.y * dt;
-        const nextPos = { x: nextPosX, y: nextPosY };
-
-        const hitWall = checkWallCollision(pos, nextPos, collisionSegments, config.carRadius, getIntersection);
-
-        const checkpoints = currentTrack.checkpoints || [];
-        if (nextCheckpointIndex < checkpoints.length) {
-            const cp = checkpoints[nextCheckpointIndex];
-            if (getIntersection(pos, nextPos, cp.p1, cp.p2)) {
-                nextCheckpointIndex++;
-            }
-        }
-
-        const crossedFinish = checkFinishLine(pos, nextPos, currentTrack.startLine, getIntersection);
-        const allPassed = checkpoints.length === 0 || nextCheckpointIndex >= checkpoints.length;
-        if (crossedFinish) {
-            if (allPassed && currentTime >= 2.0) {
-                status = 'won';
-                winTriggered = true;
-            }
-            nextCheckpointIndex = 0;
-        }
-
-        if (hitWall) {
-            if (cachedSpeed > config.crashSpeed) {
-                status = 'crashed';
-                crashImpact = Math.round(cachedSpeed * 20);
-                const particleCount = frameSkip > 0 ? 10 : 20;
-                const crashSparks = createSparkParticles(pos, particleCount * 5, config.sparkColor);
-                for (let j = 0; j < crashSparks.length; j++) particles.push(crashSparks[j]);
-            } else {
-                velocity.x *= -0.5;
-                velocity.y *= -0.5;
-                pos.x -= velocity.x * dt * 2;
-                pos.y -= velocity.y * dt * 2;
-                const particleCount = frameSkip > 0 ? 3 : 5;
-                const bounceSparks = createSparkParticles(pos, particleCount * 5, config.sparkColor);
-                for (let j = 0; j < bounceSparks.length; j++) particles.push(bounceSparks[j]);
-            }
+    if (state.status === 'playing') {
+        if (state.relaunchDelayRemaining > 0) {
+            state.relaunchDelayRemaining = Math.max(0, state.relaunchDelayRemaining - dt);
         } else {
-            pos.x = nextPosX;
-            pos.y = nextPosY;
-        }
+            state.currentTime += dt;
 
-        const vx = Math.cos(angle);
-        const vy = Math.sin(angle);
-        const vMag = cachedSpeed || 1;
-        const vNormX = velocity.x / vMag;
-        const vNormY = velocity.y / vMag;
-        const slip = 1 - (vx * vNormX + vy * vNormY);
+            const ax = Math.cos(state.angle) * config.accel;
+            const ay = Math.sin(state.angle) * config.accel;
 
-        if (slip > 0.05 && cachedSpeed > 2) {
-            skidMarks.push({ x: pos.x, y: pos.y, angle, alpha: 1.0 });
-            const maxSkids = (frameSkip > 0 || qualityLevel > 0) ? 60 : 160;
-            if (skidMarks.length > maxSkids) skidMarks.shift();
-        }
+            if (state.keys.left) state.angle -= config.turnSpeed * dt;
+            if (state.keys.right) state.angle += config.turnSpeed * dt;
 
-        trailTimer += dt;
-        const traceInterval = (frameSkip > 0 || qualityLevel > 0) ? 0.08 : 0.05;
-        if (trailTimer > traceInterval) {
-            routeTrace.push({ x: pos.x, y: pos.y });
-            routeTrace = compactPathPoints(
-                routeTrace,
-                (frameSkip > 0 || qualityLevel > 0) ? 240 : 480,
-                96
-            );
-            trailTimer %= traceInterval;
-        }
+            state.velocity.x += ax * dt;
+            state.velocity.y += ay * dt;
 
-        runHistoryTimer += dt;
-        if (runHistoryTimer >= 0.05) {
-            runHistory = recordRunPoint(runHistory, pos, { frameSkip, qualityLevel });
-            runHistoryTimer %= 0.05;
+            state.velocity.x *= state.frictionFactor;
+            state.velocity.y *= state.frictionFactor;
+
+            state.cachedSpeed = Math.sqrt(state.velocity.x ** 2 + state.velocity.y ** 2);
+
+            _nextPos.x = state.pos.x + state.velocity.x * dt;
+            _nextPos.y = state.pos.y + state.velocity.y * dt;
+
+            const hitWall = checkWallCollision(state.pos, _nextPos, state.collisionHash || collisionSegments, config.carRadius, getIntersection);
+
+            // Checkpoint detection
+            const checkpoints = currentTrack.checkpoints || [];
+            if (state.nextCheckpointIndex < checkpoints.length) {
+                const cp = checkpoints[state.nextCheckpointIndex];
+                if (getIntersection(state.pos, _nextPos, cp.p1, cp.p2)) {
+                    state.nextCheckpointIndex++;
+                }
+            }
+
+            // Finish line
+            const crossedFinish = checkFinishLine(state.pos, _nextPos, currentTrack.startLine, getIntersection);
+            const allPassed = checkpoints.length === 0 || state.nextCheckpointIndex >= checkpoints.length;
+            if (crossedFinish) {
+                if (allPassed && state.currentTime >= 2.0) {
+                    if (state.currentModeKey === 'practice') {
+                        _events.lapCompleted = true;
+                        _events.completedLapTime = state.currentTime;
+                        state.currentTime = 0;
+                    } else {
+                        state.status = 'won';
+                        _events.winTriggered = true;
+                    }
+                }
+                state.nextCheckpointIndex = 0;
+            }
+
+            // Collision response
+            if (hitWall) {
+                if (state.cachedSpeed > config.crashSpeed) {
+                    _events.crashImpact = Math.round(state.cachedSpeed * 20);
+                    const particleCount = state.frameSkip > 0 ? 10 : 20;
+                    const crashSparks = createSparkParticles(state.pos, particleCount * 5, config.sparkColor);
+                    for (let j = 0; j < crashSparks.length; j++) state.particles.push(crashSparks[j]);
+                    if (state.currentModeKey === 'practice' && !state.practiceEndOnCrash) {
+                        _events.practiceCrashReset = true;
+                    } else {
+                        state.status = 'crashed';
+                        _events.crashEndedRun = true;
+                    }
+                } else {
+                    state.velocity.x *= -0.5;
+                    state.velocity.y *= -0.5;
+                    state.pos.x -= state.velocity.x * dt * 2;
+                    state.pos.y -= state.velocity.y * dt * 2;
+                    const particleCount = state.frameSkip > 0 ? 3 : 5;
+                    const bounceSparks = createSparkParticles(state.pos, particleCount * 5, config.sparkColor);
+                    for (let j = 0; j < bounceSparks.length; j++) state.particles.push(bounceSparks[j]);
+                }
+            } else {
+                state.pos.x = _nextPos.x;
+                state.pos.y = _nextPos.y;
+            }
+
+            // Slip / skid detection — pre-compute cos/sin and store on the slot
+            const vx = Math.cos(state.angle);
+            const vy = Math.sin(state.angle);
+            const vMag = state.cachedSpeed || 1;
+            const slip = 1 - (vx * (state.velocity.x / vMag) + vy * (state.velocity.y / vMag));
+
+            if (slip > 0.05 && state.cachedSpeed > 2) {
+                const slot = state.skidMarks.write();
+                slot.x = state.pos.x;
+                slot.y = state.pos.y;
+                slot.cos = vx;   // cos(angle) already computed above
+                slot.sin = vy;   // sin(angle) already computed above
+            }
+
+            // Route trace
+            state.trailTimer += dt;
+            const traceInterval = (state.frameSkip > 0 || state.qualityLevel > 0) ? 0.08 : 0.05;
+            if (state.trailTimer > traceInterval) {
+                const slot = state.routeTrace.write();
+                slot.x = state.pos.x;
+                slot.y = state.pos.y;
+                state.trailTimer %= traceInterval;
+            }
+
+            // Run history (arithmetic rounding — no string alloc)
+            state.runHistoryTimer += dt;
+            if (state.runHistoryTimer >= 0.05) {
+                const rx = Math.round(state.pos.x * 1000) / 1000;
+                const ry = Math.round(state.pos.y * 1000) / 1000;
+                const last = state.runHistory.last();
+                if (!last || Math.abs(last.x - rx) >= 0.001 || Math.abs(last.y - ry) >= 0.001) {
+                    const slot = state.runHistory.write();
+                    slot.x = rx;
+                    slot.y = ry;
+                }
+                state.runHistoryTimer %= 0.05;
+            }
         }
     }
 
-    const maxParticles = frameSkip > 0 ? 30 : 50;
+    // Particle update (in-place compaction sweep — already efficient)
+    const maxParticles = state.frameSkip > 0 ? 30 : 50;
+    const particles = state.particles;
     const particleStart = Math.max(0, particles.length - maxParticles);
     let writeIdx = 0;
     for (let i = particleStart; i < particles.length; i++) {
@@ -253,24 +257,5 @@ export function updateSimulation({
     }
     particles.length = writeIdx;
 
-    return {
-        status,
-        currentTime,
-        angle,
-        pos,
-        velocity,
-        cachedSpeed,
-        nextCheckpointIndex,
-        skidMarks,
-        routeTrace,
-        particles,
-        trailTimer,
-        runHistory,
-        runHistoryTimer
-,
-        events: {
-            winTriggered,
-            crashImpact
-        }
-    };
+    return _events;
 }

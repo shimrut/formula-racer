@@ -47,6 +47,14 @@ export function smoothPoly(points, radius, qualityLevel, frameSkip) {
     return newPoints;
 }
 
+export function buildTrackGeometry(track, { qualityLevel, frameSkip }) {
+    const cornerRadius = track.cornerRadius ?? 3;
+    return {
+        outer: smoothPoly(track.outer, cornerRadius, qualityLevel, frameSkip),
+        inner: smoothPoly(track.inner, cornerRadius, qualityLevel, frameSkip)
+    };
+}
+
 function buildCollisionSegmentsForPoly(poly) {
     const segments = [];
 
@@ -71,17 +79,28 @@ function buildCollisionSegmentsForPoly(poly) {
     return segments;
 }
 
-export function buildTrackRuntime(track, { qualityLevel, frameSkip }) {
-    const cornerRadius = track.cornerRadius ?? 3;
-    const outer = smoothPoly(track.outer, cornerRadius, qualityLevel, frameSkip);
-    const inner = smoothPoly(track.inner, cornerRadius, qualityLevel, frameSkip);
+import { SpatialHash } from './spatial-hash.js?v=0.73';
+
+export function buildCollisionRuntime(geometry) {
+    const segments = [
+        ...buildCollisionSegmentsForPoly(geometry.outer),
+        ...buildCollisionSegmentsForPoly(geometry.inner)
+    ];
 
     return {
-        outer,
-        inner,
-        collisionSegments: [
-            ...buildCollisionSegmentsForPoly(outer),
-            ...buildCollisionSegmentsForPoly(inner)
-        ]
+        collisionSegments: segments,
+        // Cell size of 5 world units balances cell count vs query precision.
+        // Tracks span ~60 units, giving ~12×12 = 144 cells with good locality.
+        collisionHash: new SpatialHash(5, segments)
+    };
+}
+
+export function buildTrackRuntime(track, { qualityLevel, frameSkip }) {
+    const geometry = buildTrackGeometry(track, { qualityLevel, frameSkip });
+    const collisionRuntime = buildCollisionRuntime(geometry);
+
+    return {
+        ...geometry,
+        ...collisionRuntime
     };
 }
