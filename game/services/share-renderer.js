@@ -1,6 +1,11 @@
 import { CONFIG } from '../config.js?v=0.71';
 
+/** Compact top band when header is shown without the export pill stack (unused in current flows). */
 const SHARE_HEADER_HEIGHT = 128;
+/** Top band for final share card: time, pill, track name — map starts below this. */
+const SHARE_EXPORT_TOP_BAND_WITH_PILL = 192;
+/** Reserved bottom band so the route map does not run under caption text. */
+const SHARE_CAPTION_BAND_HEIGHT = 80;
 const SHARE_EXPORT_SIDE_INSET = 36;
 const MODAL_SURFACE_COLOR = '#020617';
 
@@ -194,6 +199,70 @@ function drawDirectionMarker(ctx, position, angle) {
     ctx.restore();
 }
 
+/**
+ * Final share card header: large time, centered mode pill, uppercase track name (modal preview skips this).
+ */
+function drawShareExportStack(ctx, payload, width) {
+    const lapTimeText = `${payload.lapTime.toFixed(2)}s`;
+    const trackUpper = String(payload.trackName ?? '').toUpperCase();
+    const kind = payload.shareRunKind;
+    const showPill = kind === 'trial' || kind === 'session';
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    const padTop = 22;
+    const timeFontPx = 64;
+    let yTime = padTop + timeFontPx / 2;
+
+    ctx.font = '900 64px "JetBrains Mono", "Courier New", monospace';
+    ctx.fillStyle = '#22c55e';
+    ctx.fillText(lapTimeText, width / 2, yTime);
+
+    let yNext = yTime + timeFontPx / 2 + 10;
+
+    if (showPill) {
+        const label = kind === 'session' ? 'SESSION' : 'TIME TRIAL';
+        const pillH = 26;
+        const padX = 14;
+        const pillCy = yNext + pillH / 2;
+
+        ctx.font = '700 10px system-ui, -apple-system, sans-serif';
+        const textW = ctx.measureText(label).width;
+        const pillW = Math.ceil(textW + padX * 2);
+        const px = (width - pillW) / 2;
+        const py = pillCy - pillH / 2;
+
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(px, py, pillW, pillH, pillH / 2);
+        } else {
+            ctx.rect(px, py, pillW, pillH);
+        }
+        ctx.fillStyle = 'rgba(51, 65, 85, 0.96)';
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillText(label, width / 2, pillCy);
+        yNext = pillCy + pillH / 2 + 14;
+    } else {
+        yNext += 8;
+    }
+
+    ctx.font = '700 20px outfit, system-ui, -apple-system, sans-serif';
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText(trackUpper, width / 2, yNext + 11);
+
+    ctx.restore();
+}
+
 function drawShareHeader(ctx, payload, width, headerHeight) {
     const lapTimeText = `${payload.lapTime.toFixed(2)}s`;
     const trackNameText = payload.trackName ?? '';
@@ -361,7 +430,8 @@ function canvasToBlob(canvas) {
 function buildShareImageBlob(payload, options = {}) {
     const {
         includeCaption = true,
-        includeHeader = true
+        includeHeader = true,
+        includeSourcePill = false
     } = options;
     const width = 640;
     const height = 640;
@@ -369,12 +439,16 @@ function buildShareImageBlob(payload, options = {}) {
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
+    const bottomInset = includeCaption ? SHARE_CAPTION_BAND_HEIGHT : 0;
+    const topInset = includeHeader
+        ? (includeSourcePill ? SHARE_EXPORT_TOP_BAND_WITH_PILL : SHARE_HEADER_HEIGHT)
+        : 0;
     const layout = getReplayLayout(
         payload,
         width,
         height,
-        includeHeader ? SHARE_HEADER_HEIGHT : 0,
-        0,
+        topInset,
+        bottomInset,
         includeHeader ? SHARE_EXPORT_SIDE_INSET : 0
     );
 
@@ -383,7 +457,11 @@ function buildShareImageBlob(payload, options = {}) {
         showMarker: false
     });
     if (includeHeader) {
-        drawShareHeader(ctx, payload, width, SHARE_HEADER_HEIGHT);
+        if (includeSourcePill) {
+            drawShareExportStack(ctx, payload, width);
+        } else {
+            drawShareHeader(ctx, payload, width, SHARE_HEADER_HEIGHT);
+        }
     }
 
     if (includeCaption) {
@@ -410,33 +488,7 @@ function renderTrackPreviewCanvas(canvas, payload) {
     });
 }
 
-function addCaptionToBlob(blob, payload, options = {}) {
-    const { includeCaption = true } = options;
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        const url = URL.createObjectURL(blob);
-        img.onload = () => {
-            URL.revokeObjectURL(url);
-            const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-            if (includeCaption) {
-                drawShareCaption(ctx, payload, canvas.width, canvas.height);
-            }
-            canvasToBlob(canvas).then(resolve).catch(reject);
-        };
-        img.onerror = () => {
-            URL.revokeObjectURL(url);
-            reject(new Error('Failed to load image for caption'));
-        };
-        img.src = url;
-    });
-}
-
 export {
-    addCaptionToBlob,
     buildShareImageBlob,
     getShareCaption,
     getShareFilename,
