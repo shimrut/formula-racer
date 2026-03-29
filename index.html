@@ -39,7 +39,7 @@
 
     <link rel="canonical" href="https://vectorgp.run/">
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="styles.css?v=0.84">
+    <link rel="stylesheet" href="styles.css?v=0.89">
 
     <!-- Structured Data (GEO: quotable summary for generative engines) -->
     <script type="application/ld+json">
@@ -113,18 +113,23 @@
         <!-- HUD Bar -->
         <div class="hud-bar">
             <button id="hud-stats-btn" class="hud-stats" type="button" aria-label="Show your 5 personal best lap times" disabled>
-                <div class="hud-stat"><span class="hud-label">KPH</span><span id="speed-val" class="hud-value">0</span></div>
-                <div class="hud-divider"></div>
                 <div class="hud-stat"><span class="hud-label">LAP</span><span id="time-val" class="hud-value">0.00</span></div>
                 <div class="hud-divider" id="best-time-divider" style="display: none;"></div>
                 <div class="hud-stat" id="best-time-display" style="display: none;"><span class="hud-label">BEST</span><span id="best-time-val" class="hud-value">--</span></div>
             </button>
-            <button id="track-change-btn" class="hud-track-btn" type="button" aria-label="Change track">Change Track</button>
         </div>
 
         <canvas id="gameCanvas" aria-label="Racing track and car"></canvas>
+        <div id="desktop-speedometer" class="speedometer speedometer--desktop" aria-live="off" aria-label="Current speed">
+            <span class="speedometer-label">KPH</span>
+            <span id="speed-val" class="speedometer-value">0</span>
+            <button id="desktop-practice-pause-btn" class="speedometer-action-btn speedometer-action-btn--desktop" type="button" aria-label="Pause run" hidden>
+                <span class="speedometer-pause-icon" aria-hidden="true"></span>
+                <span class="speedometer-action-key" aria-hidden="true">Esc</span>
+            </button>
+        </div>
         <div class="key-hint">
-            <span class="version-label">v 0.45</span>
+            <span class="version-label">v 0.46</span>
         </div>
 
         <!-- Start Screen Overlay -->
@@ -152,6 +157,12 @@
                         </div>
                         <button id="track-next-btn" class="track-carousel-nav track-carousel-nav--arrow" type="button" aria-label="Show next track">›</button>
                     </div>
+                    <section class="track-mode-panel" aria-label="Track mode settings">
+                        <div class="track-mode-toggle" role="group" aria-label="Track mode">
+                            <button id="track-mode-standard-btn" class="track-mode-btn is-active" type="button" aria-pressed="true">Time trial</button>
+                            <button id="track-mode-practice-btn" class="track-mode-btn" type="button" aria-pressed="false">Session</button>
+                        </div>
+                    </section>
                     <button id="returning-start-btn" class="track-start-btn" type="button">Start Your Engine</button>
                 </section>
                 <button id="start-btn">Got It</button>
@@ -167,12 +178,36 @@
 
         <!-- Big GO Text -->
         <div id="go-message">GO!</div>
+        <div id="practice-lap-flash" class="practice-lap-flash" aria-live="polite" aria-atomic="true">
+            <span id="practice-lap-flash-label" class="practice-lap-flash-label">LAP 1</span>
+            <span id="practice-lap-flash-time" class="practice-lap-flash-time">0.00s</span>
+            <span id="practice-lap-flash-delta" class="practice-lap-flash-delta">FIRST LAP</span>
+        </div>
 
         <!-- Mobile Touch Controls (Steering Only) -->
         <div class="mobile-controls">
             <div class="control-group">
-                <div id="btn-left" class="touch-btn">←</div>
-                <div id="btn-right" class="touch-btn">→</div>
+                <button id="btn-left" class="touch-btn" type="button" aria-label="Steer left">
+                    <svg class="touch-btn-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                        stroke-linejoin="round" aria-hidden="true">
+                        <path d="M15 18l-6-6 6-6" />
+                    </svg>
+                </button>
+                <div id="mobile-speedometer" class="mobile-speedometer" aria-live="off" aria-label="Current speed">
+                    <span class="mobile-speedometer-label">KPH</span>
+                    <span id="mobile-speed-val" class="mobile-speedometer-value">0</span>
+                    <button id="mobile-practice-pause-btn" class="speedometer-action-btn mobile-speedometer-action-btn" type="button" aria-label="Pause run" hidden>
+                        <span class="speedometer-pause-icon" aria-hidden="true"></span>
+                    </button>
+                </div>
+                <button id="btn-right" class="touch-btn" type="button" aria-label="Steer right">
+                    <svg class="touch-btn-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                        stroke-linejoin="round" aria-hidden="true">
+                        <path d="M9 18l6-6-6-6" />
+                    </svg>
+                </button>
             </div>
         </div>
     </div>
@@ -182,27 +217,33 @@
     <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal-card">
             <div id="modal-main-view" class="modal-view active-view">
-                <h2 id="modal-title">CRASH</h2>
-                <p id="modal-msg">Terminal Damage</p>
-                <div id="modal-stats-row" class="modal-stats-row" style="display: none;"></div>
+                <div class="modal-card-section modal-card-section--header">
+                    <h2 id="modal-title">CRASH</h2>
+                    <p id="modal-msg">Terminal Damage</p>
+                    <div id="modal-stats-row" class="modal-stats-row" style="display: none;"></div>
+                </div>
 
                 <div id="modal-preview-wrap" class="modal-preview-wrap" style="display: none;">
                     <img id="modal-preview-img" class="modal-preview-img" alt="Lap preview" />
                 </div>
 
-                <div id="share-panel" class="share-panel">
-                    <button id="share-btn" type="button">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="share-btn-icon" aria-hidden="true"><path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/></svg>
-                        <span>share your time</span>
-                    </button>
+                <div class="modal-card-section modal-card-section--actions">
+                    <div class="modal-action-row">
+                        <button id="modal-secondary-btn" class="modal-secondary-btn" type="button" hidden>End session</button>
+                        <button id="modal-reset-btn">Race Again <kbd class="modal-btn-kbd">R</kbd></button>
+                        <button id="share-btn" type="button">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="share-btn-icon" aria-hidden="true"><path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/></svg>
+                            <span>share your time</span>
+                        </button>
+                    </div>
                 </div>
-
-                <button id="modal-reset-btn">Race Again <kbd class="modal-btn-kbd">R</kbd></button>
             </div>
 
             <div id="modal-runs-view" class="modal-view">
-                <div id="modal-lap-times" class="modal-lap-times-container"></div>
-                <button id="back-to-main-btn" class="text-link-btn" type="button">Back</button>
+                <div class="modal-card-section modal-card-section--runs">
+                    <div id="modal-lap-times" class="modal-lap-times-container"></div>
+                    <button id="back-to-main-btn" class="text-link-btn" type="button">Back</button>
+                </div>
             </div>
         </div>
     </main>
@@ -225,7 +266,7 @@
         </div>
     </div>
 
-    <script type="module" src="game/index.js?v=1.00"></script>
+    <script type="module" src="game/index.js?v=1.10"></script>
 </body>
 
 </html>
