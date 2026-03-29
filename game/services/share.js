@@ -1,9 +1,8 @@
 import {
-    addCaptionToBlob,
     buildShareImageBlob,
     getShareCaption,
     getShareFilename
-} from './share-renderer.js?v=0.78';
+} from './share-renderer.js?v=0.81';
 
 export class ShareService {
     constructor({ onStateChange, onPreviewChange }) {
@@ -12,6 +11,7 @@ export class ShareService {
 
         this.baseBlob = null;
         this.previewBlob = null;
+        this.shareBlob = null;
         this.pendingBlobPromise = null;
         this.filename = '';
         this.sharingInProgress = false;
@@ -23,6 +23,7 @@ export class ShareService {
         this.generation += 1;
         this.baseBlob = null;
         this.previewBlob = null;
+        this.shareBlob = null;
         this.pendingBlobPromise = null;
         this.filename = '';
         this.sharingInProgress = false;
@@ -44,29 +45,34 @@ export class ShareService {
     prepare(payload) {
         if (!payload) return undefined;
         if (this.pendingBlobPromise) return this.pendingBlobPromise;
-        if (this.baseBlob) return Promise.resolve(this.baseBlob);
+        if (this.baseBlob) {
+            if (this.previewBlob && this.onPreviewChange) this.onPreviewChange(this.previewBlob);
+            this.emitState(true);
+            return Promise.resolve(this.baseBlob);
+        }
 
         const generation = this.generation;
         this.baseBlob = null;
         this.previewBlob = null;
+        this.shareBlob = null;
         this.filename = getShareFilename(payload);
-        const pendingPromise = Promise.all([
-            buildShareImageBlob(payload, { includeCaption: false, includeHeader: false }),
-            buildShareImageBlob(payload, { includeCaption: false, includeHeader: true })
-        ])
-            .then(([previewBlob, shareBlob]) => {
+        const pendingPromise = buildShareImageBlob(payload, {
+            includeCaption: false,
+            includeHeader: false
+        })
+            .then((previewBlob) => {
                 if (generation !== this.generation) {
-                    return shareBlob;
+                    return previewBlob;
                 }
 
                 this.previewBlob = previewBlob;
-                this.baseBlob = shareBlob;
+                this.baseBlob = previewBlob;
                 if (this.pendingBlobPromise === pendingPromise) {
                     this.pendingBlobPromise = null;
                 }
                 if (this.onPreviewChange) this.onPreviewChange(previewBlob);
                 this.emitState(true);
-                return shareBlob;
+                return previewBlob;
             })
             .catch((error) => {
                 if (this.pendingBlobPromise === pendingPromise) {
@@ -98,9 +104,16 @@ export class ShareService {
         this.emitState(true);
 
         try {
-            const captionBlob = await addCaptionToBlob(this.baseBlob, payload);
+            if (!this.shareBlob) {
+                this.shareBlob = await buildShareImageBlob(payload, {
+                    includeCaption: true,
+                    includeHeader: true,
+                    includeSourcePill: true
+                });
+            }
+
             const file = typeof File === 'function'
-                ? new File([captionBlob], this.filename, { type: 'image/jpeg' })
+                ? new File([this.shareBlob], this.filename, { type: 'image/jpeg' })
                 : null;
             const caption = getShareCaption(payload);
             const hasNavigatorShare = typeof navigator.share === 'function';
@@ -134,8 +147,8 @@ export class ShareService {
                 return;
             }
 
-            if (captionBlob && navigator.clipboard?.write && typeof ClipboardItem === 'function') {
-                await navigator.clipboard.write([new ClipboardItem({ 'image/jpeg': captionBlob })]);
+            if (this.shareBlob && navigator.clipboard?.write && typeof ClipboardItem === 'function') {
+                await navigator.clipboard.write([new ClipboardItem({ 'image/jpeg': this.shareBlob })]);
                 this.emitState(true);
                 return;
             }

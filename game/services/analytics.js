@@ -18,11 +18,18 @@ export class AnalyticsService {
         this.track('challenge_friend_share');
     }
 
-    trackRaceEvent(stats) {
-        this.track('race-event', {
+    trackTrialRace(stats) {
+        this.track('trial-race', {
             start: stats.start,
             crash: stats.crash,
             win: stats.win
+        });
+    }
+
+    trackSessionRace(stats) {
+        this.track('session-race', {
+            start: stats.start,
+            crash: stats.crash
         });
     }
 

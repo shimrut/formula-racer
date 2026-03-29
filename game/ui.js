@@ -1,19 +1,25 @@
 import { CONFIG } from './config.js?v=0.71';
 import { TRACKS } from './tracks.js?v=0.80';
-import { getTrackData } from './storage.js?v=0.71';
-import { buildTrackRuntime } from './core/track-runtime.js?v=0.71';
-import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=0.78';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=0.01';
+import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=0.72';
+import { getTrackPreviewGeometry } from './core/track-assets.js?v=0.01';
+import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=0.81';
 
 /** Horizontal swipe distance (px) to change track on mobile carousel. */
 const MOBILE_CAROUSEL_SWIPE_PX = 42;
 
 export class GameUi {
-    constructor({ onOpenTrackSelection, onPreviewTrack, onPreviewPresentation, onStart, onReset, onShare, onShowPersonalBests, previewQualityLevel = 0, previewFrameSkip = 0 }) {
-        this.trackChangeBtn = document.getElementById('track-change-btn');
+    constructor({ onPreviewTrack, onPreviewPresentation, onStart, onReset, onShare, onShowPersonalBests, onPausePractice, previewQualityLevel = 0, previewFrameSkip = 0 }) {
+        this.header = document.querySelector('header');
         this.hudBar = document.querySelector('.hud-bar');
         this.hudStatsBtn = document.getElementById('hud-stats-btn');
         this.timeVal = document.getElementById('time-val');
         this.speedVal = document.getElementById('speed-val');
+        this.desktopSpeedometer = document.getElementById('desktop-speedometer');
+        this.desktopPracticePauseBtn = document.getElementById('desktop-practice-pause-btn');
+        this.mobileSpeedometer = document.getElementById('mobile-speedometer');
+        this.mobileSpeedVal = document.getElementById('mobile-speed-val');
+        this.mobilePracticePauseBtn = document.getElementById('mobile-practice-pause-btn');
         this.bestTimeDisplay = document.getElementById('best-time-display');
         this.bestTimeDivider = document.getElementById('best-time-divider');
         this.bestTimeVal = document.getElementById('best-time-val');
@@ -27,8 +33,8 @@ export class GameUi {
         this.backToMainBtn = document.getElementById('back-to-main-btn');
         this.modalMainView = document.getElementById('modal-main-view');
         this.modalRunsView = document.getElementById('modal-runs-view');
-        this.sharePanel = document.getElementById('share-panel');
         this.shareBtn = document.getElementById('share-btn');
+        this.modalSecondaryBtn = document.getElementById('modal-secondary-btn');
         this.startOverlay = document.getElementById('start-overlay');
         this.startGroup = document.getElementById('start-group');
         this.firstTimeMsg = document.getElementById('first-time-msg');
@@ -40,9 +46,15 @@ export class GameUi {
         this.trackCarousel = document.getElementById('track-carousel');
         this.trackPrevBtn = document.getElementById('track-prev-btn');
         this.trackNextBtn = document.getElementById('track-next-btn');
+        this.trackModeStandardBtn = document.getElementById('track-mode-standard-btn');
+        this.trackModePracticeBtn = document.getElementById('track-mode-practice-btn');
         this.returningStartBtn = document.getElementById('returning-start-btn');
         this.startLights = document.getElementById('start-lights');
         this.goMessage = document.getElementById('go-message');
+        this.practiceLapFlash = document.getElementById('practice-lap-flash');
+        this.practiceLapFlashLabel = document.getElementById('practice-lap-flash-label');
+        this.practiceLapFlashTime = document.getElementById('practice-lap-flash-time');
+        this.practiceLapFlashDelta = document.getElementById('practice-lap-flash-delta');
         this.htpModal = document.getElementById('how-to-play-modal');
         this.closeHtpBtn = document.getElementById('close-htp-btn');
         this.headerHtpBtn = document.getElementById('header-htp-btn');
@@ -66,7 +78,13 @@ export class GameUi {
         this._modalTrapKeydown = null;
         this._modalCloseFallbackTimer = null;
         this._modalCloseTransitionEndHandler = null;
+        this._practiceLapFlashTimer = null;
         this._mainModalIsCrash = false;
+        this._modalKind = null;
+        this._modalPrimaryAction = onReset || null;
+        this._defaultModalPrimaryAction = onReset || null;
+        this._modalSecondaryAction = null;
+        this._forceSharePanelVisible = false;
         this._hasPersonalBests = false;
         this._hudPersonalBestsAllowed = true;
         this._runsViewMode = 'back';
@@ -75,11 +93,21 @@ export class GameUi {
         this._currentTrackKey = 'circuit';
         this._returningTrackKeys = [];
         this._returningTrackCards = new Map();
+        this._returningTrackPreviewCanvases = new Map();
+        this._renderedTrackPreviewKeys = new Set();
+        this._queuedTrackPreviewKeys = [];
+        this._queuedTrackPreviewKeySet = new Set();
+        this._pendingTrackPreviewRaf = null;
         this._returningTrackPersonalBests = new Map();
+        this._trackPreferences = new Map();
         this._selectedReturningTrackKey = null;
         this._carouselResizeObserver = null;
+        this._hudAnchorResizeObserver = null;
         this._touchStartX = null;
         this._touchDeltaX = 0;
+        this._trackCarouselTranslateX = 0;
+        this._trackCarouselShellWidth = 0;
+        this._trackCarouselCardCenters = new Map();
         this._touchCarouselStartTranslate = 0;
         this._carouselTouchDragging = false;
         this._suppressCarouselCardClick = false;
@@ -91,12 +119,14 @@ export class GameUi {
         this._previewFrameSkip = previewFrameSkip;
         this.anchorHudBar();
         this.bindReturningPlayerCarousel();
-        this.bindTrackChangeAction(onOpenTrackSelection);
         this.bindModalViewToggles();
+        this.bindModalActionRowPointerFocus();
         this.bindHowToPlay();
-        this.bindPrimaryActions(onStart, onReset, onShare, onShowPersonalBests);
+        this.bindPrimaryActions(onStart, onShare, onShowPersonalBests, onPausePractice);
+        this.bindTrackModeControls();
         this.bindReturningPlayerKeyboardNavigation();
         this.updateShareState({ visible: false, ready: false, busy: false });
+        this.setPracticePauseVisible(false);
     }
 
     setStartOverlayActive(isActive) {
@@ -108,21 +138,36 @@ export class GameUi {
     }
 
     anchorHudBar() {
-        const header = document.querySelector('header');
-        const hudBar = document.querySelector('.hud-bar');
+        const header = this.header;
+        const hudBar = this.hudBar;
         if (!header || !hudBar) return;
 
-        const setHudTop = () => {
-            const bottom = header.getBoundingClientRect().bottom;
-            hudBar.style.top = `${bottom + 12}px`;
+        const getHeaderHeight = (entry) => {
+            const observedSize = entry?.borderBoxSize;
+            if (Array.isArray(observedSize) && observedSize[0]?.blockSize) {
+                return observedSize[0].blockSize;
+            }
+            if (observedSize?.blockSize) {
+                return observedSize.blockSize;
+            }
+            return header.offsetHeight;
+        };
+
+        const setHudTop = (entry) => {
+            hudBar.style.top = `${Math.round(getHeaderHeight(entry)) + 12}px`;
         };
         setHudTop();
-        new ResizeObserver(setHudTop).observe(header);
+        this._hudAnchorResizeObserver?.disconnect?.();
+        this._hudAnchorResizeObserver = new ResizeObserver((entries) => setHudTop(entries[0]));
+        this._hudAnchorResizeObserver.observe(header);
     }
 
-    bindTrackChangeAction(onOpenTrackSelection) {
-        if (this.trackChangeBtn && onOpenTrackSelection) {
-            this.trackChangeBtn.addEventListener('click', onOpenTrackSelection);
+    setTrackCarouselTranslateX(translateX) {
+        this._trackCarouselTranslateX = Number.isFinite(translateX)
+            ? Math.round(translateX * 100) / 100
+            : 0;
+        if (this.trackCarousel) {
+            this.trackCarousel.style.transform = `translate3d(${this._trackCarouselTranslateX}px, 0, 0)`;
         }
     }
 
@@ -136,6 +181,27 @@ export class GameUi {
                 this.showMainModalView();
             });
         }
+    }
+
+    /**
+     * Mobile / WebKit often leaves :focus on the first-tapped action while another looks “active”.
+     * Blur siblings on pointerdown (capture) so only the pressed control keeps focus + focus ring.
+     */
+    bindModalActionRowPointerFocus() {
+        const row = this.modal?.querySelector('.modal-action-row');
+        if (!row) return;
+        row.addEventListener(
+            'pointerdown',
+            (e) => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                const pressed = e.target.closest('button');
+                if (!(pressed instanceof HTMLButtonElement) || !row.contains(pressed)) return;
+                row.querySelectorAll(':scope > button').forEach((b) => {
+                    if (b !== pressed) b.blur();
+                });
+            },
+            true
+        );
     }
 
     bindHowToPlay() {
@@ -199,7 +265,7 @@ export class GameUi {
         document.addEventListener('keydown', this._headerMenuEscape);
     }
 
-    bindPrimaryActions(onStart, onReset, onShare, onShowPersonalBests) {
+    bindPrimaryActions(onStart, onShare, onShowPersonalBests, onPausePractice) {
         if (this.startBtn && onStart) {
             this.startBtn.addEventListener('click', () => {
                 if (!this._startOverlayHasAnyData && !this._introAcknowledged) {
@@ -212,17 +278,36 @@ export class GameUi {
         }
         if (this.returningStartBtn && onStart) {
             this.returningStartBtn.addEventListener('click', () => {
-                onStart(this._selectedReturningTrackKey || this._currentTrackKey || this._returningTrackKeys[0]);
+                const trackKey = this._selectedReturningTrackKey || this._currentTrackKey || this._returningTrackKeys[0];
+                onStart(trackKey, this.getTrackPreferences(trackKey));
             });
         }
         if (this.hudStatsBtn && onShowPersonalBests) {
             this.hudStatsBtn.addEventListener('click', onShowPersonalBests);
         }
-        if (this.modalResetBtn && onReset) {
-            this.modalResetBtn.addEventListener('click', onReset);
+        if (this.modalResetBtn) {
+            this.modalResetBtn.addEventListener('click', () => {
+                if (this._modalPrimaryAction) this._modalPrimaryAction();
+            });
+        }
+        if (this.modalSecondaryBtn) {
+            this.modalSecondaryBtn.addEventListener('click', () => {
+                if (this._modalSecondaryAction) this._modalSecondaryAction();
+            });
         }
         if (this.shareBtn && onShare) {
             this.shareBtn.addEventListener('click', onShare);
+        }
+        if (this.desktopSpeedometer && onPausePractice) this.desktopSpeedometer.addEventListener('click', onPausePractice);
+        if (this.mobileSpeedometer && onPausePractice) this.mobileSpeedometer.addEventListener('click', onPausePractice);
+    }
+
+    bindTrackModeControls() {
+        if (this.trackModeStandardBtn) {
+            this.trackModeStandardBtn.addEventListener('click', () => this.updateSelectedTrackPreferences({ mode: TRACK_MODE_STANDARD }));
+        }
+        if (this.trackModePracticeBtn) {
+            this.trackModePracticeBtn.addEventListener('click', () => this.updateSelectedTrackPreferences({ mode: TRACK_MODE_PRACTICE }));
         }
     }
 
@@ -234,33 +319,73 @@ export class GameUi {
     bindTouchButton(button, onDown, onUp) {
         if (!button) return;
 
-        const down = (e) => {
+        let isPressed = false;
+
+        const press = (e) => {
+            if (e.button !== undefined && e.button !== 0) return;
             e.preventDefault();
-            if (onDown) onDown();
+            if (isPressed) return;
+            isPressed = true;
+            onDown?.();
             button.classList.add('active');
-        };
-        const up = (e) => {
-            e.preventDefault();
-            if (onUp) onUp();
-            button.classList.remove('active');
+            if (e.pointerId !== undefined) {
+                button.setPointerCapture?.(e.pointerId);
+            }
         };
 
-        button.addEventListener('touchstart', down, { passive: false });
-        button.addEventListener('touchend', up, { passive: false });
-        button.addEventListener('touchcancel', up, { passive: false });
-        button.addEventListener('mousedown', down);
-        button.addEventListener('mouseup', up);
-        button.addEventListener('mouseleave', up);
+        const release = (e) => {
+            e?.preventDefault?.();
+            if (!isPressed) return;
+            isPressed = false;
+            onUp?.();
+            button.classList.remove('active');
+            if (e?.pointerId !== undefined && button.hasPointerCapture?.(e.pointerId)) {
+                button.releasePointerCapture?.(e.pointerId);
+            }
+        };
+
+        if (window.PointerEvent) {
+            button.addEventListener('pointerdown', press);
+            button.addEventListener('pointerup', release);
+            button.addEventListener('pointercancel', release);
+            button.addEventListener('lostpointercapture', release);
+            return;
+        }
+
+        button.addEventListener('touchstart', press, { passive: false });
+        button.addEventListener('touchend', release, { passive: false });
+        button.addEventListener('touchcancel', release, { passive: false });
+        button.addEventListener('mousedown', press);
+        button.addEventListener('mouseup', release);
+        button.addEventListener('mouseleave', release);
     }
 
     setTrackSelection(trackKey) {
         if (!trackKey) return;
 
         this._currentTrackKey = trackKey;
-        if (this.trackChangeBtn) {
-            this.trackChangeBtn.textContent = 'Change Track';
-        }
         this.setReturningTrackSelection(trackKey, { scrollIntoView: true });
+    }
+
+    getTrackPreferences(trackKey) {
+        if (!trackKey) {
+            return getTrackPreferences(this._selectedReturningTrackKey || this._currentTrackKey);
+        }
+        if (!this._trackPreferences.has(trackKey)) {
+            this._trackPreferences.set(trackKey, getTrackPreferences(trackKey));
+        }
+        return this._trackPreferences.get(trackKey);
+    }
+
+    updateSelectedTrackPreferences(nextPreferences) {
+        const trackKey = this._selectedReturningTrackKey || this._currentTrackKey;
+        if (!trackKey) return;
+
+        const updated = saveTrackPreferences(trackKey, nextPreferences);
+        this._trackPreferences.set(trackKey, updated);
+        this.refreshReturningTrackPersonalBest(trackKey);
+        this.updateTrackModeControls();
+        this.updateReturningPlayerStartButton();
     }
 
     isModalActive() {
@@ -277,6 +402,7 @@ export class GameUi {
         const speedText = Math.round(speed * 20).toString();
         if (force || this._lastSpeedText !== speedText) {
             if (this.speedVal) this.speedVal.textContent = speedText;
+            if (this.mobileSpeedVal) this.mobileSpeedVal.textContent = speedText;
             this._lastSpeedText = speedText;
         }
     }
@@ -284,6 +410,7 @@ export class GameUi {
     resetHud() {
         if (this.timeVal) this.timeVal.textContent = '0.00';
         if (this.speedVal) this.speedVal.textContent = '0';
+        if (this.mobileSpeedVal) this.mobileSpeedVal.textContent = '0';
         this._lastTimeText = '0.00';
         this._lastSpeedText = '0';
     }
@@ -291,16 +418,22 @@ export class GameUi {
     /** PB shown on track cards after bulk load; used to avoid HUD flicker while switching tracks. */
     getCachedPersonalBestForTrack(trackKey) {
         if (!trackKey || !this._returningTrackPersonalBests.has(trackKey)) return null;
-        const v = this._returningTrackPersonalBests.get(trackKey);
+        const mode = this.getTrackPreferences(trackKey).mode === TRACK_MODE_PRACTICE
+            ? TRACK_MODE_PRACTICE
+            : TRACK_MODE_STANDARD;
+        const v = this._returningTrackPersonalBests.get(trackKey)?.[mode];
         return v !== null && v !== undefined ? v : null;
     }
 
-    setBestTime(bestLapTime) {
+    setBestTime(bestLapTime, { persistToTrackCard = true } = {}) {
         if (!this.bestTimeDisplay || !this.bestTimeVal) return;
 
         const currentTrackKey = this._currentTrackKey;
-        if (currentTrackKey && bestLapTime !== null && bestLapTime !== undefined) {
-            this.updateReturningTrackPersonalBest(currentTrackKey, bestLapTime);
+        if (persistToTrackCard && currentTrackKey && bestLapTime !== null && bestLapTime !== undefined) {
+            const mode = this.getTrackPreferences(currentTrackKey).mode === TRACK_MODE_PRACTICE
+                ? TRACK_MODE_PRACTICE
+                : TRACK_MODE_STANDARD;
+            this.updateReturningTrackPersonalBest(currentTrackKey, bestLapTime, mode);
         }
 
         if (bestLapTime !== null && bestLapTime !== undefined) {
@@ -321,6 +454,22 @@ export class GameUi {
     setHudPersonalBestsOpenAllowed(isAllowed) {
         this._hudPersonalBestsAllowed = Boolean(isAllowed);
         this.updateHudStatsButtonState();
+    }
+
+    setPracticePauseVisible(isVisible) {
+        const applyState = (container, button) => {
+            if (container) {
+                container.classList.toggle('has-practice-pause', isVisible);
+                container.setAttribute('aria-label', isVisible ? 'Pause run' : 'Current speed');
+            }
+            if (!button) return;
+            button.hidden = !isVisible;
+            button.style.display = isVisible ? 'inline-flex' : 'none';
+            button.setAttribute('aria-label', isVisible ? 'Pause run' : 'Pause run');
+        };
+
+        applyState(this.desktopSpeedometer, this.desktopPracticePauseBtn);
+        applyState(this.mobileSpeedometer, this.mobilePracticePauseBtn);
     }
 
     updateHudStatsButtonState() {
@@ -353,10 +502,22 @@ export class GameUi {
         this._returningTrackKeys = this.getTrackCarouselKeys();
         this.trackCarousel.innerHTML = '';
         this._returningTrackCards.clear();
+        this._returningTrackPreviewCanvases.clear();
+        this._renderedTrackPreviewKeys.clear();
+        this._queuedTrackPreviewKeys = [];
+        this._queuedTrackPreviewKeySet.clear();
+        this._trackCarouselShellWidth = 0;
+        this._trackCarouselCardCenters.clear();
+        if (this._pendingTrackPreviewRaf !== null) {
+            cancelAnimationFrame(this._pendingTrackPreviewRaf);
+            this._pendingTrackPreviewRaf = null;
+        }
+        this._trackPreferences.clear();
 
         this._returningTrackKeys.forEach((trackKey, index) => {
             const track = TRACKS[trackKey];
             if (!track) return;
+            this._trackPreferences.set(trackKey, getTrackPreferences(trackKey));
 
             const card = document.createElement('article');
             card.className = 'track-card';
@@ -367,34 +528,23 @@ export class GameUi {
             card.innerHTML = `
                 <div class="modal-card track-card-modal">
                     <div class="track-card-modal-view">
-                        <h2 class="track-card-modal-title">${track.name}</h2>
-                        <div class="modal-stats-row track-card-stats-row">
-                            <span class="modal-stat-center">
-                                <span class="modal-stat-label">Best</span>
-                                <span class="modal-stat-value modal-stat-value--best" data-track-pb>--</span>
-                            </span>
+                        <div class="track-card-modal-content">
+                            <h2 class="track-card-modal-title">${track.name}</h2>
+                            <div class="modal-stats-row track-card-stats-row">
+                                <span class="modal-stat-center">
+                                    <span class="modal-stat-label">Best</span>
+                                    <span class="modal-stat-value modal-stat-value--best" data-track-pb>--</span>
+                                </span>
+                            </div>
                         </div>
-                        <div class="modal-preview-wrap track-card-preview-wrap">
+                        <div class="track-card-preview-wrap">
                             <canvas class="track-card-preview-canvas" width="640" height="420" aria-hidden="true"></canvas>
                         </div>
                     </div>
                 </div>
             `;
             const previewCanvas = card.querySelector('.track-card-preview-canvas');
-            const previewRuntime = buildTrackRuntime(track, {
-                qualityLevel: this._previewQualityLevel,
-                frameSkip: this._previewFrameSkip
-            });
-            renderTrackPreviewCanvas(previewCanvas, {
-                trackGeometry: {
-                    outer: previewRuntime.outer,
-                    inner: previewRuntime.inner
-                },
-                startLine: track.startLine,
-                startPos: track.startPos,
-                startAngle: track.startAngle,
-                runHistory: []
-            });
+            this._returningTrackPreviewCanvases.set(trackKey, previewCanvas);
             card.addEventListener('click', (e) => {
                 if (this._suppressCarouselCardClick) {
                     this._suppressCarouselCardClick = false;
@@ -409,14 +559,8 @@ export class GameUi {
                     event.preventDefault();
                     this.setReturningTrackSelection(trackKey, { scrollIntoView: true, syncPreviewTrack: true });
                     if (this.isDesktopTrackSelectionActive() && this._onStart) {
-                        this._onStart(trackKey);
+                        this._onStart(trackKey, this.getTrackPreferences(trackKey));
                     }
-                    return;
-                }
-
-                if (event.key === ' ') {
-                    event.preventDefault();
-                    this.setReturningTrackSelection(trackKey, { scrollIntoView: true, syncPreviewTrack: true });
                     return;
                 }
 
@@ -446,12 +590,94 @@ export class GameUi {
 
         if (this.trackCarouselShell && typeof ResizeObserver !== 'undefined') {
             this._carouselResizeObserver?.disconnect?.();
-            this._carouselResizeObserver = new ResizeObserver(() => this.updateReturningTrackSlider());
+            let resizeFrame = 0;
+            this._carouselResizeObserver = new ResizeObserver(() => {
+                cancelAnimationFrame(resizeFrame);
+                resizeFrame = requestAnimationFrame(() => {
+                    this.refreshReturningTrackSliderMetrics();
+                    this.updateReturningTrackSlider();
+                });
+            });
             this._carouselResizeObserver.observe(this.trackCarouselShell);
         }
 
+        this.refreshReturningTrackSliderMetrics();
         this.setReturningTrackSelection(this._currentTrackKey || this._returningTrackKeys[0], { scrollIntoView: false });
         this.loadReturningTrackPersonalBests();
+    }
+
+    renderReturningTrackPreview(trackKey) {
+        if (!trackKey || this._renderedTrackPreviewKeys.has(trackKey)) return;
+
+        const track = TRACKS[trackKey];
+        const previewCanvas = this._returningTrackPreviewCanvases.get(trackKey);
+        if (!track || !previewCanvas) return;
+
+        const previewGeometry = getTrackPreviewGeometry(trackKey, track, {
+            qualityLevel: this._previewQualityLevel,
+            frameSkip: this._previewFrameSkip
+        });
+        renderTrackPreviewCanvas(previewCanvas, {
+            trackGeometry: {
+                outer: previewGeometry.outer,
+                inner: previewGeometry.inner
+            },
+            startLine: track.startLine,
+            startPos: track.startPos,
+            startAngle: track.startAngle,
+            runHistory: []
+        });
+        this._renderedTrackPreviewKeys.add(trackKey);
+    }
+
+    queueReturningTrackPreview(trackKey) {
+        if (!trackKey || this._renderedTrackPreviewKeys.has(trackKey) || this._queuedTrackPreviewKeySet.has(trackKey)) {
+            return;
+        }
+
+        this._queuedTrackPreviewKeys.push(trackKey);
+        this._queuedTrackPreviewKeySet.add(trackKey);
+        if (this._pendingTrackPreviewRaf === null) {
+            this._pendingTrackPreviewRaf = requestAnimationFrame(() => this.flushQueuedTrackPreviews());
+        }
+    }
+
+    flushQueuedTrackPreviews() {
+        this._pendingTrackPreviewRaf = null;
+        const trackKey = this._queuedTrackPreviewKeys.shift();
+        if (!trackKey) return;
+
+        this._queuedTrackPreviewKeySet.delete(trackKey);
+        this.renderReturningTrackPreview(trackKey);
+
+        if (this._queuedTrackPreviewKeys.length > 0) {
+            this._pendingTrackPreviewRaf = requestAnimationFrame(() => this.flushQueuedTrackPreviews());
+        }
+    }
+
+    updateVisibleTrackPreviews(trackKey) {
+        const currentIndex = this._returningTrackKeys.indexOf(trackKey);
+        if (currentIndex === -1) return;
+
+        this.renderReturningTrackPreview(trackKey);
+        this.queueReturningTrackPreview(this._returningTrackKeys[currentIndex - 1]);
+        this.queueReturningTrackPreview(this._returningTrackKeys[currentIndex + 1]);
+    }
+
+    refreshReturningTrackSliderMetrics() {
+        if (!this.trackCarouselShell) return;
+
+        const shellWidth = this.trackCarouselShell.clientWidth;
+        if (shellWidth <= 0) return;
+
+        const nextCenters = new Map();
+        for (const [key, card] of this._returningTrackCards.entries()) {
+            if (card.offsetWidth <= 0) return;
+            nextCenters.set(key, card.offsetLeft + (card.offsetWidth / 2));
+        }
+
+        this._trackCarouselShellWidth = shellWidth;
+        this._trackCarouselCardCenters = nextCenters;
     }
 
     _isMobileTrackCarouselView() {
@@ -463,12 +689,6 @@ export class GameUi {
     bindReturningPlayerSwipe() {
         if (!this.trackCarouselShell || !this.trackCarousel) return;
 
-        const readCarouselTranslateX = () => {
-            const t = window.getComputedStyle(this.trackCarousel).transform;
-            if (!t || t === 'none') return 0;
-            return new DOMMatrixReadOnly(t).m41;
-        };
-
         const applyDragTransform = () => {
             if (!this._carouselTouchDragging) return;
 
@@ -479,8 +699,7 @@ export class GameUi {
             if (idx <= 0 && d > 0) d *= rubber;
             else if (idx >= last && d < 0) d *= rubber;
 
-            this.trackCarousel.style.transform =
-                `translate3d(${this._touchCarouselStartTranslate + d}px, 0, 0)`;
+            this.setTrackCarouselTranslateX(this._touchCarouselStartTranslate + d);
         };
 
         this.trackCarouselShell.addEventListener('touchstart', (event) => {
@@ -491,7 +710,7 @@ export class GameUi {
             if (!this._isMobileTrackCarouselView()) return;
 
             this._carouselTouchDragging = true;
-            this._touchCarouselStartTranslate = readCarouselTranslateX();
+            this._touchCarouselStartTranslate = this._trackCarouselTranslateX;
             this.trackCarousel.style.transition = 'none';
         }, { passive: true });
 
@@ -500,9 +719,10 @@ export class GameUi {
             this._touchDeltaX = event.touches[0].clientX - this._touchStartX;
             if (this._carouselTouchDragging) {
                 applyDragTransform();
-                const t = Math.min(1, Math.abs(this._touchDeltaX) / MOBILE_CAROUSEL_SWIPE_PX);
-                const opacity = 1 - t * 0.58;
-                this._onPreviewPresentation?.({ opacity, instant: true });
+                // Do not tie game-canvas opacity to carousel drag. On WebKit, changing the
+                // canvas under #start-overlay's backdrop-filter while the row transforms
+                // reliably drops title/PB text for frames (looks like a flash). The canvas
+                // is already behind a dimmed overlay here.
             }
         }, { passive: true });
 
@@ -535,9 +755,6 @@ export class GameUi {
                 } else if (Math.abs(delta) > 1.5) {
                     this.updateReturningTrackSlider();
                 }
-                if (!changedTrack) {
-                    this._onPreviewPresentation?.({ opacity: 1, instant: false });
-                }
             } else if (delta <= -threshold) {
                 this.moveReturningTrack(1);
             } else if (delta >= threshold) {
@@ -554,6 +771,29 @@ export class GameUi {
 
     bindReturningPlayerKeyboardNavigation() {
         if (this._selectorKeydownHandler) return;
+
+        this._trackModeSpaceCaptureHandler = (event) => {
+            if (event.key !== ' ' && event.code !== 'Space') return;
+            if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+            if (!this.isReturningPlayerTrackSelectionOpen()) return;
+
+            const t = event.target;
+            if (t instanceof HTMLElement) {
+                if (t.isContentEditable) return;
+                const tag = t.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            const trackKey = this._selectedReturningTrackKey || this._currentTrackKey;
+            if (!trackKey) return;
+            const prefs = this.getTrackPreferences(trackKey);
+            const nextMode = prefs.mode === TRACK_MODE_PRACTICE ? TRACK_MODE_STANDARD : TRACK_MODE_PRACTICE;
+            this.updateSelectedTrackPreferences({ mode: nextMode });
+        };
+        document.addEventListener('keydown', this._trackModeSpaceCaptureHandler, true);
 
         this._selectorKeydownHandler = (event) => {
             if (!this.isDesktopTrackSelectionActive()) return;
@@ -575,7 +815,7 @@ export class GameUi {
                 if (!trackKey || !this._onStart) return;
                 event.preventDefault();
                 this.setReturningTrackSelection(trackKey, { scrollIntoView: true });
-                this._onStart(trackKey);
+                this._onStart(trackKey, this.getTrackPreferences(trackKey));
                 return;
             }
 
@@ -601,6 +841,14 @@ export class GameUi {
         return window.matchMedia('(min-width: 769px)').matches;
     }
 
+    /** Returning-player track picker visible (any viewport); used for Space → toggle trial/session. */
+    isReturningPlayerTrackSelectionOpen() {
+        if (this.isModalActive()) return false;
+        if (!this.startOverlay || this.startOverlay.style.display === 'none') return false;
+        if (!this.returningPlayerPanel || this.returningPlayerPanel.hidden || this.returningPlayerPanel.style.display === 'none') return false;
+        return true;
+    }
+
     getTrackCarouselKeys() {
         return CONFIG.visibleTrackKeys?.filter((trackKey) => TRACKS[trackKey]) || Object.keys(TRACKS);
     }
@@ -621,11 +869,13 @@ export class GameUi {
             if (scrollIntoView) {
                 this.updateReturningTrackSlider();
             }
+            this.updateVisibleTrackPreviews(trackKey);
             if (syncPreviewTrack && this._onPreviewTrack) {
                 this._onPreviewTrack(trackKey);
             }
             this.updateReturningTrackControls();
             this.updateTrackCountIndicator();
+            this.updateTrackModeControls();
             this.updateReturningPlayerStartButton();
             return;
         }
@@ -640,6 +890,7 @@ export class GameUi {
             card.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
 
+        this.updateVisibleTrackPreviews(trackKey);
         this.updateReturningTrackSlider();
         if (syncPreviewTrack && this._onPreviewTrack) {
             this._onPreviewTrack(trackKey);
@@ -647,26 +898,21 @@ export class GameUi {
 
         this.updateReturningTrackControls();
         this.updateTrackCountIndicator();
+        this.updateTrackModeControls();
         this.updateReturningPlayerStartButton();
     }
 
     updateReturningTrackSlider() {
         if (!this.trackSelectorFrame || !this.trackCarouselShell || !this.trackCarousel || !this._selectedReturningTrackKey) return;
 
-        const activeCard = this._returningTrackCards.get(this._selectedReturningTrackKey);
-        if (!activeCard) return;
+        if (!this._trackCarouselCardCenters.has(this._selectedReturningTrackKey) || this._trackCarouselShellWidth === 0) {
+            this.refreshReturningTrackSliderMetrics();
+        }
 
-        const frameRect = this.trackSelectorFrame.getBoundingClientRect();
-        const cardRect = activeCard.getBoundingClientRect();
-        const currentTransform = window.getComputedStyle(this.trackCarousel).transform;
-        const currentTranslateX = currentTransform && currentTransform !== 'none'
-            ? new DOMMatrixReadOnly(currentTransform).m41
-            : 0;
-        const targetCenter = frameRect.left + (frameRect.width / 2);
-        const currentCenter = cardRect.left + (cardRect.width / 2);
-        const translateX = currentTranslateX + (targetCenter - currentCenter);
+        const activeCardCenter = this._trackCarouselCardCenters.get(this._selectedReturningTrackKey);
+        if (!Number.isFinite(activeCardCenter) || this._trackCarouselShellWidth === 0) return;
 
-        this.trackCarousel.style.transform = `translate3d(${translateX}px, 0, 0)`;
+        this.setTrackCarouselTranslateX((this._trackCarouselShellWidth / 2) - activeCardCenter);
     }
 
     updateReturningTrackControls() {
@@ -695,11 +941,30 @@ export class GameUi {
     updateReturningPlayerStartButton() {
         if (!this._selectedReturningTrackKey) return;
         const trackName = TRACKS[this._selectedReturningTrackKey]?.name || 'Track';
+        const preferences = this.getTrackPreferences(this._selectedReturningTrackKey);
+        const isPractice = preferences.mode === TRACK_MODE_PRACTICE;
         if (this.returningPlayerHeading) {
             this.returningPlayerHeading.textContent = trackName;
         }
         if (this.returningStartBtn) {
-            this.returningStartBtn.textContent = 'Start Your Engine';
+            this.returningStartBtn.textContent = isPractice ? 'Start session' : 'Start trial';
+        }
+    }
+
+    updateTrackModeControls() {
+        const trackKey = this._selectedReturningTrackKey || this._currentTrackKey;
+        if (!trackKey) return;
+
+        const preferences = this.getTrackPreferences(trackKey);
+        const isPractice = preferences.mode === TRACK_MODE_PRACTICE;
+
+        if (this.trackModeStandardBtn) {
+            this.trackModeStandardBtn.classList.toggle('is-active', !isPractice);
+            this.trackModeStandardBtn.setAttribute('aria-pressed', isPractice ? 'false' : 'true');
+        }
+        if (this.trackModePracticeBtn) {
+            this.trackModePracticeBtn.classList.toggle('is-active', isPractice);
+            this.trackModePracticeBtn.setAttribute('aria-pressed', isPractice ? 'true' : 'false');
         }
     }
 
@@ -708,29 +973,47 @@ export class GameUi {
         try {
             const trackDataList = await Promise.all(trackKeys.map((trackKey) => getTrackData(trackKey)));
             trackDataList.forEach((trackData, index) => {
-                this.updateReturningTrackPersonalBest(trackKeys[index], trackData.bestTime);
+                this.updateReturningTrackPersonalBest(trackKeys[index], trackData.bestTimes?.[TRACK_MODE_STANDARD] ?? null, TRACK_MODE_STANDARD);
+                this.updateReturningTrackPersonalBest(trackKeys[index], trackData.bestTimes?.[TRACK_MODE_PRACTICE] ?? null, TRACK_MODE_PRACTICE);
             });
         } catch (error) {
             console.error('Error loading returning-player personal bests:', error);
         }
     }
 
-    updateReturningTrackPersonalBest(trackKey, bestTime) {
+    refreshReturningTrackPersonalBest(trackKey) {
         if (!trackKey || !this._returningTrackCards.has(trackKey)) return;
 
-        const currentBest = this._returningTrackPersonalBests.get(trackKey);
-        const nextBest = bestTime !== null && bestTime !== undefined
-            ? (currentBest !== null && currentBest !== undefined ? Math.min(currentBest, bestTime) : bestTime)
-            : (currentBest !== null && currentBest !== undefined ? currentBest : null);
-
-        this._returningTrackPersonalBests.set(trackKey, nextBest);
+        const mode = this.getTrackPreferences(trackKey).mode === TRACK_MODE_PRACTICE
+            ? TRACK_MODE_PRACTICE
+            : TRACK_MODE_STANDARD;
+        const bestTime = this._returningTrackPersonalBests.get(trackKey)?.[mode];
         const card = this._returningTrackCards.get(trackKey);
         const pbEl = card?.querySelector('[data-track-pb]');
         if (!pbEl) return;
 
-        pbEl.textContent = nextBest !== null && nextBest !== undefined
-            ? `${nextBest.toFixed(2)}s`
+        pbEl.textContent = bestTime !== null && bestTime !== undefined
+            ? `${bestTime.toFixed(2)}s`
             : '--';
+    }
+
+    updateReturningTrackPersonalBest(trackKey, bestTime, mode = TRACK_MODE_STANDARD) {
+        if (!trackKey || !this._returningTrackCards.has(trackKey)) return;
+
+        const currentBests = this._returningTrackPersonalBests.get(trackKey) || {
+            [TRACK_MODE_STANDARD]: null,
+            [TRACK_MODE_PRACTICE]: null
+        };
+        const currentBest = currentBests[mode];
+        const nextBest = bestTime !== null && bestTime !== undefined
+            ? (currentBest !== null && currentBest !== undefined ? Math.min(currentBest, bestTime) : bestTime)
+            : (currentBest !== null && currentBest !== undefined ? currentBest : null);
+
+        this._returningTrackPersonalBests.set(trackKey, {
+            ...currentBests,
+            [mode]: nextBest
+        });
+        this.refreshReturningTrackPersonalBest(trackKey);
     }
 
     updateStartOverlayMode(hasAnyData) {
@@ -779,9 +1062,58 @@ export class GameUi {
         if (this.goMessage) this.goMessage.classList.add('visible');
     }
 
+    showPracticeLapFlash({ lapNumber, lapTime, deltaVsBest, isBest, isNewBest = false }) {
+        if (!this.practiceLapFlash || !this.practiceLapFlashLabel || !this.practiceLapFlashTime || !this.practiceLapFlashDelta) return;
+
+        if (this._practiceLapFlashTimer !== null) {
+            clearTimeout(this._practiceLapFlashTimer);
+            this._practiceLapFlashTimer = null;
+        }
+
+        this.practiceLapFlashLabel.textContent = isBest ? `Lap ${lapNumber} Best` : `Lap ${lapNumber}`;
+        this.practiceLapFlashTime.textContent = `${lapTime.toFixed(2)}s`;
+
+        if (isNewBest) {
+            this.practiceLapFlashDelta.hidden = false;
+            this.practiceLapFlashDelta.textContent = 'New PB';
+            this.practiceLapFlashDelta.classList.add('is-gain');
+            this.practiceLapFlashDelta.classList.remove('is-loss');
+        } else if (deltaVsBest === null || deltaVsBest === undefined) {
+            this.practiceLapFlashDelta.textContent = '';
+            this.practiceLapFlashDelta.hidden = true;
+            this.practiceLapFlashDelta.classList.remove('is-gain', 'is-loss');
+        } else if (deltaVsBest < -0.005) {
+            this.practiceLapFlashDelta.hidden = false;
+            this.practiceLapFlashDelta.textContent = `${deltaVsBest.toFixed(2)}s`;
+            this.practiceLapFlashDelta.classList.add('is-gain');
+            this.practiceLapFlashDelta.classList.remove('is-loss');
+        } else if (deltaVsBest > 0.005) {
+            this.practiceLapFlashDelta.hidden = false;
+            this.practiceLapFlashDelta.textContent = `+${deltaVsBest.toFixed(2)}s`;
+            this.practiceLapFlashDelta.classList.add('is-loss');
+            this.practiceLapFlashDelta.classList.remove('is-gain');
+        } else {
+            this.practiceLapFlashDelta.hidden = false;
+            this.practiceLapFlashDelta.textContent = 'Even lap';
+            this.practiceLapFlashDelta.classList.remove('is-gain', 'is-loss');
+        }
+
+        this.practiceLapFlash.classList.add('visible');
+        this._practiceLapFlashTimer = setTimeout(() => this.hidePracticeLapFlash(), 1400);
+    }
+
+    hidePracticeLapFlash() {
+        if (this._practiceLapFlashTimer !== null) {
+            clearTimeout(this._practiceLapFlashTimer);
+            this._practiceLapFlashTimer = null;
+        }
+        if (this.practiceLapFlash) this.practiceLapFlash.classList.remove('visible');
+    }
+
     resetCountdown() {
         this.hideStartLights();
         if (this.goMessage) this.goMessage.classList.remove('visible');
+        this.hidePracticeLapFlash();
     }
 
     cancelPendingModalClose() {
@@ -798,34 +1130,89 @@ export class GameUi {
         }
     }
 
-    showModal(title, msg, lapData, canShare) {
+    showModal(title, msg, lapData, canShare, options = {}) {
         if (!this.modal || !this.modalTitle) return;
 
         this.cancelPendingModalClose();
         this.modalTitle.textContent = title;
         this._mainModalIsCrash = Boolean(lapData?.isCrash);
+        this._modalKind = options.modalKind || null;
         this.modal.classList.toggle('modal--crash', this._mainModalIsCrash);
+        this.modal.classList.toggle('modal--practice-pause', this._modalKind === 'practice-pause');
+        this.modal.classList.toggle('modal--standard-win', this._modalKind === 'standard-win');
+        this._modalPrimaryAction = options.primaryAction || this._defaultModalPrimaryAction;
+        this._modalSecondaryAction = options.secondaryAction || null;
+        this._forceSharePanelVisible = Boolean(options.forceSharePanelVisible);
+        this.setModalResetButtonLabel(
+            options.primaryActionLabel || 'Race Again',
+            Object.prototype.hasOwnProperty.call(options, 'primaryShortcutLabel') ? options.primaryShortcutLabel : 'R',
+            options.primaryActionIcon || null
+        );
+        this.setModalSecondaryButton(
+            options.secondaryActionLabel || '',
+            Boolean(options.secondaryAction),
+            options.secondaryActionIcon || null
+        );
+        this.setShareButtonContent(options.shareActionLabel || 'share your time', options.shareActionIcon || 'share');
 
         if (lapData) {
             if (this.modalMsg) this.modalMsg.style.display = 'none';
             if (this.modalStatsRow) {
-                if (lapData.isCrash) {
+                if (lapData.variant === 'practice-pause') {
+                    this.setPracticePauseStats(
+                        lapData.sessionBestTime,
+                        lapData.practiceBestTime,
+                        lapData.deltaToBest,
+                        lapData.isNewBest
+                    );
+                    delete this.modalStatsRow.dataset.hasRuns;
+                    this.modalStatsRow.style.display = 'grid';
+                } else if (lapData.variant === 'standard-pause') {
+                    this.setStandardPauseStats(
+                        lapData.lapTime,
+                        lapData.deltaToBest,
+                        lapData.bestTime
+                    );
+                    delete this.modalStatsRow.dataset.hasRuns;
+                    this.modalStatsRow.style.display = 'grid';
+                } else if (lapData.hideStats) {
+                    this.modalStatsRow.replaceChildren();
+                    delete this.modalStatsRow.dataset.hasRuns;
+                    this.modalStatsRow.style.display = 'none';
+                } else if (lapData.isCrash) {
                     this.setModalStatCenter('Impact', `${lapData.impact} KPH`, 'modal-stat-value--crash');
                     this.modalStatsRow.dataset.hasRuns = '';
-                } else if (lapData.isNewBest) {
-                    this.setModalStatCenter('', `${lapData.bestTime.toFixed(2)}s`, 'modal-stat-value--best');
-                    this.modalStatsRow.dataset.hasRuns = lapData.lapTimesArray?.length ? 'true' : '';
-                } else {
-                    const delta = lapData.lapTime - lapData.bestTime;
-                    const deltaText = delta > 0.005 ? `+${delta.toFixed(2)}s` : '';
+                    this.modalStatsRow.style.display = 'flex';
+                } else if (lapData.variant === 'practice') {
                     this.setModalStatLeftRight(
-                        `${lapData.lapTime.toFixed(2)}s`,
-                        deltaText,
-                        `${lapData.bestTime.toFixed(2)}s`
+                        `${lapData.lapCount ?? 0}`,
+                        '',
+                        lapData.bestTime !== null && lapData.bestTime !== undefined
+                            ? `${lapData.bestTime.toFixed(2)}s`
+                            : 'No laps',
+                        {
+                            leftLabel: 'Laps',
+                            rightLabel: 'Best'
+                        }
+                    );
+                    this.modalStatsRow.dataset.hasRuns = lapData.listData ? 'true' : '';
+                    this.modalStatsRow.style.display = 'flex';
+                } else if (lapData.isNewBest) {
+                    this.setWinStats(
+                        lapData.bestTime,
+                        null
                     );
                     this.modalStatsRow.dataset.hasRuns = lapData.lapTimesArray?.length ? 'true' : '';
+                    this.modalStatsRow.style.display = 'grid';
+                } else {
+                    const delta = lapData.lapTime - lapData.bestTime;
+                    this.setWinStats(
+                        lapData.lapTime,
+                        delta
+                    );
+                    this.modalStatsRow.dataset.hasRuns = lapData.lapTimesArray?.length ? 'true' : '';
+                    this.modalStatsRow.style.display = 'grid';
                 }
-                this.modalStatsRow.style.display = 'flex';
             }
         } else {
             if (this.modalMsg) {
@@ -835,7 +1222,9 @@ export class GameUi {
             if (this.modalStatsRow) this.modalStatsRow.style.display = 'none';
         }
 
-        if (lapData?.lapTimesArray !== undefined && this.modalLapTimes) {
+        if (lapData?.listData !== undefined && this.modalLapTimes) {
+            this.renderLapTimesList(this.modalLapTimes, lapData.listData, lapData.bestTime, lapData.lapTime);
+        } else if (lapData?.lapTimesArray !== undefined && this.modalLapTimes) {
             this.renderLapTimesList(this.modalLapTimes, lapData.lapTimesArray, lapData.bestTime, lapData.lapTime);
         } else if (lapData && this.modalLapTimes) {
             this.modalLapTimes.replaceChildren();
@@ -850,7 +1239,7 @@ export class GameUi {
             this.updateShareState({ visible: true, ready: false, busy: true });
         } else {
             this.clearModalPreview();
-            this.updateShareState({ visible: false, ready: false, busy: false });
+            this.updateShareState({ visible: this._forceSharePanelVisible, ready: false, busy: false });
         }
         this.modal.classList.add('active');
         requestAnimationFrame(() => this.activateModalFocusTrap(this.modal));
@@ -886,6 +1275,14 @@ export class GameUi {
         const cleanupAfterClose = () => {
             this._modalCloseTransitionEndHandler = null;
             modal.classList.remove('modal--crash');
+            modal.classList.remove('modal--practice-pause');
+            modal.classList.remove('modal--standard-win');
+            this._modalKind = null;
+            this._modalPrimaryAction = this._defaultModalPrimaryAction;
+            this._modalSecondaryAction = null;
+            this._forceSharePanelVisible = false;
+            this.setModalSecondaryButton('', false, null);
+            this.setShareButtonContent('share your time', 'share');
             this.updateShareState({ visible: false, ready: false, busy: false });
             this.clearModalPreview();
             this.releaseModalFocusTrap(modal);
@@ -923,6 +1320,10 @@ export class GameUi {
         return this.isModalActive() && this._runsViewMode === 'close' && Boolean(this.modalRunsView?.classList.contains('active-view'));
     }
 
+    isPauseModalActive() {
+        return this.isModalActive() && this._modalKind === 'practice-pause';
+    }
+
     setModalStatCenter(labelText, valueText, valueClass) {
         if (!this.modalStatsRow) return;
         this.modalStatsRow.replaceChildren();
@@ -941,7 +1342,7 @@ export class GameUi {
         this.modalStatsRow.appendChild(center);
     }
 
-    setModalStatLeftRight(lapText, deltaText, bestText) {
+    setModalStatLeftRight(lapText, deltaText, bestText, { leftLabel = 'Lap', rightLabel = 'Best' } = {}) {
         if (!this.modalStatsRow) return;
         this.modalStatsRow.replaceChildren();
 
@@ -949,7 +1350,7 @@ export class GameUi {
         left.className = 'modal-stat-left';
         const lapLabel = document.createElement('span');
         lapLabel.className = 'modal-stat-label';
-        lapLabel.textContent = 'Lap';
+        lapLabel.textContent = leftLabel;
         left.appendChild(lapLabel);
         const lapVal = document.createElement('span');
         lapVal.className = 'modal-stat-value';
@@ -968,7 +1369,7 @@ export class GameUi {
         right.className = 'modal-stat-right';
         const bestLabel = document.createElement('span');
         bestLabel.className = 'modal-stat-label';
-        bestLabel.textContent = 'Best';
+        bestLabel.textContent = rightLabel;
         right.appendChild(bestLabel);
         const bestVal = document.createElement('span');
         bestVal.className = 'modal-stat-value modal-stat-value--best';
@@ -977,9 +1378,264 @@ export class GameUi {
         this.modalStatsRow.appendChild(right);
     }
 
+    setPracticePauseStats(sessionBestTime, _practiceBestTime, deltaToBest, isNewBest = false) {
+        if (!this.modalStatsRow) return;
+        this.modalStatsRow.replaceChildren();
+
+        const buildStat = (labelText, valueText, valueClass = '') => {
+            const stat = document.createElement('span');
+            stat.className = 'modal-stat-stack';
+
+            const label = document.createElement('span');
+            label.className = 'modal-stat-label';
+            label.textContent = labelText;
+            stat.appendChild(label);
+
+            const value = document.createElement('span');
+            value.className = `modal-stat-value modal-stat-value--compact${valueClass ? ` ${valueClass}` : ''}`;
+            value.textContent = valueText;
+            stat.appendChild(value);
+
+            return stat;
+        };
+
+        const sessionBestText = sessionBestTime === null || sessionBestTime === undefined
+            ? '--'
+            : `${sessionBestTime.toFixed(2)}s`;
+        let deltaText = '--';
+        let deltaClass = '';
+        if (isNewBest) {
+            deltaText = 'New PB';
+            deltaClass = 'modal-stat-value--delta-negative';
+        } else if (deltaToBest !== null && deltaToBest !== undefined) {
+            if (deltaToBest > 0.005) {
+                deltaText = `+${deltaToBest.toFixed(2)}s`;
+                deltaClass = 'modal-stat-value--delta-positive';
+            } else if (deltaToBest < -0.005) {
+                deltaText = `${deltaToBest.toFixed(2)}s`;
+                deltaClass = 'modal-stat-value--delta-negative';
+            } else {
+                deltaText = '0.00s';
+            }
+        }
+
+        this.modalStatsRow.appendChild(buildStat('Session Best', sessionBestText, sessionBestTime !== null && sessionBestTime !== undefined ? 'modal-stat-value--best' : ''));
+        this.modalStatsRow.appendChild(buildStat('Delta', deltaText, deltaClass));
+    }
+
+    setStandardPauseStats(lapTime, deltaToBest, _bestTime) {
+        if (!this.modalStatsRow) return;
+        this.modalStatsRow.replaceChildren();
+
+        const buildStat = (labelText, valueText, valueClass = '') => {
+            const stat = document.createElement('span');
+            stat.className = 'modal-stat-stack';
+
+            const label = document.createElement('span');
+            label.className = 'modal-stat-label';
+            label.textContent = labelText;
+            stat.appendChild(label);
+
+            const value = document.createElement('span');
+            value.className = `modal-stat-value modal-stat-value--compact${valueClass ? ` ${valueClass}` : ''}`;
+            value.textContent = valueText;
+            stat.appendChild(value);
+
+            return stat;
+        };
+
+        const lapText = lapTime === null || lapTime === undefined
+            ? '--'
+            : `${lapTime.toFixed(2)}s`;
+        let deltaText = '--';
+        let deltaClass = '';
+        if (deltaToBest !== null && deltaToBest !== undefined) {
+            if (deltaToBest > 0.005) {
+                deltaText = `+${deltaToBest.toFixed(2)}s`;
+                deltaClass = 'modal-stat-value--delta-positive';
+            } else if (deltaToBest < -0.005) {
+                deltaText = `${deltaToBest.toFixed(2)}s`;
+                deltaClass = 'modal-stat-value--delta-negative';
+            } else {
+                deltaText = '0.00s';
+            }
+        }
+
+        this.modalStatsRow.appendChild(buildStat('Lap Time', lapText));
+        this.modalStatsRow.appendChild(buildStat('Delta', deltaText, deltaClass));
+    }
+
+    setWinStats(lapTime, deltaToBest) {
+        if (!this.modalStatsRow) return;
+        this.modalStatsRow.replaceChildren();
+
+        const buildStat = (labelText, valueText, valueClass = '') => {
+            const stat = document.createElement('span');
+            stat.className = 'modal-stat-stack';
+
+            const label = document.createElement('span');
+            label.className = 'modal-stat-label';
+            label.textContent = labelText;
+            stat.appendChild(label);
+
+            const value = document.createElement('span');
+            value.className = `modal-stat-value modal-stat-value--compact${valueClass ? ` ${valueClass}` : ''}`;
+            value.textContent = valueText;
+            stat.appendChild(value);
+
+            return stat;
+        };
+
+        const lapText = lapTime !== null && lapTime !== undefined
+            ? `${lapTime.toFixed(2)}s`
+            : '--';
+
+        let deltaText = '--';
+        let deltaClass = '';
+        if (deltaToBest !== null && deltaToBest !== undefined) {
+            if (deltaToBest > 0.005) {
+                deltaText = `+${deltaToBest.toFixed(2)}s`;
+                deltaClass = 'modal-stat-value--delta-positive';
+            } else if (deltaToBest < -0.005) {
+                deltaText = `${deltaToBest.toFixed(2)}s`;
+                deltaClass = 'modal-stat-value--delta-negative';
+            } else {
+                deltaText = '0.00s';
+            }
+        } else {
+            deltaText = 'New PB';
+            deltaClass = 'modal-stat-value--delta-negative';
+        }
+
+        this.modalStatsRow.appendChild(buildStat('Lap Time', lapText));
+        this.modalStatsRow.appendChild(buildStat('Delta', deltaText, deltaClass));
+    }
+
+    createModalActionIcon(iconName) {
+        if (!iconName) return null;
+
+        const svgNs = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(svgNs, 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.classList.add('modal-action-icon');
+
+        const addPath = (d) => {
+            const path = document.createElementNS(svgNs, 'path');
+            path.setAttribute('d', d);
+            svg.appendChild(path);
+        };
+
+        const addRect = (x, y, width, height, rx) => {
+            const rect = document.createElementNS(svgNs, 'rect');
+            rect.setAttribute('x', x);
+            rect.setAttribute('y', y);
+            rect.setAttribute('width', width);
+            rect.setAttribute('height', height);
+            rect.setAttribute('rx', rx);
+            svg.appendChild(rect);
+        };
+
+        const addCircle = (cx, cy, r) => {
+            const circle = document.createElementNS(svgNs, 'circle');
+            circle.setAttribute('cx', cx);
+            circle.setAttribute('cy', cy);
+            circle.setAttribute('r', r);
+            svg.appendChild(circle);
+        };
+
+        switch (iconName) {
+            case 'play':
+                svg.setAttribute('fill', 'currentColor');
+                svg.setAttribute('stroke', 'none');
+                addPath('M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z');
+                break;
+            case 'quit':
+                svg.setAttribute('fill', 'none');
+                svg.setAttribute('stroke', 'currentColor');
+                svg.setAttribute('stroke-width', '2');
+                svg.setAttribute('stroke-linecap', 'round');
+                svg.setAttribute('stroke-linejoin', 'round');
+                addPath('M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z');
+                addPath('m15 9-6 6');
+                addPath('m9 9 6 6');
+                break;
+            case 'retry':
+                svg.setAttribute('fill', 'none');
+                svg.setAttribute('stroke', 'currentColor');
+                svg.setAttribute('stroke-width', '2');
+                svg.setAttribute('stroke-linecap', 'round');
+                svg.setAttribute('stroke-linejoin', 'round');
+                addPath('M10 2h4');
+                addPath('M12 14v-4');
+                addPath('M4 13a8 8 0 0 1 8-7 8 8 0 1 1-5.3 14L4 17.6');
+                addPath('M9 17H4v5');
+                break;
+            case 'share':
+                svg.setAttribute('fill', 'none');
+                svg.setAttribute('stroke', 'currentColor');
+                svg.setAttribute('stroke-width', '2');
+                svg.setAttribute('stroke-linecap', 'round');
+                svg.setAttribute('stroke-linejoin', 'round');
+                addPath('M12 2v13');
+                addPath('m16 6-4-4-4 4');
+                addPath('M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8');
+                break;
+            default:
+                return null;
+        }
+
+        return svg;
+    }
+
+    setModalActionButtonContent(button, label, { shortcutLabel = null, iconName = null } = {}) {
+        if (!button) return;
+
+        button.replaceChildren();
+        const icon = this.createModalActionIcon(iconName);
+        if (icon) button.appendChild(icon);
+
+        const text = document.createElement('span');
+        text.className = 'modal-action-label';
+        text.textContent = label;
+        button.appendChild(text);
+
+        if (!shortcutLabel) return;
+
+        const kbd = document.createElement('kbd');
+        kbd.className = 'modal-btn-kbd';
+        kbd.textContent = shortcutLabel;
+        button.appendChild(document.createTextNode(' '));
+        button.appendChild(kbd);
+    }
+
+    setModalResetButtonLabel(label, shortcutLabel = 'R', iconName = null) {
+        this.setModalActionButtonContent(this.modalResetBtn, label, { shortcutLabel, iconName });
+    }
+
+    setModalSecondaryButton(label, isVisible, iconName = null) {
+        if (!this.modalSecondaryBtn) return;
+        if (isVisible) {
+            this.setModalActionButtonContent(this.modalSecondaryBtn, label, { iconName });
+        } else {
+            this.modalSecondaryBtn.replaceChildren();
+        }
+        this.modalSecondaryBtn.hidden = !isVisible;
+        this.modalSecondaryBtn.style.display = isVisible ? 'inline-flex' : 'none';
+    }
+
+    setShareButtonContent(label, iconName = 'share') {
+        this.setModalActionButtonContent(this.shareBtn, label, { iconName });
+    }
+
     renderLapTimesList(container, lapTimesArray, bestTime, currentTime) {
         container.replaceChildren();
-        if (!lapTimesArray || lapTimesArray.length === 0) return;
+        if (!lapTimesArray || (Array.isArray(lapTimesArray) && lapTimesArray.length === 0)) return;
+
+        if (!Array.isArray(lapTimesArray)) {
+            this.renderPracticeLapTimesList(container, lapTimesArray);
+            return;
+        }
 
         const headerRow = document.createElement('div');
         headerRow.className = 'runs-header-row';
@@ -1026,14 +1682,92 @@ export class GameUi {
         container.appendChild(list);
     }
 
+    renderPracticeLapTimesList(container, practiceSummary) {
+        const summary = practiceSummary || {};
+        const laps = Array.isArray(summary.laps) ? summary.laps : [];
+
+        const headerRow = document.createElement('div');
+        headerRow.className = 'runs-header-row';
+
+        const headerTitle = document.createElement('span');
+        headerTitle.className = 'runs-header-title';
+        headerTitle.textContent = 'Session';
+        headerRow.appendChild(headerTitle);
+
+        if (summary.bestLap) {
+            const bestWrap = document.createElement('div');
+            bestWrap.className = 'runs-header-best';
+
+            const bestLabel = document.createElement('span');
+            bestLabel.className = 'runs-header-label';
+            bestLabel.textContent = 'Best Lap';
+            bestWrap.appendChild(bestLabel);
+
+            const bestValue = document.createElement('span');
+            bestValue.className = 'runs-header-value';
+            bestValue.textContent = `L${summary.bestLap.lapNumber} ${summary.bestLap.time.toFixed(2)}s`;
+            bestWrap.appendChild(bestValue);
+            headerRow.appendChild(bestWrap);
+        }
+
+        container.appendChild(headerRow);
+
+        if (!laps.length) {
+            const emptyState = document.createElement('p');
+            emptyState.className = 'practice-empty-state';
+            emptyState.textContent = 'No completed laps yet.';
+            container.appendChild(emptyState);
+            return;
+        }
+
+        const list = document.createElement('div');
+        list.className = 'lap-times-list';
+
+        laps.forEach((lap) => {
+            const isBest = summary.bestLap?.lapNumber === lap.lapNumber;
+            const item = document.createElement('div');
+            item.className = `lap-time-item${isBest ? ' best' : ''}`;
+
+            const runLeft = document.createElement('span');
+            runLeft.className = 'run-left';
+
+            const runIndex = document.createElement('span');
+            runIndex.className = 'run-index';
+            runIndex.textContent = `L${lap.lapNumber}`;
+
+            const runTime = document.createElement('span');
+            runTime.className = 'run-time';
+            runTime.textContent = `${lap.time.toFixed(2)}s`;
+
+            runLeft.appendChild(runIndex);
+            runLeft.appendChild(runTime);
+            item.appendChild(runLeft);
+
+            const deltaWrap = document.createElement('span');
+            deltaWrap.className = 'run-delta-wrap';
+            if (lap.deltaVsBest !== null && lap.deltaVsBest !== undefined) {
+                const deltaSpan = document.createElement('span');
+                const prefix = lap.deltaVsBest > 0.005 ? '+' : '';
+                deltaSpan.className = `run-delta${lap.deltaVsBest < -0.005 ? ' run-delta--negative' : ''}`;
+                deltaSpan.textContent = `${prefix}${lap.deltaVsBest.toFixed(2)}s`;
+                deltaWrap.appendChild(deltaSpan);
+            } else {
+                deltaWrap.textContent = '--';
+            }
+            item.appendChild(deltaWrap);
+
+            list.appendChild(item);
+        });
+
+        container.appendChild(list);
+    }
+
     updateShareState({ visible, ready, busy }) {
         if (!visible) {
-            this.sharePanel?.classList.remove('pending-share');
-        }
-        if (this.sharePanel) {
-            this.sharePanel.style.display = visible ? 'flex' : 'none';
+            this.shareBtn?.classList.remove('pending-share');
         }
         if (this.shareBtn) {
+            this.shareBtn.style.display = visible ? 'inline-flex' : 'none';
             this.shareBtn.disabled = !visible || !ready || busy;
         }
     }
@@ -1043,9 +1777,9 @@ export class GameUi {
             this.modalPreviewWrap.classList.add('pending-share');
             this.modalPreviewWrap.style.display = 'block';
         }
-        if (this.sharePanel) {
-            this.sharePanel.classList.add('pending-share');
-            this.sharePanel.style.display = 'flex';
+        if (this.shareBtn) {
+            this.shareBtn.classList.add('pending-share');
+            this.shareBtn.style.display = 'inline-flex';
         }
     }
 
@@ -1056,7 +1790,7 @@ export class GameUi {
         this.modalPreviewImg.src = this._modalPreviewUrl;
         if (this.modalPreviewWrap) this.modalPreviewWrap.style.display = 'block';
         this.modalPreviewWrap?.classList.remove('pending-share');
-        this.sharePanel?.classList.remove('pending-share');
+        this.shareBtn?.classList.remove('pending-share');
     }
 
     clearModalPreview() {
@@ -1104,7 +1838,11 @@ export class GameUi {
         this._focusBeforeModal = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         this._activeTrapModal = modalEl;
         const focusables = this.getFocusables(modalEl);
-        if (focusables.length) focusables[0].focus();
+        const preferredFocus = modalEl === this.modal && this.modalResetBtn && !this.modalResetBtn.hidden && this.modalResetBtn.offsetParent !== null
+            ? this.modalResetBtn
+            : null;
+        if (preferredFocus) preferredFocus.focus();
+        else if (focusables.length) focusables[0].focus();
         this._modalTrapKeydown = (e) => this.handleModalTrapKeydown(e);
         document.addEventListener('keydown', this._modalTrapKeydown);
     }
@@ -1121,7 +1859,26 @@ export class GameUi {
     }
 
     handleModalTrapKeydown(e) {
-        if (e.key !== 'Tab' || !this._activeTrapModal) return;
+        if (!this._activeTrapModal) return;
+
+        const isDesktopModalNav = window.matchMedia('(min-width: 769px)').matches;
+        const actionButtons = isDesktopModalNav
+            ? Array.from(this._activeTrapModal.querySelectorAll('.modal-action-row > button'))
+                .filter((button) => !button.hidden && button.offsetParent !== null)
+            : [];
+
+        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && actionButtons.length > 1) {
+            const activeIndex = actionButtons.indexOf(document.activeElement);
+            if (activeIndex !== -1) {
+                e.preventDefault();
+                const direction = e.key === 'ArrowRight' ? 1 : -1;
+                const nextIndex = (activeIndex + direction + actionButtons.length) % actionButtons.length;
+                actionButtons[nextIndex].focus();
+            }
+            return;
+        }
+
+        if (e.key !== 'Tab') return;
         const focusables = this.getFocusables(this._activeTrapModal);
         if (focusables.length === 0) return;
         const first = focusables[0];
