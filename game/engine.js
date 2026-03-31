@@ -13,11 +13,24 @@ import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.j
 import { updateSimulation } from './core/simulation.js?v=0.73';
 import { RingBuffer } from './core/ring-buffer.js?v=0.73';
 import { saveLapTime, saveBestTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.72';
-import { AnalyticsService } from './services/analytics.js?v=0.72';
+import { AnalyticsService } from './services/analytics.js?v=0.73';
 import { PlayerStatusStore } from './services/player-status.js?v=0.84';
 import { SessionFlagStore } from './services/session-flags.js?v=0.71';
 import { ShareService } from './services/share.js?v=0.81';
-import { GameUi } from './ui.js?v=1.00';
+import { GameUi } from './ui.js?v=1.01';
+
+function shouldExposeDebugHooks() {
+    if (typeof window === 'undefined') return false;
+
+    const hostname = window.location?.hostname || '';
+    return (
+        hostname === 'localhost'
+        || hostname === '127.0.0.1'
+        || hostname === '::1'
+        || hostname === '0.0.0.0'
+        || window.location?.protocol === 'file:'
+    );
+}
 
 // --- Game Engine ---
 export class RealTimeRacer {
@@ -114,6 +127,7 @@ export class RealTimeRacer {
         this.relaunchDelayRemaining = 0;
         this.currentTrackPageviewPending = false;
         this.currentTrackMapSelectionPending = false;
+        this.activeRunId = 0;
 
         // Umami aggregates (sent once each on pagehide when that mode had any starts)
         this.trialRaceStats = { start: 0, crash: 0, win: 0 };
@@ -136,6 +150,12 @@ export class RealTimeRacer {
             onStart: (trackKey, trackPreferences) => this.handleStartButton(trackKey, trackPreferences),
             onShowPersonalBests: () => this.showPersonalBests(),
             onPausePractice: () => this.pausePracticeSession(),
+            onSupportClick: () => this.analytics.trackSupportClick(),
+            onHeaderMenuOpen: () => this.analytics.trackHeaderMenuOpen(),
+            onHowToPlayOpen: () => {
+                this.analytics.trackHowToPlayOpen();
+                this.analytics.trackPageview('/how-to-play', 'How to Play');
+            },
             onReset: () => {
                 this.bumpRaceStartForCurrentMode();
                 this.reset(true);
@@ -208,7 +228,11 @@ export class RealTimeRacer {
 
         this.resize();
         this.loadTrack('circuit', { trackPageview: false, countMapSelection: false });
-        this.exposeTestHooks();
+        if (shouldExposeDebugHooks()) {
+            this.exposeTestHooks();
+        } else {
+            delete window.__RACER_DEBUG__;
+        }
 
         this.lastTime = this.getNow();
         this.requestFrame();
@@ -324,11 +348,10 @@ export class RealTimeRacer {
     }
 
     exposeTestHooks() {
-        window.__RACER_DEBUG__ = {
-            game: this,
+        window.__RACER_DEBUG__ = Object.freeze({
             renderGameToText: () => this.renderGameToText(),
             advanceTime: (ms) => this.advanceTime(ms)
-        };
+        });
     }
 
     renderGameToText() {
@@ -430,6 +453,7 @@ export class RealTimeRacer {
             this.pendingStartFrame = requestAnimationFrame((t) => {
                 this.pendingStartFrame = null;
                 this.status = 'playing';
+                this.activeRunId += 1;
                 this.currentTime = 0;
                 this.lastTime = t;
                 this.resetFrameTimingHistory();
@@ -741,8 +765,8 @@ export class RealTimeRacer {
             secondaryActionLabel: 'Quit',
             secondaryActionIcon: 'quit',
             secondaryAction: () => this.stopPracticeSession(),
-            shareActionLabel: 'Share',
-            shareActionIcon: 'share'
+            shareActionLabel: 'Save',
+            shareActionIcon: 'save'
         });
         if (practiceSharePayload) {
             requestAnimationFrame(() => {
@@ -788,13 +812,21 @@ export class RealTimeRacer {
                 return;
             }
             this.ui.setHudPersonalBestsOpenAllowed(true);
-            this.ui.showModal('CRASHED', null, { isCrash: true, impact: events.crashImpact }, false);
+            this.ui.showModal('CRASHED', null, { isCrash: true, impact: events.crashImpact }, false, {
+                modalKind: 'crash',
+                primaryActionLabel: 'Retry',
+                primaryShortcutLabel: null,
+                primaryActionIcon: 'retry',
+                secondaryActionLabel: 'Quit',
+                secondaryAction: () => this.reset(false),
+                secondaryActionIcon: 'quit'
+            });
         }
         if (events.lapCompleted) {
             this.handlePracticeLapCompleted(events.completedLapTime);
         }
         if (events.winTriggered) {
-            this.handleWin();
+            this.handleWin(events.winData);
         }
     }
 
@@ -921,11 +953,29 @@ export class RealTimeRacer {
         };
     }
 
-    async handleWin() {
+    isValidatedWinData(winData) {
+        if (!winData || typeof winData !== 'object') return false;
+        if (this.status !== 'won') return false;
+        if (winData.trackKey !== this.currentTrackKey) return false;
+        if (winData.runId !== this.activeRunId) return false;
+
+        const checkpointCount = this.currentTrack.checkpoints?.length || 0;
+        if (winData.checkpointCount !== checkpointCount) return false;
+        if (winData.completedCheckpointCount < checkpointCount) return false;
+        if (!Number.isFinite(winData.lapTime) || winData.lapTime < 2.0) return false;
+
+        return true;
+    }
+
+    async handleWin(winData) {
+        if (!this.isValidatedWinData(winData)) {
+            return;
+        }
+
         this.status = 'won';
         this.trialRaceStats.win++;
-        const finalTime = this.currentTime;
-        const trackKey = this.currentTrackKey;
+        const finalTime = winData.lapTime;
+        const trackKey = winData.trackKey;
         const trackSnapshot = this.currentTrack;
         const trackLoadRequestId = this.trackLoadRequestId;
         const geometrySnapshot = {
@@ -1005,8 +1055,8 @@ export class RealTimeRacer {
             secondaryActionLabel: 'Quit',
             secondaryActionIcon: 'quit',
             secondaryAction: () => this.reset(false),
-            shareActionLabel: 'Share',
-            shareActionIcon: 'share'
+            shareActionLabel: 'Save',
+            shareActionIcon: 'save'
         });
         // Keep the first modal frame cheap, then build the share preview after
         // the entrance transition has started. The UI reserves the win-modal
@@ -1070,6 +1120,7 @@ export class RealTimeRacer {
         this.clearSteeringInput();
         this.relaunchDelayRemaining = 0;
         this.status = 'ready'; // Reset to ready state
+        this.activeRunId += 1;
         this.nextCheckpointIndex = 0;
         this.accumulator = 0;
         this.currentTime = 0;

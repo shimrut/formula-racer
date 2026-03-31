@@ -13,6 +13,7 @@ const _nextPos = { x: 0, y: 0 };
 // Pre-allocated events object — reused every tick.
 const _events = {
     winTriggered: false,
+    winData: null,
     lapCompleted: false,
     completedLapTime: null,
     crashImpact: null,
@@ -22,6 +23,7 @@ const _events = {
 
 function resetEvents() {
     _events.winTriggered = false;
+    _events.winData = null;
     _events.lapCompleted = false;
     _events.completedLapTime = null;
     _events.crashImpact = null;
@@ -168,6 +170,13 @@ export function updateSimulation(
                         state.currentTime = 0;
                     } else {
                         state.status = 'won';
+                        _events.winData = Object.freeze({
+                            lapTime: state.currentTime,
+                            trackKey: state.currentTrackKey,
+                            runId: state.activeRunId,
+                            checkpointCount: checkpoints.length,
+                            completedCheckpointCount: state.nextCheckpointIndex
+                        });
                         _events.winTriggered = true;
                     }
                 }

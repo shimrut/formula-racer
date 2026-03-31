@@ -14,6 +14,12 @@ const trackDataCache = new Map();
 let trackPreferencesMapCache = null;
 let trackDataBackupMapCache = null;
 let restoreFromBackupPromise = null;
+const MIN_SAVED_LAP_TIME = 2.0;
+const MAX_SAVED_LAP_TIME = 60 * 60;
+
+function isSavableLapTime(value) {
+    return Number.isFinite(value) && value >= MIN_SAVED_LAP_TIME && value <= MAX_SAVED_LAP_TIME;
+}
 
 function cloneTrackData(trackData) {
     return {
@@ -283,6 +289,10 @@ async function restoreAllTrackDataFromBackup(database) {
 }
 
 export async function saveLapTime(trackName, lapTime) {
+    if (!isSavableLapTime(lapTime)) {
+        throw new TypeError(`Invalid lap time: ${lapTime}`);
+    }
+
     const database = await initDB();
 
     return new Promise((resolve, reject) => {
@@ -322,6 +332,10 @@ export async function saveLapTime(trackName, lapTime) {
 }
 
 export async function saveBestTime(trackName, bestTime, mode = TRACK_MODE_PRACTICE) {
+    if (!isSavableLapTime(bestTime)) {
+        throw new TypeError(`Invalid best time: ${bestTime}`);
+    }
+
     const database = await initDB();
 
     return new Promise((resolve, reject) => {

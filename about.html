@@ -13,47 +13,49 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>About | Vector GP</title>
+    <title>What Is Vector GP? | Browser Arcade Racing Game</title>
     <meta name="description"
-        content="About Vector GP: a free browser-based racing game. Physics-based steering, weekly circuits, no sign-up.">
-    <meta name="keywords" content="vector gp about, browser racing, free racing game, arcade racing">
-    <meta name="author" content="Vector GP Team">
+        content="Learn what Vector GP is: a browser arcade racing game inspired by the paper Racetrack game, built for short time trials, fast retries, and weekly tracks.">
+    <meta name="author" content="Bogdan Popa">
 
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Vector GP">
     <meta property="og:url" content="https://vectorgp.run/about.html">
-    <meta property="og:title" content="About | Vector GP">
+    <meta property="og:title" content="What Is Vector GP? | Browser Arcade Racing Game">
     <meta property="og:description"
-        content="Free browser racing. Master circuits, set your best lap. New track every Wednesday.">
+        content="Learn what makes Vector GP different: a browser arcade racing game built for short time trials, fast retries, and weekly tracks.">
     <meta property="og:image" content="https://vectorgp.run/social-preview.png">
     <meta property="og:locale" content="en_US">
 
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://vectorgp.run/about.html">
-    <meta property="twitter:title" content="About | Vector GP">
+    <meta property="twitter:title" content="What Is Vector GP? | Browser Arcade Racing Game">
     <meta property="twitter:description"
-        content="Free browser racing. Master circuits, set your best lap. New track every Wednesday.">
+        content="Learn what makes Vector GP different: a browser arcade racing game built for short time trials, fast retries, and weekly tracks.">
     <meta property="twitter:image" content="https://vectorgp.run/social-preview.png">
 
     <link rel="canonical" href="https://vectorgp.run/about.html">
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="styles.css?v=0.41">
+    <link rel="preload" href="fonts/outfit.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="fonts/jetbrainsmono.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="fonts.css?v=0.01">
+    <link rel="stylesheet" href="pages.css?v=0.02">
 
     <!-- Structured data (SEO + GEO: machine-readable, quotable summary for search and generative engines) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebPage",
-      "name": "About | Vector GP",
-      "description": "About Vector GP: free browser-based racing. Physics-based steering, weekly circuits, no sign-up. New track every Wednesday at 07:00 UTC. Play on desktop or mobile.",
+      "name": "What Is Vector GP? | Browser Arcade Racing Game",
+      "description": "Learn what Vector GP is: a browser arcade racing game inspired by the paper Racetrack game, built for short time trials, fast retries, and weekly tracks.",
       "inLanguage": "en",
       "url": "https://vectorgp.run/about.html",
       "isPartOf": { "@type": "WebSite", "name": "Vector GP", "url": "https://vectorgp.run/" },
       "about": {
         "@type": "VideoGame",
         "name": "Vector GP",
-        "description": "Free browser racing game. Steer with keyboard or touch, drift around circuits, set your best lap without crashing. New track weekly (Wednesday 07:00 UTC).",
-        "genre": "Racing",
+        "description": "Free browser arcade racing game. Steer with keyboard or touch, chase short lap times, and retry instantly on weekly tracks inspired by the paper Racetrack game.",
+        "genre": ["Racing", "Arcade"],
         "gamePlatform": "Web browser",
         "playMode": "SinglePlayer",
         "inLanguage": "en",
@@ -63,7 +65,8 @@
       "mainEntity": {
         "@type": "VideoGame",
         "name": "Vector GP",
-        "genre": "Racing",
+        "description": "Browser arcade racing game focused on short time trials, momentum-based steering, and one-more-lap replayability.",
+        "genre": ["Racing", "Arcade"],
         "gamePlatform": "Web browser",
         "playMode": "SinglePlayer"
       },
@@ -81,95 +84,130 @@
 <body class="about-page">
 
     <header role="banner">
-        <a href="index.html" class="site-logo">Vector <span class="full-name">GP</span></a>
-        <nav class="header-right" aria-label="Site">
-            <a href="index.html"
-                style="color: #94a3b8; text-decoration: none; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; transition: color 0.2s;">Play</a>
-            <a href="changelog.html"
-                style="color: #94a3b8; text-decoration: none; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; transition: color 0.2s;">Changelog</a>
-        </nav>
+        <div class="page-header__inner">
+            <a href="index.html" class="site-logo">Vector <span class="full-name">GP</span></a>
+            <nav class="header-right" aria-label="Site">
+                <a href="changelog.html" class="header-utility-link">Changelog</a>
+                <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="header-utility-link"
+                    target="_blank" rel="noopener noreferrer" title="Support Vector GP for future updates and functionalities">Support - 1€</a>
+                <a href="index.html" class="header-play-link">Play</a>
+            </nav>
+        </div>
     </header>
 
     <main class="about-page__main" role="main">
         <section class="about-hero" aria-label="Introduction">
-            <h1 class="about-hero__title">Vector GP</h1>
-            <p class="about-hero__subtitle">A minimalist browser-based racing simulator focused on physics, precision,
-                and the pursuit of the perfect lap.</p>
-        </section>
-
-        <section class="about-section">
-            <span class="about-section__label">01 / Mechanics</span>
-            <div class="about-content">
-                <h2>Physics & Control</h2>
-                <p>Vector GP uses a simplified momentum-based physics model. Acceleration is automatic; your focus is on
-                    steering and finding the optimal racing line. The challenge lies in managing your speed through
-                    corners—if you carry too much momentum, the friction won't hold you, and the car will drift wide
-                    into the barriers.</p>
-            </div>
-        </section>
-
-        <section class="about-section">
-            <span class="about-section__label">02 / Competition</span>
-            <div class="about-content">
-                <h2>Weekly Rotation</h2>
-                <p>Vector GP follows a high-stakes circuit calendar. Every <strong>Wednesday at 07:00 UTC</strong>, the
-                    current track is retired and replaced. Each layout is available for one week before leaving rotation
-                    for a full year. Your challenge is to master the geometry and set your personal best before the
-                    cycle continues.</p>
-            </div>
-        </section>
-
-        <section class="about-section">
-            <span class="about-section__label">03 / Engineering</span>
-            <div class="about-content">
-                <h2>The Stack</h2>
-                <p>Built with Vanilla JS and HTML5 Canvas. The physics runs at a fixed 60Hz update rate to keep movement
-                    consistent across different screens. No frameworks, no engines, just raw code and some math to
-                    simulate basic momentum.</p>
-
-                <div class="about-specs">
-                    <div class="spec-item">
-                        <span class="spec-label">Engine</span>
-                        <span class="spec-value">Custom Vanilla JS</span>
-                    </div>
-                    <div class="spec-item">
-                        <span class="spec-label">Logic</span>
-                        <span class="spec-value">60Hz Fixed Step</span>
-                    </div>
-                    <div class="spec-item">
-                        <span class="spec-label">Storage</span>
-                        <span class="spec-value">LocalStorage</span>
-                    </div>
-                    <div class="spec-item">
-                        <span class="spec-label">Rendering</span>
-                        <span class="spec-value">2D Canvas</span>
-                    </div>
+            <h1 class="about-hero__title">About Vector GP</h1>
+            <p class="about-hero__subtitle">Vector GP is a free browser arcade racing game built for short time trials,
+                fast retries, and weekly tracks.</p>
+            <div class="about-specs about-specs--glance" aria-label="Vector GP at a glance">
+                <div class="spec-item">
+                    <span class="spec-label">Genre</span>
+                    <span class="spec-value">Browser arcade racing game</span>
+                </div>
+                <div class="spec-item">
+                    <span class="spec-label">Format</span>
+                    <span class="spec-value">Short time trials and practice sessions</span>
+                </div>
+                <div class="spec-item">
+                    <span class="spec-label">Controls</span>
+                    <span class="spec-value">Keyboard and touch steering</span>
+                </div>
+                <div class="spec-item">
+                    <span class="spec-label">Roots</span>
+                    <span class="spec-value">Paper Racetrack game inspiration</span>
                 </div>
             </div>
         </section>
 
         <section class="about-section">
-            <span class="about-section__label">04 / Origin</span>
+            <span class="about-section__label">01 / Overview</span>
             <div class="about-content">
-                <h2>Pen & Paper Roots</h2>
-                <p>This project started as a simple curiosity: what happens if you take the logic of the pen-and-paper
-                    game <a href="https://en.wikipedia.org/wiki/Racetrack_(game)" target="_blank"
-                        rel="noopener">Racetrack</a> and turn it into a real-time experience?</p>
+                <h2>What kind of game is Vector GP?</h2>
+                <p>Vector GP is a browser racing game and arcade racing game focused on short laps, fast retries, and
+                    readable controls. The goal is simple: learn the track, clean up your steering, and lower your best
+                    lap time without crashing.</p>
             </div>
         </section>
 
         <section class="about-section">
-            <span class="about-section__label">05 / Meta</span>
+            <span class="about-section__label">02 / Controls</span>
             <div class="about-content">
-                <h2>The Project</h2>
-                <p>Made with passion by @shimrut. This is an evolving project focused on the core essence of racing.
-                    Check the <a href="changelog.html">Changelog</a> for recent updates and track additions.</p>
+                <h2>Why does it feel different from other racing games?</h2>
+                <p>Vector GP plays like a minimalist top-down racing game built around momentum. The car accelerates
+                    automatically, so the challenge is not throttle control but steering, line choice, and carrying the
+                    right speed through corners without over-correcting.</p>
+            </div>
+        </section>
+
+        <section class="about-section">
+            <span class="about-section__label">03 / Origin</span>
+            <div class="about-content">
+                <h2>From paper Racetrack to browser racing</h2>
+                <p>Vector GP takes inspiration from the pen-and-paper <a
+                        href="https://en.wikipedia.org/wiki/Racetrack_(game)" target="_blank"
+                        rel="noopener">Racetrack</a> game and turns that graph-paper-style racing idea into a real-time
+                    web racing game. That is part of why it can also appeal to people looking for a paper racing game,
+                    a math racing game, or a racing game where geometry and route planning matter as much as reflexes.</p>
+            </div>
+        </section>
+
+        <section class="about-section">
+            <span class="about-section__label">04 / Loop</span>
+            <div class="about-content">
+                <h2>Built for quick sessions and one more lap</h2>
+                <p>Runs are short, retries are immediate, and each mistake is easy to understand. That makes Vector GP
+                    a strong lunch-break game and gives it the fast reset loop that players often describe as “one more
+                    lap” brain rot in the best possible way.</p>
+            </div>
+        </section>
+
+        <section class="about-section">
+            <span class="about-section__label">05 / Rotation</span>
+            <div class="about-content">
+                <h2>Why the weekly track schedule matters</h2>
+                <p>Every <strong>Wednesday at 07:00 UTC</strong>, a new circuit is added to the roster. Older tracks stay
+                    available, which means the browser racing lineup keeps growing while still giving players a fresh
+                    layout to learn each week.</p>
+            </div>
+        </section>
+
+        <section class="about-section">
+            <span class="about-section__label">06 / Modes</span>
+            <div class="about-content">
+                <h2>Two ways to play the same roster</h2>
+                <div class="about-faq-list">
+                    <article class="about-faq-item">
+                        <h3>Time Trial</h3>
+                        <p>Time Trial is the purest version of Vector GP: one clean lap, one result, and a fast reset
+                            loop built around personal bests.</p>
+                    </article>
+                    <article class="about-faq-item">
+                        <h3>Session</h3>
+                        <p>Session mode is for longer runs on the same track. It keeps the steering-first feel of the
+                            core arcade racing game while giving you room to build rhythm and consistency across
+                            multiple laps.</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="about-section about-section--cta">
+            <span class="about-section__label">07 / Play</span>
+            <div class="about-content about-cta">
+                <h2>Play Vector GP</h2>
+                <p>Open the current roster in your browser and start with a short time trial or a longer session run.</p>
+                <a href="index.html" class="about-cta__link">Open the game</a>
             </div>
         </section>
     </main>
 
-    <footer
-        style="text-align: left; max-width: 42rem; margin: 0 auto; padding: 4rem 1.5rem; color: #475569; font-size: 0.75rem; font-family: var(--mono-font); text-transform: uppercase; letter-spacing: 0.1em;">
+    <footer class="about-footer">
+        <nav class="about-footer__nav" aria-label="Footer">
+            <a href="index.html">Play</a>
+            <a href="about.html">About</a>
+            <a href="changelog.html">Changelog</a>
+        </nav>
         &copy; 2026 Vector GP. ALL SYSTEMS NOMINAL.
     </footer>
 

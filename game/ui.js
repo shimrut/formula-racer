@@ -9,7 +9,7 @@ import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=0.81';
 const MOBILE_CAROUSEL_SWIPE_PX = 42;
 
 export class GameUi {
-    constructor({ onPreviewTrack, onPreviewPresentation, onStart, onReset, onShare, onShowPersonalBests, onPausePractice, previewQualityLevel = 0, previewFrameSkip = 0 }) {
+    constructor({ onPreviewTrack, onPreviewPresentation, onStart, onReset, onShare, onShowPersonalBests, onPausePractice, onSupportClick, onHeaderMenuOpen, onHowToPlayOpen, previewQualityLevel = 0, previewFrameSkip = 0 }) {
         this.header = document.querySelector('header');
         this.hudBar = document.querySelector('.hud-bar');
         this.hudStatsBtn = document.getElementById('hud-stats-btn');
@@ -57,8 +57,10 @@ export class GameUi {
         this.practiceLapFlashDelta = document.getElementById('practice-lap-flash-delta');
         this.htpModal = document.getElementById('how-to-play-modal');
         this.closeHtpBtn = document.getElementById('close-htp-btn');
+        this.closeHtpXBtn = document.getElementById('htp-modal-close');
         this.headerHtpBtn = document.getElementById('header-htp-btn');
         this.headerNavMenu = document.getElementById('header-nav-menu');
+        this.headerSupportLink = document.querySelector('.header-support-link');
         this.menuHowToPlayBtn = document.getElementById('menu-how-to-play');
         this.startBtn = document.getElementById('start-btn');
         this.modalResetBtn = document.getElementById('modal-reset-btn');
@@ -115,6 +117,9 @@ export class GameUi {
         this._onPreviewTrack = onPreviewTrack;
         this._onPreviewPresentation = onPreviewPresentation;
         this._onStart = onStart;
+        this._onSupportClick = onSupportClick || null;
+        this._onHeaderMenuOpen = onHeaderMenuOpen || null;
+        this._onHowToPlayOpen = onHowToPlayOpen || null;
         this._previewQualityLevel = previewQualityLevel;
         this._previewFrameSkip = previewFrameSkip;
         this.anchorHudBar();
@@ -217,6 +222,7 @@ export class GameUi {
             this.headerNavMenu.hidden = false;
             this.headerHtpBtn.setAttribute('aria-expanded', 'true');
             this._headerMenuOpen = true;
+            this._onHeaderMenuOpen?.();
             const first = this.menuHowToPlayBtn || this.headerNavMenu.querySelector('a');
             if (first instanceof HTMLElement) first.focus();
         };
@@ -235,6 +241,12 @@ export class GameUi {
             });
         }
 
+        if (this.headerSupportLink) {
+            this.headerSupportLink.addEventListener('click', () => {
+                this._onSupportClick?.();
+            });
+        }
+
         if (this.menuHowToPlayBtn) {
             this.menuHowToPlayBtn.addEventListener('click', () => {
                 closeHeaderMenu();
@@ -248,6 +260,9 @@ export class GameUi {
 
         if (this.closeHtpBtn) {
             this.closeHtpBtn.addEventListener('click', () => this.hideHowToPlayModal());
+        }
+        if (this.closeHtpXBtn) {
+            this.closeHtpXBtn.addEventListener('click', () => this.hideHowToPlayModal());
         }
 
         this._headerMenuDocClick = (e) => {
@@ -299,7 +314,7 @@ export class GameUi {
             this.shareBtn.addEventListener('click', onShare);
         }
         if (this.desktopSpeedometer && onPausePractice) this.desktopSpeedometer.addEventListener('click', onPausePractice);
-        if (this.mobileSpeedometer && onPausePractice) this.mobileSpeedometer.addEventListener('click', onPausePractice);
+        if (this.mobileSpeedometer && onPausePractice) this.bindTapAction(this.mobileSpeedometer, onPausePractice);
     }
 
     bindTrackModeControls() {
@@ -314,6 +329,24 @@ export class GameUi {
     bindSteeringControls({ onLeftDown, onLeftUp, onRightDown, onRightUp }) {
         this.bindTouchButton(this.leftTouchBtn, onLeftDown, onLeftUp);
         this.bindTouchButton(this.rightTouchBtn, onRightDown, onRightUp);
+    }
+
+    bindTapAction(element, onTap) {
+        if (!element || !onTap) return;
+
+        if (window.PointerEvent) {
+            element.addEventListener('pointerup', (e) => {
+                if (e.button !== undefined && e.button !== 0) return;
+                e.preventDefault?.();
+                onTap();
+            });
+            return;
+        }
+
+        element.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            onTap();
+        }, { passive: false });
     }
 
     bindTouchButton(button, onDown, onUp) {
@@ -745,13 +778,10 @@ export class GameUi {
             }
 
             if (mobile) {
-                let changedTrack = false;
                 if (delta <= -threshold) {
                     this.moveReturningTrack(1);
-                    changedTrack = true;
                 } else if (delta >= threshold) {
                     this.moveReturningTrack(-1);
-                    changedTrack = true;
                 } else if (Math.abs(delta) > 1.5) {
                     this.updateReturningTrackSlider();
                 }
@@ -1029,6 +1059,7 @@ export class GameUi {
             this.returningPlayerPanel.hidden = !showTrackSelection;
             this.returningPlayerPanel.style.display = showTrackSelection ? 'grid' : 'none';
         }
+        document.body.classList.toggle('ftu-onboarding-active', !showTrackSelection);
         this.setStartSelectionMode(showTrackSelection);
 
         if (showTrackSelection) {
@@ -1138,7 +1169,7 @@ export class GameUi {
         this._mainModalIsCrash = Boolean(lapData?.isCrash);
         this._modalKind = options.modalKind || null;
         this.modal.classList.toggle('modal--crash', this._mainModalIsCrash);
-        this.modal.classList.toggle('modal--practice-pause', this._modalKind === 'practice-pause');
+        this.modal.classList.toggle('modal--practice-pause', this._modalKind === 'practice-pause' || this._modalKind === 'crash');
         this.modal.classList.toggle('modal--standard-win', this._modalKind === 'standard-win');
         this._modalPrimaryAction = options.primaryAction || this._defaultModalPrimaryAction;
         this._modalSecondaryAction = options.secondaryAction || null;
@@ -1153,7 +1184,7 @@ export class GameUi {
             Boolean(options.secondaryAction),
             options.secondaryActionIcon || null
         );
-        this.setShareButtonContent(options.shareActionLabel || 'share your time', options.shareActionIcon || 'share');
+        this.setShareButtonContent(options.shareActionLabel || 'save your time', options.shareActionIcon || 'save');
 
         if (lapData) {
             if (this.modalMsg) this.modalMsg.style.display = 'none';
@@ -1282,7 +1313,7 @@ export class GameUi {
             this._modalSecondaryAction = null;
             this._forceSharePanelVisible = false;
             this.setModalSecondaryButton('', false, null);
-            this.setShareButtonContent('share your time', 'share');
+            this.setShareButtonContent('save your time', 'save');
             this.updateShareState({ visible: false, ready: false, busy: false });
             this.clearModalPreview();
             this.releaseModalFocusTrap(modal);
@@ -1572,14 +1603,15 @@ export class GameUi {
                 addPath('M9 17H4v5');
                 break;
             case 'share':
+            case 'save':
                 svg.setAttribute('fill', 'none');
                 svg.setAttribute('stroke', 'currentColor');
                 svg.setAttribute('stroke-width', '2');
                 svg.setAttribute('stroke-linecap', 'round');
                 svg.setAttribute('stroke-linejoin', 'round');
-                addPath('M12 2v13');
-                addPath('m16 6-4-4-4 4');
-                addPath('M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8');
+                addPath('M12 15V3');
+                addPath('M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4');
+                addPath('m7 10 5 5 5-5');
                 break;
             default:
                 return null;
@@ -1624,7 +1656,7 @@ export class GameUi {
         this.modalSecondaryBtn.style.display = isVisible ? 'inline-flex' : 'none';
     }
 
-    setShareButtonContent(label, iconName = 'share') {
+    setShareButtonContent(label, iconName = 'save') {
         this.setModalActionButtonContent(this.shareBtn, label, { iconName });
     }
 
@@ -1807,7 +1839,9 @@ export class GameUi {
 
     showHowToPlayModal() {
         if (!this.htpModal) return;
+        if (this.htpModal.classList.contains('active')) return;
         this.htpModal.classList.add('active');
+        this._onHowToPlayOpen?.();
         this.activateModalFocusTrap(this.htpModal);
     }
 
@@ -1860,6 +1894,13 @@ export class GameUi {
 
     handleModalTrapKeydown(e) {
         if (!this._activeTrapModal) return;
+
+        if (e.key === 'Escape' && this._activeTrapModal === this.htpModal) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.hideHowToPlayModal();
+            return;
+        }
 
         const isDesktopModalNav = window.matchMedia('(min-width: 769px)').matches;
         const actionButtons = isDesktopModalNav

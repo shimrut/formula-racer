@@ -18,6 +18,18 @@ export class AnalyticsService {
         this.track('challenge_friend_share');
     }
 
+    trackSupportClick() {
+        this.track('support-click');
+    }
+
+    trackHeaderMenuOpen() {
+        this.track('header-menu-open');
+    }
+
+    trackHowToPlayOpen() {
+        this.track('how-to-play-open');
+    }
+
     trackTrialRace(stats) {
         this.track('trial-race', {
             start: stats.start,

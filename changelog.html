@@ -16,9 +16,7 @@
     <title>Changelog | Vector GP</title>
     <meta name="description"
         content="What's new in Vector GP: major player-facing racing updates, visual upgrades, and important gameplay improvements.">
-    <meta name="keywords"
-        content="vector gp changelog, racing game updates, gameplay improvements, browser racing game">
-    <meta name="author" content="Vector GP Team">
+    <meta name="author" content="Bogdan Popa">
 
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://vectorgp.run/changelog.html">
@@ -36,7 +34,10 @@
 
     <link rel="canonical" href="https://vectorgp.run/changelog.html">
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="styles.css?v=0.41">
+    <link rel="preload" href="fonts/outfit.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="fonts/jetbrainsmono.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="fonts.css?v=0.01">
+    <link rel="stylesheet" href="pages.css?v=0.02">
 
     <!-- Structured data (SEO + GEO: machine-readable, quotable summary for search and generative engines) -->
     <script type="application/ld+json">
@@ -60,19 +61,49 @@
 <body class="about-page">
 
     <header role="banner">
-        <a href="index.html" class="site-logo">Vector <span class="full-name">GP</span></a>
-        <nav class="header-right" aria-label="Site">
-            <a href="index.html"
-                style="color: #94a3b8; text-decoration: none; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; transition: color 0.2s;">Play</a>
-            <a href="about.html"
-                style="color: #94a3b8; text-decoration: none; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; transition: color 0.2s;">About</a>
-        </nav>
+        <div class="page-header__inner">
+            <a href="index.html" class="site-logo">Vector <span class="full-name">GP</span></a>
+            <nav class="header-right" aria-label="Site">
+                <a href="about.html" class="header-utility-link">About</a>
+                <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="header-utility-link"
+                    target="_blank" rel="noopener noreferrer" title="Support Vector GP for future updates and functionalities">Support - 1€</a>
+                <a href="index.html" class="header-play-link">Play</a>
+            </nav>
+        </div>
     </header>
 
     <main class="about-page__main" role="main">
         <section class="about-hero" aria-label="Introduction">
             <h1 class="about-hero__title">Changelog</h1>
             <p class="about-hero__subtitle">Evolution of VectorGP. Updates, fixes, and circuit releases.</p>
+        </section>
+
+        <section class="about-section">
+            <span class="about-section__label">v 0.47 / March 2026</span>
+            <div class="about-content">
+                <h2>Track Visibility & UX Refresh</h2>
+                <p><strong>This update improves how the game introduces itself and how the wider site reads.</strong>
+                    Track availability, onboarding, support pages, and underlying stability all got a cleanup pass.</p>
+
+                <p><strong>What changed:</strong></p>
+                <ul
+                    style="list-style: none; padding: 0; margin: 0; color: #cbd5e1; font-size: 1.0625rem; line-height: 1.75;">
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span
+                            style="color: var(--accent-color);">/</span><span style="flex: 1; min-width: 0;">Visual
+                            updates now make it clearer that multiple tracks are available when you browse the
+                            selection flow.</span></li>
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span
+                            style="color: var(--accent-color);">/</span><span style="flex: 1; min-width: 0;">New-player
+                            onboarding and the How to Play modal were refined so the opening experience reads more
+                            clearly.</span></li>
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span
+                            style="color: var(--accent-color);">/</span><span style="flex: 1; min-width: 0;">The About
+                            and Changelog pages were updated for a cleaner presentation and better navigation.</span></li>
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span
+                            style="color: var(--accent-color);">/</span><span style="flex: 1; min-width: 0;">Various
+                            bug fixes and vulnerability hardening were applied across the experience.</span></li>
+                </ul>
+            </div>
         </section>
 
         <section class="about-section">
@@ -307,8 +338,12 @@
         </section>
     </main>
 
-    <footer
-        style="text-align: left; max-width: 42rem; margin: 0 auto; padding: 4rem 1.5rem; color: #475569; font-size: 0.75rem; font-family: var(--mono-font); text-transform: uppercase; letter-spacing: 0.1em;">
+    <footer class="about-footer">
+        <nav class="about-footer__nav" aria-label="Footer">
+            <a href="index.html">Play</a>
+            <a href="about.html">About</a>
+            <a href="changelog.html">Changelog</a>
+        </nav>
         &copy; 2026 Vector GP. ALL SYSTEMS NOMINAL.
     </footer>
 
