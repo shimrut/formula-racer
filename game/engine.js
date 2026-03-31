@@ -13,11 +13,11 @@ import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.j
 import { updateSimulation } from './core/simulation.js?v=0.73';
 import { RingBuffer } from './core/ring-buffer.js?v=0.73';
 import { saveLapTime, saveBestTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.72';
-import { AnalyticsService } from './services/analytics.js?v=0.72';
+import { AnalyticsService } from './services/analytics.js?v=0.73';
 import { PlayerStatusStore } from './services/player-status.js?v=0.84';
 import { SessionFlagStore } from './services/session-flags.js?v=0.71';
 import { ShareService } from './services/share.js?v=0.81';
-import { GameUi } from './ui.js?v=1.00';
+import { GameUi } from './ui.js?v=1.01';
 
 function shouldExposeDebugHooks() {
     if (typeof window === 'undefined') return false;
@@ -150,6 +150,12 @@ export class RealTimeRacer {
             onStart: (trackKey, trackPreferences) => this.handleStartButton(trackKey, trackPreferences),
             onShowPersonalBests: () => this.showPersonalBests(),
             onPausePractice: () => this.pausePracticeSession(),
+            onSupportClick: () => this.analytics.trackSupportClick(),
+            onHeaderMenuOpen: () => this.analytics.trackHeaderMenuOpen(),
+            onHowToPlayOpen: () => {
+                this.analytics.trackHowToPlayOpen();
+                this.analytics.trackPageview('/how-to-play', 'How to Play');
+            },
             onReset: () => {
                 this.bumpRaceStartForCurrentMode();
                 this.reset(true);

@@ -9,7 +9,7 @@ import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=0.81';
 const MOBILE_CAROUSEL_SWIPE_PX = 42;
 
 export class GameUi {
-    constructor({ onPreviewTrack, onPreviewPresentation, onStart, onReset, onShare, onShowPersonalBests, onPausePractice, previewQualityLevel = 0, previewFrameSkip = 0 }) {
+    constructor({ onPreviewTrack, onPreviewPresentation, onStart, onReset, onShare, onShowPersonalBests, onPausePractice, onSupportClick, onHeaderMenuOpen, onHowToPlayOpen, previewQualityLevel = 0, previewFrameSkip = 0 }) {
         this.header = document.querySelector('header');
         this.hudBar = document.querySelector('.hud-bar');
         this.hudStatsBtn = document.getElementById('hud-stats-btn');
@@ -60,6 +60,7 @@ export class GameUi {
         this.closeHtpXBtn = document.getElementById('htp-modal-close');
         this.headerHtpBtn = document.getElementById('header-htp-btn');
         this.headerNavMenu = document.getElementById('header-nav-menu');
+        this.headerSupportLink = document.querySelector('.header-support-link');
         this.menuHowToPlayBtn = document.getElementById('menu-how-to-play');
         this.startBtn = document.getElementById('start-btn');
         this.modalResetBtn = document.getElementById('modal-reset-btn');
@@ -116,6 +117,9 @@ export class GameUi {
         this._onPreviewTrack = onPreviewTrack;
         this._onPreviewPresentation = onPreviewPresentation;
         this._onStart = onStart;
+        this._onSupportClick = onSupportClick || null;
+        this._onHeaderMenuOpen = onHeaderMenuOpen || null;
+        this._onHowToPlayOpen = onHowToPlayOpen || null;
         this._previewQualityLevel = previewQualityLevel;
         this._previewFrameSkip = previewFrameSkip;
         this.anchorHudBar();
@@ -218,6 +222,7 @@ export class GameUi {
             this.headerNavMenu.hidden = false;
             this.headerHtpBtn.setAttribute('aria-expanded', 'true');
             this._headerMenuOpen = true;
+            this._onHeaderMenuOpen?.();
             const first = this.menuHowToPlayBtn || this.headerNavMenu.querySelector('a');
             if (first instanceof HTMLElement) first.focus();
         };
@@ -233,6 +238,12 @@ export class GameUi {
             this.headerHtpBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 toggleHeaderMenu();
+            });
+        }
+
+        if (this.headerSupportLink) {
+            this.headerSupportLink.addEventListener('click', () => {
+                this._onSupportClick?.();
             });
         }
 
@@ -303,7 +314,7 @@ export class GameUi {
             this.shareBtn.addEventListener('click', onShare);
         }
         if (this.desktopSpeedometer && onPausePractice) this.desktopSpeedometer.addEventListener('click', onPausePractice);
-        if (this.mobileSpeedometer && onPausePractice) this.mobileSpeedometer.addEventListener('click', onPausePractice);
+        if (this.mobileSpeedometer && onPausePractice) this.bindTapAction(this.mobileSpeedometer, onPausePractice);
     }
 
     bindTrackModeControls() {
@@ -318,6 +329,24 @@ export class GameUi {
     bindSteeringControls({ onLeftDown, onLeftUp, onRightDown, onRightUp }) {
         this.bindTouchButton(this.leftTouchBtn, onLeftDown, onLeftUp);
         this.bindTouchButton(this.rightTouchBtn, onRightDown, onRightUp);
+    }
+
+    bindTapAction(element, onTap) {
+        if (!element || !onTap) return;
+
+        if (window.PointerEvent) {
+            element.addEventListener('pointerup', (e) => {
+                if (e.button !== undefined && e.button !== 0) return;
+                e.preventDefault?.();
+                onTap();
+            });
+            return;
+        }
+
+        element.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            onTap();
+        }, { passive: false });
     }
 
     bindTouchButton(button, onDown, onUp) {
@@ -1810,7 +1839,9 @@ export class GameUi {
 
     showHowToPlayModal() {
         if (!this.htpModal) return;
+        if (this.htpModal.classList.contains('active')) return;
         this.htpModal.classList.add('active');
+        this._onHowToPlayOpen?.();
         this.activateModalFocusTrap(this.htpModal);
     }
 
