@@ -16,9 +16,7 @@
     <title>Changelog | Vector GP</title>
     <meta name="description"
         content="What's new in Vector GP: major player-facing racing updates, visual upgrades, and important gameplay improvements.">
-    <meta name="keywords"
-        content="vector gp changelog, racing game updates, gameplay improvements, browser racing game">
-    <meta name="author" content="Vector GP Team">
+    <meta name="author" content="Bogdan Popa">
 
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://vectorgp.run/changelog.html">
@@ -36,7 +34,10 @@
 
     <link rel="canonical" href="https://vectorgp.run/changelog.html">
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="styles.css?v=0.41">
+    <link rel="preload" href="fonts/outfit.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="fonts/jetbrainsmono.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="fonts.css?v=0.01">
+    <link rel="stylesheet" href="pages.css?v=0.02">
 
     <!-- Structured data (SEO + GEO: machine-readable, quotable summary for search and generative engines) -->
     <script type="application/ld+json">
@@ -60,13 +61,15 @@
 <body class="about-page">
 
     <header role="banner">
-        <a href="index.html" class="site-logo">Vector <span class="full-name">GP</span></a>
-        <nav class="header-right" aria-label="Site">
-            <a href="index.html"
-                style="color: #94a3b8; text-decoration: none; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; transition: color 0.2s;">Play</a>
-            <a href="about.html"
-                style="color: #94a3b8; text-decoration: none; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; transition: color 0.2s;">About</a>
-        </nav>
+        <div class="page-header__inner">
+            <a href="index.html" class="site-logo">Vector <span class="full-name">GP</span></a>
+            <nav class="header-right" aria-label="Site">
+                <a href="about.html" class="header-utility-link">About</a>
+                <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="header-utility-link"
+                    target="_blank" rel="noopener noreferrer" title="Support Vector GP for future updates and functionalities">Support - 1€</a>
+                <a href="index.html" class="header-play-link">Play</a>
+            </nav>
+        </div>
     </header>
 
     <main class="about-page__main" role="main">
@@ -307,8 +310,12 @@
         </section>
     </main>
 
-    <footer
-        style="text-align: left; max-width: 42rem; margin: 0 auto; padding: 4rem 1.5rem; color: #475569; font-size: 0.75rem; font-family: var(--mono-font); text-transform: uppercase; letter-spacing: 0.1em;">
+    <footer class="about-footer">
+        <nav class="about-footer__nav" aria-label="Footer">
+            <a href="index.html">Play</a>
+            <a href="about.html">About</a>
+            <a href="changelog.html">Changelog</a>
+        </nav>
         &copy; 2026 Vector GP. ALL SYSTEMS NOMINAL.
     </footer>
 

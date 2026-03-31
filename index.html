@@ -14,32 +14,30 @@
     <meta charset="UTF-8">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Vector GP</title>
+    <title>Play Vector GP | Free Browser Arcade Racing Game</title>
     <meta name="description"
-        content="Play Vector GP - a minimalist web vector racing game. Set your fastest lap through short time trials, precise controls, and quick retries. New track every Wednesday at 07:00 UTC.">
-    <meta name="keywords"
-        content="vector gp, vector racing, free racing game, physics-based racing, circuit driver, retro racer, web game, browser game, high speed racing, lap time challenge, global circuits, quick retry, racetrack game, trackmania like game, trackmania, grand prix, time attack racing, indie games, formula racing game, open wheel racing game">
-    <meta name="author" content="Bogdan Popa (@shimrut)">
+        content="Play Vector GP, a free browser arcade racing game with short time trials, fast retries, and weekly tracks. Start a run instantly in your browser.">
+    <meta name="author" content="Bogdan Popa">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://vectorgp.run/">
-    <meta property="og:title" content="Vector GP">
+    <meta property="og:title" content="Play Vector GP | Free Browser Arcade Racing Game">
     <meta property="og:description"
-        content="A minimalist web vector racing game with short time trials, precise controls, and quick retries.">
+        content="Play a free browser arcade racing game with short time trials, fast retries, and weekly tracks.">
     <meta property="og:image" content="https://vectorgp.run/social-preview.png">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://vectorgp.run/">
-    <meta property="twitter:title" content="Vector GP">
+    <meta property="twitter:title" content="Play Vector GP | Free Browser Arcade Racing Game">
     <meta property="twitter:description"
-        content="A minimalist web vector racing game. Short tracks, fast retries, and lap-time improvement.">
+        content="Play a free browser arcade racing game with short time trials, fast retries, and weekly tracks.">
     <meta property="twitter:image" content="https://vectorgp.run/social-preview.png">
 
     <link rel="canonical" href="https://vectorgp.run/">
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="styles.css?v=0.89">
+    <link rel="stylesheet" href="styles.css?v=0.90">
 
     <!-- Structured Data (GEO: quotable summary for generative engines) -->
     <script type="application/ld+json">
@@ -47,32 +45,44 @@
       "@context": "https://schema.org",
       "@type": "WebPage",
       "name": "Vector GP",
-      "description": "Vector GP is a free minimalist browser-based vector racing game inspired by the pen and paper Racetrack game. Set your fastest lap through short time trials, precise controls, and quick retries. New track every Wednesday at 07:00 UTC.",
+      "description": "Play Vector GP, a free browser arcade racing game inspired by the pen and paper Racetrack game. Start short time trials or session runs instantly in your browser.",
       "inLanguage": "en",
       "url": "https://vectorgp.run/",
       "mainEntity": {
         "@type": "VideoGame",
         "name": "Vector GP",
-        "description": "Vector GP is a free minimalist browser vector racing game inspired by the pen and paper Racetrack game and built around short time trials. Tracks usually take around 6 to 30 seconds to complete, and the goal is to improve lap times through precision, clean lines, and quick retries.",
-        "genre": "Racing",
+        "description": "Vector GP is a free browser arcade racing game inspired by the pen and paper Racetrack game. It is built around short time trials, session runs, and instant retries.",
+        "genre": ["Racing", "Arcade"],
         "gamePlatform": "Web browser",
         "playMode": "SinglePlayer",
         "inLanguage": "en",
-        "author": { "@type": "Person", "name": "Bogdan Popa (@shimrut)" },
+        "author": { "@type": "Person", "name": "Bogdan Popa" },
         "url": "https://vectorgp.run/"
       }
     }
     </script>
 </head>
 
-<body class="start-overlay-active">
+<body class="start-overlay-active ftu-onboarding-active">
 
     <header role="banner">
         <h1 id="site-title">Vector <span class="full-name">GP</span></h1>
 
         <div class="header-right">
             <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="header-support-link"
-                target="_blank" rel="noopener noreferrer" title="Support Vector GP for future updates and functionalities">Support 1€</a>
+                target="_blank" rel="noopener noreferrer" title="Support Vector GP for future updates and functionalities">
+                <span class="header-support-link__label header-support-link__label--desktop">Support 1€</span>
+                <span class="header-support-link__label header-support-link__label--mobile">Support 1€</span>
+                <span class="header-support-link__meta">
+                    7/100
+                    <svg class="header-support-link__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="8" r="5" />
+                        <path d="M20 21a8 8 0 0 0-16 0" />
+                    </svg>
+                </span>
+            </a>
             <div class="header-menu">
                 <button id="header-htp-btn" class="header-menu-trigger" type="button"
                     aria-expanded="false" aria-haspopup="true" aria-controls="header-nav-menu"
@@ -92,12 +102,10 @@
                             <button type="button" id="menu-how-to-play" class="header-nav-item">How to play</button>
                         </li>
                         <li>
-                            <a href="about.html" class="header-nav-item" target="_blank"
-                                rel="noopener noreferrer">About</a>
+                            <a href="about.html" class="header-nav-item" target="_blank" rel="noopener">About</a>
                         </li>
                         <li>
-                            <a href="changelog.html" class="header-nav-item" target="_blank"
-                                rel="noopener noreferrer">Changelog</a>
+                            <a href="changelog.html" class="header-nav-item" target="_blank" rel="noopener">Changelog</a>
                         </li>
                         <li>
                             <a href="https://x.com/shimrut" class="header-nav-item header-nav-item--credit"
@@ -137,19 +145,30 @@
             <div id="start-group">
                 <section id="first-time-msg" aria-labelledby="game-how-to-play-heading">
                     <div class="ftu-header">
-                        <span class="ftu-eyebrow">Welcome to</span>
-                        <span class="ftu-title" id="game-how-to-play-heading">Vector GP</span>
+                        <p class="ftu-title" id="game-how-to-play-heading">Vector <span class="full-name">GP</span></p>
+                        <p class="ftu-subhead">Free arcade racing game in your browser. New tracks every Wednesday at 07:00 UTC.</p>
                     </div>
-                    <ul class="ftu-rules" id="game-rules">
-                        <li>Start your engine to auto-accelerate</li>
-                        <li>Steer with arrows and drift around corners</li>
-                        <li>Set your personal best without crashing</li>
-                    </ul>
-                    <div class="ftu-cadence">New track every Wednesday at 07:00 UTC</div>
+                    <div class="ftu-section">
+                        <h2 class="ftu-section-heading">Crash course</h2>
+                        <ol class="ftu-sheet-body ftu-crash-rules" id="game-rules">
+                            <li>Choose a mode and a track</li>
+                            <li>Start the race and steer with the arrows</li>
+                            <li>Tiny steering inputs beat big corrections</li>
+                            <li>Finish clean laps to set a personal best</li>
+                        </ol>
+                    </div>
+                    <div class="ftu-actions">
+                        <button id="start-btn">Got It</button>
+                    </div>
                 </section>
                 <section id="returning-player-panel" class="returning-player-panel" aria-labelledby="returning-player-heading" hidden>
                     <h2 id="returning-player-heading" class="sr-only">Classic Circuit</h2>
-                    <p id="track-count-indicator" class="track-count-indicator" aria-live="polite" aria-atomic="true">1 / 1</p>
+                    <section class="track-mode-panel" aria-label="Track mode settings">
+                        <div class="track-mode-toggle" role="group" aria-label="Track mode">
+                            <button id="track-mode-standard-btn" class="track-mode-btn is-active" type="button" aria-pressed="true">Time trial</button>
+                            <button id="track-mode-practice-btn" class="track-mode-btn" type="button" aria-pressed="false">Session</button>
+                        </div>
+                    </section>
                     <div class="track-selector-frame">
                         <button id="track-prev-btn" class="track-carousel-nav track-carousel-nav--arrow" type="button" aria-label="Show previous track">‹</button>
                         <div class="track-carousel-shell">
@@ -157,15 +176,9 @@
                         </div>
                         <button id="track-next-btn" class="track-carousel-nav track-carousel-nav--arrow" type="button" aria-label="Show next track">›</button>
                     </div>
-                    <section class="track-mode-panel" aria-label="Track mode settings">
-                        <div class="track-mode-toggle" role="group" aria-label="Track mode">
-                            <button id="track-mode-standard-btn" class="track-mode-btn is-active" type="button" aria-pressed="true">Time trial</button>
-                            <button id="track-mode-practice-btn" class="track-mode-btn" type="button" aria-pressed="false">Session</button>
-                        </div>
-                    </section>
+                    <p id="track-count-indicator" class="track-count-indicator" aria-live="polite" aria-atomic="true">1 / 1</p>
                     <button id="returning-start-btn" class="track-start-btn" type="button">Start Your Engine</button>
                 </section>
-                <button id="start-btn">Got It</button>
             </div>
         </div>
 
@@ -214,7 +227,7 @@
 
 
 
-    <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div id="modal" class="modal result-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal-card">
             <div id="modal-main-view" class="modal-view active-view">
                 <div class="modal-card-section modal-card-section--header">
@@ -232,8 +245,8 @@
                         <button id="modal-secondary-btn" class="modal-secondary-btn" type="button" hidden>End session</button>
                         <button id="modal-reset-btn">Race Again <kbd class="modal-btn-kbd">R</kbd></button>
                         <button id="share-btn" type="button">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="share-btn-icon" aria-hidden="true"><path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/></svg>
-                            <span>share your time</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="share-btn-icon" aria-hidden="true"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
+                            <span>save your time</span>
                         </button>
                     </div>
                 </div>
@@ -249,22 +262,68 @@
     </main>
 
     <!-- How To Play Modal -->
-    <div id="how-to-play-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="htp-title">
-        <div class="modal-card">
-            <h2 id="htp-title" style="font-size: 2.5rem;">How to Play</h2>
-            <section class="htp-instructions" aria-labelledby="htp-title">
-                <ul class="htp-rules">
-                    <li>Start your engine to auto-accelerate</li>
-                    <li>Steer with arrows and drift around corners</li>
-                    <li>Set your personal best without crashing</li>
-                </ul>
-                <div class="htp-cadence">New track every Wednesday at 07:00 UTC</div>
-            </section>
-            <button id="close-htp-btn"
-                style="width: 100%; margin-top: 1rem; padding: 1rem; background: var(--accent-color); color: white; border: none; border-radius: 4px; font-weight: 800; text-transform: uppercase; cursor: pointer;">Got
-                it</button>
+    <div id="how-to-play-modal" class="modal htp-modal" role="dialog" aria-modal="true" aria-labelledby="htp-title">
+        <div class="modal-card htp-modal-card">
+            <div class="htp-modal-head">
+                <h2 id="htp-title" class="htp-modal-title">How to Play</h2>
+                <button type="button" id="htp-modal-close" class="htp-modal-close" aria-label="Close how to play">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+                </button>
+            </div>
+            <p class="htp-modal-subtitle">Free arcade racing game in your browser. Pick a mode, learn the line, and lower your best lap on each track. Keep watch for a new track each Wednesday at 07:00 UTC.</p>
+            <div class="htp-sections">
+                <section class="htp-section" aria-labelledby="htp-crash-heading">
+                    <h3 id="htp-crash-heading" class="htp-section-title">Crash course</h3>
+                    <ol class="htp-crash-rules">
+                        <li>Choose a mode and a track</li>
+                        <li>Start the race and steer with the arrows</li>
+                        <li>Tiny steering inputs beat big corrections</li>
+                        <li>Finish clean laps to set a personal best</li>
+                    </ol>
+                </section>
+                <section class="htp-section htp-section--shortcuts" aria-label="Keyboard shortcuts">
+                    <h3 class="htp-section-title">Shortcuts</h3>
+                    <div class="htp-shortcuts-grid">
+                        <div class="htp-shortcut"><kbd>Esc</kbd><span>Pause</span></div>
+                        <div class="htp-shortcut"><kbd>R</kbd><span>Retry</span></div>
+                        <div class="htp-shortcut"><kbd>Space</kbd><span>Toggle mode</span></div>
+                    </div>
+                </section>
+                <section class="htp-section" aria-label="Game modes">
+                    <h3 class="htp-section-title">Game Modes</h3>
+                    <dl class="htp-modes">
+                        <div class="htp-mode">
+                            <dt>Time Trial</dt>
+                            <dd>Single-lap runs. Crash or finish - your 5 best personal records are saved. Pure arcade racing at its core.</dd>
+                        </div>
+                        <div class="htp-mode">
+                            <dt>Session</dt>
+                            <dd>Multi-lap practice. Crashes reset you to the start line instantly without breaking your flow. Chase consistency lap after lap.</dd>
+                        </div>
+                    </dl>
+                </section>
+            </div>
+            <button id="close-htp-btn" type="button">Got it</button>
         </div>
     </div>
+
+    <noscript>
+        <div class="noscript-panel">
+            <h1>Vector GP — Free Arcade Racing Game</h1>
+            <p>Vector GP is a free arcade racing game in your browser. No downloads, no sign-ups, and a new track every Wednesday at 07:00 UTC.</p>
+            <h2>How to play</h2>
+            <ol>
+                <li>Choose a mode and a track.</li>
+                <li>Start the race and steer with the arrows.</li>
+                <li>Tiny steering inputs beat big corrections.</li>
+                <li>Finish clean laps to set a personal best.</li>
+            </ol>
+            <h2>Game modes</h2>
+            <p><strong>Time Trial</strong> — Single-lap runs. Your 5 best personal records are saved.</p>
+            <p><strong>Session</strong> — Multi-lap practice. Crashes reset you instantly for continuous racing.</p>
+            <p>This arcade video game requires JavaScript to play.</p>
+        </div>
+    </noscript>
 
     <script type="module" src="game/index.js?v=1.10"></script>
 </body>
