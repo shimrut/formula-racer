@@ -60,7 +60,6 @@ export class GameUi {
         this.closeHtpXBtn = document.getElementById('htp-modal-close');
         this.headerHtpBtn = document.getElementById('header-htp-btn');
         this.headerNavMenu = document.getElementById('header-nav-menu');
-        this.headerSupportLink = document.querySelector('.header-support-link');
         this.menuHowToPlayBtn = document.getElementById('menu-how-to-play');
         this.startBtn = document.getElementById('start-btn');
         this.modalResetBtn = document.getElementById('modal-reset-btn');
@@ -219,6 +218,7 @@ export class GameUi {
 
         const openHeaderMenu = () => {
             if (!this.headerNavMenu || !this.headerHtpBtn) return;
+            document.dispatchEvent(new CustomEvent('header-menu-opened'));
             this.headerNavMenu.hidden = false;
             this.headerHtpBtn.setAttribute('aria-expanded', 'true');
             this._headerMenuOpen = true;
@@ -241,12 +241,6 @@ export class GameUi {
             });
         }
 
-        if (this.headerSupportLink) {
-            this.headerSupportLink.addEventListener('click', () => {
-                this._onSupportClick?.();
-            });
-        }
-
         if (this.menuHowToPlayBtn) {
             this.menuHowToPlayBtn.addEventListener('click', () => {
                 closeHeaderMenu();
@@ -254,7 +248,7 @@ export class GameUi {
             });
         }
 
-        this.headerNavMenu?.querySelectorAll('a.header-nav-item').forEach((anchor) => {
+        this.headerNavMenu?.querySelectorAll('a').forEach((anchor) => {
             anchor.addEventListener('click', () => closeHeaderMenu());
         });
 
@@ -458,15 +452,11 @@ export class GameUi {
         return v !== null && v !== undefined ? v : null;
     }
 
-    setBestTime(bestLapTime, { persistToTrackCard = true } = {}) {
+    setBestTime(bestLapTime, { persistToTrackCard = true, trackKey = this._currentTrackKey, mode = null } = {}) {
         if (!this.bestTimeDisplay || !this.bestTimeVal) return;
 
-        const currentTrackKey = this._currentTrackKey;
-        if (persistToTrackCard && currentTrackKey && bestLapTime !== null && bestLapTime !== undefined) {
-            const mode = this.getTrackPreferences(currentTrackKey).mode === TRACK_MODE_PRACTICE
-                ? TRACK_MODE_PRACTICE
-                : TRACK_MODE_STANDARD;
-            this.updateReturningTrackPersonalBest(currentTrackKey, bestLapTime, mode);
+        if (persistToTrackCard && trackKey && mode && bestLapTime !== null && bestLapTime !== undefined) {
+            this.updateReturningTrackPersonalBest(trackKey, bestLapTime, mode);
         }
 
         if (bestLapTime !== null && bestLapTime !== undefined) {
