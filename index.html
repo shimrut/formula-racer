@@ -17,6 +17,8 @@
     <title>Play Vector GP | Free Browser Arcade Racing Game</title>
     <meta name="description"
         content="Play Vector GP, a free browser arcade racing game with short time trials, fast retries, and weekly tracks. Start a run instantly in your browser.">
+    <meta name="keywords"
+        content="vector gp, vector racing, arcade racing game, arcade video game, browser racing game, free racing game, physics-based racing, circuit driver, retro racer, web game, browser game, high speed racing, lap time challenge, global circuits, quick retry, racetrack game, trackmania like game, trackmania, grand prix, time attack racing, indie games, formula racing game, open wheel racing game, brain rot, brain rot games">
     <meta name="author" content="Bogdan Popa">
 
     <!-- Open Graph / Facebook -->
@@ -37,7 +39,8 @@
 
     <link rel="canonical" href="https://vectorgp.run/">
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="styles.css?v=0.90">
+    <link rel="stylesheet" href="styles.css?v=0.93">
+    <script src="site/support-dropdown.js?v=0.01" defer></script>
 
     <!-- Structured Data (GEO: quotable summary for generative engines) -->
     <script type="application/ld+json">
@@ -69,20 +72,43 @@
         <h1 id="site-title">Vector <span class="full-name">GP</span></h1>
 
         <div class="header-right">
-            <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="header-support-link"
-                target="_blank" rel="noopener noreferrer" title="Support Vector GP for future updates and functionalities">
-                <span class="header-support-link__label header-support-link__label--desktop">Support 1€</span>
-                <span class="header-support-link__label header-support-link__label--mobile">Support 1€</span>
-                <span class="header-support-link__meta">
-                    7/100
-                    <svg class="header-support-link__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round" aria-hidden="true">
-                        <circle cx="12" cy="8" r="5" />
-                        <path d="M20 21a8 8 0 0 0-16 0" />
-                    </svg>
-                </span>
-            </a>
+            <div class="support-dropdown" data-support-dropdown>
+                <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="header-support-link support-dropdown-trigger"
+                    target="_blank" rel="noopener noreferrer" title="Support Vector GP"
+                    aria-expanded="false" aria-haspopup="true" aria-controls="support-dropdown-menu-home"
+                    data-support-trigger>
+                    Enjoying the game?
+                </a>
+                <div id="support-dropdown-menu-home" class="support-dropdown-menu" hidden
+                    data-support-menu>
+                    <div class="support-dropdown-section">
+                        <p class="support-dropdown-heading">send a tip for</p>
+                        <ul class="support-dropdown-list" aria-label="Donation options">
+                            <li>
+                                <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="support-dropdown-option"
+                                    target="_blank" rel="noopener noreferrer">
+                                    <span class="support-dropdown-option__title">Salty Pretzel</span>
+                                    <span class="support-dropdown-option__price">1€</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://buy.stripe.com/6oU14pfg42bAdIu5Vm9sk01" class="support-dropdown-option"
+                                    target="_blank" rel="noopener noreferrer">
+                                    <span class="support-dropdown-option__title">Soda Pop</span>
+                                    <span class="support-dropdown-option__price">3€</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://buy.stripe.com/aFa8wR2tieYmcEq1F69sk02" class="support-dropdown-option"
+                                    target="_blank" rel="noopener noreferrer">
+                                    <span class="support-dropdown-option__title">Flat White</span>
+                                    <span class="support-dropdown-option__price">5€</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
             <div class="header-menu">
                 <button id="header-htp-btn" class="header-menu-trigger" type="button"
                     aria-expanded="false" aria-haspopup="true" aria-controls="header-nav-menu"
@@ -97,21 +123,49 @@
                     <span class="sr-only">Open menu</span>
                 </button>
                 <div id="header-nav-menu" class="header-nav-dropdown" hidden>
-                    <ul class="header-nav-list">
-                        <li>
-                            <button type="button" id="menu-how-to-play" class="header-nav-item">How to play</button>
-                        </li>
-                        <li>
-                            <a href="about.html" class="header-nav-item" target="_blank" rel="noopener">About</a>
-                        </li>
-                        <li>
-                            <a href="changelog.html" class="header-nav-item" target="_blank" rel="noopener">Changelog</a>
-                        </li>
-                        <li>
-                            <a href="https://x.com/shimrut" class="header-nav-item header-nav-item--credit"
-                                target="_blank" rel="noopener noreferrer">Made by @shimrut</a>
-                        </li>
-                    </ul>
+                    <section class="header-nav-section" aria-label="Explore">
+                        <p class="header-nav-section__eyebrow">Explore</p>
+                        <ul class="header-nav-list">
+                            <li>
+                                <button type="button" id="menu-how-to-play" class="header-nav-item">How to play</button>
+                            </li>
+                            <li>
+                                <a href="about.html" class="header-nav-item" target="_blank" rel="noopener">About</a>
+                            </li>
+                            <li>
+                                <a href="changelog.html" class="header-nav-item" target="_blank" rel="noopener">Changelog</a>
+                            </li>
+                        </ul>
+                    </section>
+                    <section class="header-nav-section" aria-label="Follow">
+                        <p class="header-nav-section__eyebrow">Follow</p>
+                        <ul class="header-nav-list header-nav-list--social-row">
+                            <li>
+                                <a href="https://x.com/shimrut" class="header-nav-item header-nav-item--with-icon" target="_blank" rel="noopener noreferrer">
+                                    <svg class="header-nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1227" fill="currentColor" aria-hidden="true">
+                                        <path d="M714.163 519.284L1160.89 0H1055.03L667.137 450.887L357.328 0H0L468.492 681.821L0 1226.37H105.866L515.491 750.218L842.672 1226.37H1200L714.137 519.284H714.163ZM569.165 687.828L521.697 619.934L144.011 79.6944H306.615L611.412 515.685L658.88 583.579L1055.08 1150.3H892.476L569.165 687.854V687.828Z" />
+                                    </svg>
+                                    <span>X</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://www.instagram.com/vectorgp.run/" class="header-nav-item header-nav-item--with-icon" target="_blank" rel="noopener noreferrer">
+                                    <svg class="header-nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" fill="currentColor" aria-hidden="true">
+                                        <path d="M295.42,6c-53.2,2.51-89.53,11-121.29,23.48-32.87,12.81-60.73,30-88.45,57.82S40.89,143,28.17,175.92c-12.31,31.83-20.65,68.19-23,121.42S2.3,367.68,2.56,503.46,3.42,656.26,6,709.6c2.54,53.19,11,89.51,23.48,121.28,12.83,32.87,30,60.72,57.83,88.45S143,964.09,176,976.83c31.8,12.29,68.17,20.67,121.39,23s70.35,2.87,206.09,2.61,152.83-.86,206.16-3.39S799.1,988,830.88,975.58c32.87-12.86,60.74-30,88.45-57.84S964.1,862,976.81,829.06c12.32-31.8,20.69-68.17,23-121.35,2.33-53.37,2.88-70.41,2.62-206.17s-.87-152.78-3.4-206.1-11-89.53-23.47-121.32c-12.85-32.87-30-60.7-57.82-88.45S862,40.87,829.07,28.19c-31.82-12.31-68.17-20.7-121.39-23S637.33,2.3,501.54,2.56,348.75,3.4,295.42,6m5.84,903.88c-48.75-2.12-75.22-10.22-92.86-17-23.36-9-40-19.88-57.58-37.29s-28.38-34.11-37.5-57.42c-6.85-17.64-15.1-44.08-17.38-92.83-2.48-52.69-3-68.51-3.29-202s.22-149.29,2.53-202c2.08-48.71,10.23-75.21,17-92.84,9-23.39,19.84-40,37.29-57.57s34.1-28.39,57.43-37.51c17.62-6.88,44.06-15.06,92.79-17.38,52.73-2.5,68.53-3,202-3.29s149.31.21,202.06,2.53c48.71,2.12,75.22,10.19,92.83,17,23.37,9,40,19.81,57.57,37.29s28.4,34.07,37.52,57.45c6.89,17.57,15.07,44,17.37,92.76,2.51,52.73,3.08,68.54,3.32,202s-.23,149.31-2.54,202c-2.13,48.75-10.21,75.23-17,92.89-9,23.35-19.85,40-37.31,57.56s-34.09,28.38-57.43,37.5c-17.6,6.87-44.07,15.07-92.76,17.39-52.73,2.48-68.53,3-202.05,3.29s-149.27-.25-202-2.53m407.6-674.61a60,60,0,1,0,59.88-60.1,60,60,0,0,0-59.88,60.1M245.77,503c.28,141.8,115.44,256.49,257.21,256.22S759.52,643.8,759.25,502,643.79,245.48,502,245.76,245.5,361.22,245.77,503m90.06-.18a166.67,166.67,0,1,1,167,166.34,166.65,166.65,0,0,1-167-166.34" transform="translate(-2.5 -2.5)" />
+                                    </svg>
+                                    <span>Instagram</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://www.threads.com/@vectorgp.run" class="header-nav-item header-nav-item--with-icon" target="_blank" rel="noopener noreferrer">
+                                    <svg class="header-nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 878 1000" fill="currentColor" aria-hidden="true">
+                                        <path d="M446.7,1000h-0.3c-149.2-1-263.9-50.2-341-146.2C36.9,768.3,1.5,649.4,0.3,500.4v-0.7c1.2-149.1,36.6-267.9,105.2-353.4C182.5,50.2,297.3,1,446.4,0h0.3h0.3c114.4,0.8,210.1,30.2,284.4,87.4c69.9,53.8,119.1,130.4,146.2,227.8l-85,23.7c-46-165-162.4-249.3-346-250.6c-121.2,0.9-212.9,39-272.5,113.2C118.4,271,89.6,371.4,88.5,500c1.1,128.6,29.9,229,85.7,298.5c59.6,74.3,151.3,112.4,272.5,113.2c109.3-0.8,181.6-26.3,241.7-85.2c68.6-67.2,67.4-149.7,45.4-199.9c-12.9-29.6-36.4-54.2-68.1-72.9c-8,56.3-25.9,101.9-53.5,136.3c-36.9,45.9-89.2,71-155.4,74.6c-50.1,2.7-98.4-9.1-135.8-33.4c-44.3-28.7-70.2-72.5-73-123.5c-2.7-49.6,17-95.2,55.4-128.4c36.7-31.7,88.3-50.3,149.3-53.8c44.9-2.5,87-0.5,125.8,5.9c-5.2-30.9-15.6-55.5-31.2-73.2c-21.4-24.4-54.5-36.8-98.3-37.1c-0.4,0-0.8,0-1.2,0c-35.2,0-83,9.7-113.4,55L261.2,327c40.8-60.6,107-94,186.6-94c0.6,0,1.2,0,1.8,0c133.1,0.8,212.4,82.3,220.3,224.5c4.5,1.9,9,3.9,13.4,5.9c62.1,29.2,107.5,73.4,131.4,127.9c33.2,75.9,36.3,199.6-64.5,298.3C673.1,965,579.6,999.1,447,1000L446.7,1000L446.7,1000z M488.5,512.9c-10.1,0-20.3,0.3-30.8,0.9c-76.5,4.3-124.2,39.4-121.5,89.3c2.8,52.3,60.5,76.6,116,73.6c51-2.7,117.4-22.6,128.6-154.6C552.6,516,521.7,512.9,488.5,512.9z" />
+                                    </svg>
+                                    <span>Threads</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </section>
                 </div>
             </div>
         </div>
@@ -325,7 +379,7 @@
         </div>
     </noscript>
 
-    <script type="module" src="game/index.js?v=1.11"></script>
+    <script type="module" src="game/index.js?v=1.13"></script>
 </body>
 
 </html>

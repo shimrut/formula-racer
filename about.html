@@ -16,6 +16,8 @@
     <title>What Is Vector GP? | Browser Arcade Racing Game</title>
     <meta name="description"
         content="Learn what Vector GP is: a browser arcade racing game inspired by the paper Racetrack game, built for short time trials, fast retries, and weekly tracks.">
+    <meta name="keywords"
+        content="vector gp about, browser racing, free racing game, arcade racing">
     <meta name="author" content="Bogdan Popa">
 
     <meta property="og:type" content="website">
@@ -39,7 +41,8 @@
     <link rel="preload" href="fonts/outfit.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="fonts/jetbrainsmono.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="fonts.css?v=0.01">
-    <link rel="stylesheet" href="pages.css?v=0.02">
+    <link rel="stylesheet" href="pages.css?v=0.03">
+    <script src="site/support-dropdown.js?v=0.01" defer></script>
 
     <!-- Structured data (SEO + GEO: machine-readable, quotable summary for search and generative engines) -->
     <script type="application/ld+json">
@@ -88,8 +91,40 @@
             <a href="index.html" class="site-logo">Vector <span class="full-name">GP</span></a>
             <nav class="header-right" aria-label="Site">
                 <a href="changelog.html" class="header-utility-link">Changelog</a>
-                <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="header-utility-link"
-                    target="_blank" rel="noopener noreferrer" title="Support Vector GP for future updates and functionalities">Support - 1€</a>
+                <div class="support-dropdown" data-support-dropdown>
+                    <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="header-utility-link support-dropdown-trigger"
+                        target="_blank" rel="noopener noreferrer" title="Support Vector GP for future updates and functionalities"
+                        aria-expanded="false" aria-haspopup="true" aria-controls="support-dropdown-menu-about"
+                        data-support-trigger>Enjoying the game?</a>
+                    <div id="support-dropdown-menu-about" class="support-dropdown-menu" hidden data-support-menu>
+                        <div class="support-dropdown-section">
+                            <p class="support-dropdown-heading">send a tip for</p>
+                            <ul class="support-dropdown-list" aria-label="Donation options">
+                                <li>
+                                    <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="support-dropdown-option"
+                                        target="_blank" rel="noopener noreferrer">
+                                        <span class="support-dropdown-option__title">Salty Pretzel</span>
+                                        <span class="support-dropdown-option__price">1€</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="https://buy.stripe.com/6oU14pfg42bAdIu5Vm9sk01" class="support-dropdown-option"
+                                        target="_blank" rel="noopener noreferrer">
+                                        <span class="support-dropdown-option__title">Soda Pop</span>
+                                        <span class="support-dropdown-option__price">3€</span>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a href="https://buy.stripe.com/aFa8wR2tieYmcEq1F69sk02" class="support-dropdown-option"
+                                        target="_blank" rel="noopener noreferrer">
+                                        <span class="support-dropdown-option__title">Flat White</span>
+                                        <span class="support-dropdown-option__price">5€</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
                 <a href="index.html" class="header-play-link">Play</a>
             </nav>
         </div>
