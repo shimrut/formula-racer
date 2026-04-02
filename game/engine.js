@@ -12,12 +12,12 @@ import { TRACKS } from './tracks.js?v=0.80';
 import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=0.01';
 import { updateSimulation } from './core/simulation.js?v=0.73';
 import { RingBuffer } from './core/ring-buffer.js?v=0.73';
-import { saveLapTime, saveBestTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.72';
+import { saveLapTime, saveBestTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.73';
 import { AnalyticsService } from './services/analytics.js?v=0.73';
 import { PlayerStatusStore } from './services/player-status.js?v=0.84';
 import { SessionFlagStore } from './services/session-flags.js?v=0.71';
 import { ShareService } from './services/share.js?v=0.81';
-import { GameUi } from './ui.js?v=1.01';
+import { GameUi } from './ui.js?v=1.03';
 
 function shouldExposeDebugHooks() {
     if (typeof window === 'undefined') return false;
@@ -314,7 +314,10 @@ export class RealTimeRacer {
         this.practiceSession = null;
         this.ui.setPracticePauseVisible(false);
         this.bestLapTime = this.bestTimesByMode[this.currentModeKey] ?? null;
-        this.ui.setBestTime(this.bestLapTime);
+        this.ui.setBestTime(this.bestLapTime, {
+            trackKey: this.currentTrackKey,
+            mode: this.currentModeKey
+        });
     }
 
     createPracticeSession() {
@@ -530,7 +533,10 @@ export class RealTimeRacer {
                 if (requestId !== this.trackLoadRequestId || this.currentTrackKey !== trackKey) return;
                 this.bestTimesByMode = { ...trackData.bestTimes };
                 this.bestLapTime = this.bestTimesByMode[this.currentModeKey] ?? null;
-                this.ui.setBestTime(this.bestLapTime);
+                this.ui.setBestTime(this.bestLapTime, {
+                    trackKey,
+                    mode: this.currentModeKey
+                });
             })
             .catch((error) => {
                 console.error('Error saving practice best time:', error);
@@ -647,8 +653,13 @@ export class RealTimeRacer {
         // Stop the current run immediately so physics and collision checks
         // cannot continue against the new track geometry while storage loads.
         this.bestLapTime = null;
+        const previewModeKey = this.ui.getTrackPreferences(trackKey).mode === TRACK_MODE_PRACTICE
+            ? TRACK_MODE_PRACTICE
+            : TRACK_MODE_STANDARD;
         // Show cached PB immediately so the HUD/carousel do not flash hidden between IDB reads.
-        this.ui.setBestTime(this.ui.getCachedPersonalBestForTrack(trackKey));
+        this.ui.setBestTime(this.ui.getCachedPersonalBestForTrack(trackKey), {
+            persistToTrackCard: false
+        });
 
         try {
             const [trackData, hasAnyData] = await Promise.all([
@@ -657,10 +668,12 @@ export class RealTimeRacer {
             ]);
             if (requestId !== this.trackLoadRequestId) return;
             this.bestTimesByMode = { ...trackData.bestTimes };
-            this.bestLapTime = this.bestTimesByMode[this.currentModeKey] ?? null;
+            this.bestLapTime = this.bestTimesByMode[previewModeKey] ?? null;
             this.hasAnyData = hasAnyData;
             this.isReturningPlayer = this.playerStatus.isReturningPlayer(hasAnyData);
-            this.ui.setBestTime(this.bestLapTime);
+            this.ui.setBestTime(this.bestLapTime, {
+                persistToTrackCard: false
+            });
         } catch (error) {
             console.error('Error loading track data:', error);
             if (requestId !== this.trackLoadRequestId) return;
@@ -878,7 +891,10 @@ export class RealTimeRacer {
         this.runHistoryTimer = 0;
         this.trailTimer = 0;
         this.recordRunPoint(this.pos);
-        this.ui.setBestTime(this.bestLapTime);
+        this.ui.setBestTime(this.bestLapTime, {
+            trackKey: this.currentTrackKey,
+            mode: TRACK_MODE_PRACTICE
+        });
         this.ui.setHudPersonalBestsOpenAllowed(true);
         this.ui.showPracticeLapFlash({
             lapNumber,
@@ -1022,7 +1038,10 @@ export class RealTimeRacer {
         this.bestLapTime = this.bestTimesByMode[this.currentModeKey] ?? null;
         this.hasAnyData = true;
         this.isReturningPlayer = this.playerStatus.isReturningPlayer(true);
-        this.ui.setBestTime(this.bestLapTime);
+        this.ui.setBestTime(this.bestLapTime, {
+            trackKey,
+            mode: TRACK_MODE_STANDARD
+        });
         this.ui.setHudPersonalBestsOpenAllowed(true);
 
         // Check if this is a new best
@@ -1139,7 +1158,9 @@ export class RealTimeRacer {
         // Reset Visuals
         this.ui.resetCountdown();
         this.ui.resetHud();
-        this.ui.setBestTime(this.bestLapTime);
+        this.ui.setBestTime(this.bestLapTime, {
+            persistToTrackCard: false
+        });
 
         const cw = this.canvas.width;
         const ch = this.canvas.height;

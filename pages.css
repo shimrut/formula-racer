@@ -83,6 +83,10 @@ header {
     gap: 1.5rem;
 }
 
+.support-dropdown {
+    position: relative;
+}
+
 .header-utility-link {
     display: inline-flex;
     align-items: center;
@@ -101,6 +105,95 @@ header {
 .header-utility-link:hover,
 .header-utility-link:focus-visible {
     color: var(--accent-color);
+}
+
+.support-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    width: 12rem;
+    min-width: 12rem;
+    padding: 0.35rem;
+    margin: 0;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 0.75rem;
+    box-shadow: var(--card-shadow);
+    z-index: 1001;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.support-dropdown-section {
+    padding: 0.3rem;
+}
+
+.support-dropdown-heading {
+    margin: 0 0 0.18rem;
+    padding: 0 0.5rem;
+    color: rgba(148, 163, 184, 0.8);
+    font-family: var(--mono-font);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.support-dropdown-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.08rem;
+}
+
+.support-dropdown-option {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    gap: 0.55rem;
+    padding: 0.72rem 0.8rem;
+    border-radius: 0.55rem;
+    color: var(--text-color);
+    text-decoration: none;
+    text-align: left;
+    font-size: 0.88rem;
+    font-weight: 500;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.support-dropdown-option__title,
+.support-dropdown-option__price {
+    display: block;
+}
+
+.support-dropdown-option__title {
+    color: rgba(248, 250, 252, 0.92);
+    line-height: 1.15;
+}
+
+.support-dropdown-option__price {
+    order: -1;
+    flex: 0 0 1.65rem;
+    color: var(--accent-color);
+    font-family: var(--mono-font);
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-align: left;
+}
+
+.support-dropdown-option:hover,
+.support-dropdown-option:focus-visible {
+    background: rgba(239, 68, 68, 0.12);
+    color: #fff;
+    outline: none;
+}
+
+.support-dropdown-option:hover .support-dropdown-option__price,
+.support-dropdown-option:focus-visible .support-dropdown-option__price {
+    color: rgba(248, 250, 252, 0.86);
 }
 
 .header-play-link {
@@ -344,6 +437,18 @@ header {
         padding: 0.34rem 0.4rem;
         font-size: 0.92rem;
         letter-spacing: 0.01em;
+    }
+
+    .support-dropdown-heading {
+        font-size: 0.68rem;
+    }
+
+    .support-dropdown-option {
+        font-size: 0.96rem;
+    }
+
+    .support-dropdown-option__price {
+        font-size: 0.8rem;
     }
 
     .header-play-link {
