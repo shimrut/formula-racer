@@ -1,5 +1,6 @@
 // IndexedDB storage for lap times
-import { DEFAULT_TRACK_PREFERENCES, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=0.01';
+import { DEFAULT_TRACK_PREFERENCES, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=0.03';
+import { submitScoreboardBestTime } from './services/scoreboard.js?v=0.05';
 
 const DB_NAME = 'RacerLapTimes';
 const DB_VERSION = 1;
@@ -29,6 +30,12 @@ function cloneTrackData(trackData) {
         bestTimes: {
             [TRACK_MODE_STANDARD]: trackData.bestTimes[TRACK_MODE_STANDARD],
             [TRACK_MODE_PRACTICE]: trackData.bestTimes[TRACK_MODE_PRACTICE]
+        },
+        rankedLapTimes: trackData.rankedLapTimes.slice(),
+        rankedBestTime: trackData.rankedBestTime,
+        rankedBestTimes: {
+            [TRACK_MODE_STANDARD]: trackData.rankedBestTimes[TRACK_MODE_STANDARD],
+            [TRACK_MODE_PRACTICE]: trackData.rankedBestTimes[TRACK_MODE_PRACTICE]
         }
     };
 }
@@ -142,6 +149,10 @@ function normalizeBestTime(value) {
 function normalizeTrackData(trackName, rawTrackData) {
     const standardBest = normalizeBestTime(rawTrackData?.bestTimes?.[TRACK_MODE_STANDARD] ?? rawTrackData?.bestTime);
     const practiceBest = normalizeBestTime(rawTrackData?.bestTimes?.[TRACK_MODE_PRACTICE]);
+    const rankedStandardBest = normalizeBestTime(
+        rawTrackData?.rankedBestTimes?.[TRACK_MODE_STANDARD] ?? rawTrackData?.rankedBestTime
+    );
+    const rankedPracticeBest = normalizeBestTime(rawTrackData?.rankedBestTimes?.[TRACK_MODE_PRACTICE]);
 
     return {
         trackName,
@@ -150,6 +161,12 @@ function normalizeTrackData(trackName, rawTrackData) {
         bestTimes: {
             [TRACK_MODE_STANDARD]: standardBest,
             [TRACK_MODE_PRACTICE]: practiceBest
+        },
+        rankedLapTimes: Array.isArray(rawTrackData?.rankedLapTimes) ? rawTrackData.rankedLapTimes.slice() : [],
+        rankedBestTime: rankedStandardBest,
+        rankedBestTimes: {
+            [TRACK_MODE_STANDARD]: rankedStandardBest,
+            [TRACK_MODE_PRACTICE]: rankedPracticeBest
         }
     };
 }
@@ -288,7 +305,7 @@ async function restoreAllTrackDataFromBackup(database) {
     return restoreFromBackupPromise;
 }
 
-export async function saveLapTime(trackName, lapTime) {
+export async function saveLapTime(trackName, lapTime, { ranked = false, replay = null } = {}) {
     if (!isSavableLapTime(lapTime)) {
         throw new TypeError(`Invalid lap time: ${lapTime}`);
     }
@@ -303,26 +320,43 @@ export async function saveLapTime(trackName, lapTime) {
 
         getRequest.onsuccess = () => {
             const trackData = normalizeTrackData(trackName, getRequest.result);
+            const lapTimesKey = ranked ? 'rankedLapTimes' : 'lapTimes';
+            const bestTimesKey = ranked ? 'rankedBestTimes' : 'bestTimes';
+            const bestTimeKey = ranked ? 'rankedBestTime' : 'bestTime';
+            const previousBest = trackData[bestTimesKey][TRACK_MODE_STANDARD];
+            const isNewBest = previousBest === null || previousBest === undefined || lapTime < previousBest;
 
             // Add new lap time and keep only the 5 best
-            trackData.lapTimes.push(lapTime);
-            trackData.lapTimes.sort((a, b) => a - b);
-            if (trackData.lapTimes.length > 5) {
-                trackData.lapTimes = trackData.lapTimes.slice(0, 5);
+            trackData[lapTimesKey].push(lapTime);
+            trackData[lapTimesKey].sort((a, b) => a - b);
+            if (trackData[lapTimesKey].length > 5) {
+                trackData[lapTimesKey] = trackData[lapTimesKey].slice(0, 5);
             }
 
             // Update best time (use proper floating point comparison)
-            if (trackData.bestTimes[TRACK_MODE_STANDARD] === null || lapTime < trackData.bestTimes[TRACK_MODE_STANDARD]) {
-                trackData.bestTimes[TRACK_MODE_STANDARD] = lapTime;
+            if (isNewBest) {
+                trackData[bestTimesKey][TRACK_MODE_STANDARD] = lapTime;
             }
-            trackData.bestTime = trackData.bestTimes[TRACK_MODE_STANDARD];
+            trackData[bestTimeKey] = trackData[bestTimesKey][TRACK_MODE_STANDARD];
 
             const putRequest = store.put(trackData);
             putRequest.onsuccess = () => {
                 hasAnyTrackDataCache = true;
                 trackDataCache.set(trackName, cloneTrackData(trackData));
                 saveTrackDataBackup(trackData);
-                resolve(cloneTrackData(trackData));
+                const savedTrackData = cloneTrackData(trackData);
+                if (ranked && isNewBest && replay) {
+                    savedTrackData.scoreboardSubmitPromise = submitScoreboardBestTime({
+                        trackKey: trackName,
+                        mode: TRACK_MODE_STANDARD,
+                        bestTime: lapTime,
+                        replay
+                    }).catch((error) => {
+                        console.error('Error submitting standard scoreboard time:', error);
+                        return null;
+                    });
+                }
+                resolve(savedTrackData);
             };
             putRequest.onerror = () => reject(putRequest.error);
         };
@@ -331,7 +365,7 @@ export async function saveLapTime(trackName, lapTime) {
     });
 }
 
-export async function saveBestTime(trackName, bestTime, mode = TRACK_MODE_PRACTICE) {
+export async function saveBestTime(trackName, bestTime, mode = TRACK_MODE_PRACTICE, { ranked = false, replay = null } = {}) {
     if (!isSavableLapTime(bestTime)) {
         throw new TypeError(`Invalid best time: ${bestTime}`);
     }
@@ -346,18 +380,34 @@ export async function saveBestTime(trackName, bestTime, mode = TRACK_MODE_PRACTI
 
         getRequest.onsuccess = () => {
             const trackData = normalizeTrackData(trackName, getRequest.result);
+            const bestTimesKey = ranked ? 'rankedBestTimes' : 'bestTimes';
+            const bestTimeKey = ranked ? 'rankedBestTime' : 'bestTime';
+            const previousBest = trackData[bestTimesKey][mode];
+            const isNewBest = previousBest === null || previousBest === undefined || bestTime < previousBest;
 
-            if (trackData.bestTimes[mode] === null || bestTime < trackData.bestTimes[mode]) {
-                trackData.bestTimes[mode] = bestTime;
+            if (isNewBest) {
+                trackData[bestTimesKey][mode] = bestTime;
             }
-            trackData.bestTime = trackData.bestTimes[TRACK_MODE_STANDARD];
+            trackData[bestTimeKey] = trackData[bestTimesKey][TRACK_MODE_STANDARD];
 
             const putRequest = store.put(trackData);
             putRequest.onsuccess = () => {
                 hasAnyTrackDataCache = true;
                 trackDataCache.set(trackName, cloneTrackData(trackData));
                 saveTrackDataBackup(trackData);
-                resolve(cloneTrackData(trackData));
+                const savedTrackData = cloneTrackData(trackData);
+                if (ranked && isNewBest && replay) {
+                    savedTrackData.scoreboardSubmitPromise = submitScoreboardBestTime({
+                        trackKey: trackName,
+                        mode,
+                        bestTime,
+                        replay
+                    }).catch((error) => {
+                        console.error('Error submitting scoreboard best time:', error);
+                        return null;
+                    });
+                }
+                resolve(savedTrackData);
             };
             putRequest.onerror = () => reject(putRequest.error);
         };

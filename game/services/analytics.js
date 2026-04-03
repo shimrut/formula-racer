@@ -31,18 +31,11 @@ export class AnalyticsService {
     }
 
     trackTrialRace(stats) {
-        this.track('trial-race', {
-            start: stats.start,
-            crash: stats.crash,
-            win: stats.win
-        });
+        this.track('trial-race', stats);
     }
 
     trackSessionRace(stats) {
-        this.track('session-race', {
-            start: stats.start,
-            crash: stats.crash
-        });
+        this.track('session-race', stats);
     }
 
     trackMapEvent(mapStats) {

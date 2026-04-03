@@ -7,5 +7,6 @@ export const TRACK_MODE_LABELS = {
 };
 
 export const DEFAULT_TRACK_PREFERENCES = {
-    mode: TRACK_MODE_STANDARD
+    mode: TRACK_MODE_STANDARD,
+    ranked: true
 };
