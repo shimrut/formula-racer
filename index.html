@@ -11,6 +11,13 @@
             document.head.appendChild(s);
         }
     </script>
+    <script>
+        window.VECTORGP_SCOREBOARD_CONFIG = {
+            supabaseUrl: 'https://dlrivpzruldnrbzchtsp.supabase.co',
+            supabaseAnonKey: 'sb_publishable_L87lKcVexjguJ2lu0_Zr9g_yCivz1Md',
+            submitFunctionName: 'scoreboard-submit'
+        };
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -39,7 +46,7 @@
 
     <link rel="canonical" href="https://vectorgp.run/">
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="styles.css?v=0.93">
+    <link rel="stylesheet" href="styles.css?v=1.05">
     <script src="site/support-dropdown.js?v=0.01" defer></script>
 
     <!-- Structured Data (GEO: quotable summary for generative engines) -->
@@ -77,12 +84,12 @@
                     target="_blank" rel="noopener noreferrer" title="Support Vector GP"
                     aria-expanded="false" aria-haspopup="true" aria-controls="support-dropdown-menu-home"
                     data-support-trigger>
-                    Enjoying the game?
+                    Support the game
                 </a>
                 <div id="support-dropdown-menu-home" class="support-dropdown-menu" hidden
                     data-support-menu>
                     <div class="support-dropdown-section">
-                        <p class="support-dropdown-heading">send a tip for</p>
+                        <p class="support-dropdown-heading">Leave a tip for</p>
                         <ul class="support-dropdown-list" aria-label="Donation options">
                             <li>
                                 <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="support-dropdown-option"
@@ -191,7 +198,7 @@
             </button>
         </div>
         <div class="key-hint">
-            <span class="version-label">v 0.46</span>
+            <span class="version-label">v 0.5</span>
         </div>
 
         <!-- Start Screen Overlay -->
@@ -205,7 +212,7 @@
                     <div class="ftu-section">
                         <h2 class="ftu-section-heading">Crash course</h2>
                         <ol class="ftu-sheet-body ftu-crash-rules" id="game-rules">
-                            <li>Choose a mode and a track</li>
+                            <li>Choose a mode and a track to compete</li>
                             <li>Start the race and steer with the arrows</li>
                             <li>Tiny steering inputs beat big corrections</li>
                             <li>Finish clean laps to set a personal best</li>
@@ -213,6 +220,28 @@
                     </div>
                     <div class="ftu-actions">
                         <button id="start-btn">Got It</button>
+                    </div>
+                </section>
+                <section id="score-mode-intro" aria-labelledby="score-mode-intro-title" hidden>
+                    <div class="ftu-header">
+                        <p class="ftu-title" id="score-mode-intro-title">Score <span class="full-name">Modes</span></p>
+                        <p class="ftu-subhead">See how you stack up against others</p>
+                    </div>
+                    <div class="ftu-section">
+                        <h2 class="ftu-section-heading">What's new</h2>
+                        <dl class="score-mode-intro-list">
+                            <div class="score-mode-intro-item">
+                                <dt>Ranked (default)</dt>
+                                <dd>Submits your best clean lap to the leaderboard and shows your current rank on each track.</dd>
+                            </div>
+                            <div class="score-mode-intro-item">
+                                <dt>Local</dt>
+                                <dd>Saves personal bests only on this device, so you can practice without posting times to the leaderboard.</dd>
+                            </div>
+                        </dl>
+                    </div>
+                    <div class="ftu-actions">
+                        <button id="score-mode-intro-dismiss" type="button">Got It</button>
                     </div>
                 </section>
                 <section id="returning-player-panel" class="returning-player-panel" aria-labelledby="returning-player-heading" hidden>
@@ -309,7 +338,7 @@
             <div id="modal-runs-view" class="modal-view">
                 <div class="modal-card-section modal-card-section--runs">
                     <div id="modal-lap-times" class="modal-lap-times-container"></div>
-                    <button id="back-to-main-btn" class="text-link-btn" type="button">Back</button>
+                    <button id="back-to-main-btn" class="modal-secondary-btn" type="button">Back</button>
                 </div>
             </div>
         </div>
@@ -329,7 +358,7 @@
                 <section class="htp-section" aria-labelledby="htp-crash-heading">
                     <h3 id="htp-crash-heading" class="htp-section-title">Crash course</h3>
                     <ol class="htp-crash-rules">
-                        <li>Choose a mode and a track</li>
+                        <li>Choose a mode and a track to compete</li>
                         <li>Start the race and steer with the arrows</li>
                         <li>Tiny steering inputs beat big corrections</li>
                         <li>Finish clean laps to set a personal best</li>
@@ -356,6 +385,19 @@
                         </div>
                     </dl>
                 </section>
+                <section class="htp-section" aria-label="Score modes">
+                    <h3 class="htp-section-title">Score Modes</h3>
+                    <dl class="htp-modes">
+                        <div class="htp-mode">
+                            <dt>Ranked</dt>
+                            <dd>Submits your best clean lap to the leaderboard and shows your current rank on each track.</dd>
+                        </div>
+                        <div class="htp-mode">
+                            <dt>Local</dt>
+                            <dd>Saves personal bests only on this device, so you can practice without posting times to the leaderboard.</dd>
+                        </div>
+                    </dl>
+                </section>
             </div>
             <button id="close-htp-btn" type="button">Got it</button>
         </div>
@@ -379,7 +421,7 @@
         </div>
     </noscript>
 
-    <script type="module" src="game/index.js?v=1.13"></script>
+    <script type="module" src="game/index.js?v=1.25"></script>
 </body>
 
 </html>
