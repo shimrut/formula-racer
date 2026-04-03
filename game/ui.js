@@ -1,12 +1,112 @@
 import { CONFIG } from './config.js?v=0.71';
 import { TRACKS } from './tracks.js?v=0.80';
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=0.01';
-import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=0.72';
+import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=0.03';
+import { getScoreboardSnapshot } from './services/scoreboard.js?v=0.05';
+import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=0.77';
 import { getTrackPreviewGeometry } from './core/track-assets.js?v=0.01';
 import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=0.81';
 
 /** Horizontal swipe distance (px) to change track on mobile carousel. */
 const MOBILE_CAROUSEL_SWIPE_PX = 42;
+const TRACK_CARD_RANK_CACHE_MS = 10 * 60 * 1000;
+const TRACK_CARD_LEADERBOARD_TOP_LIMIT = 10;
+const TRACK_CARD_RANK_PREFETCH_COUNT = 3;
+const TRACK_CARD_RANK_CACHE_STORAGE_KEY = 'VectorGpTrackCardRankCache';
+const SCORE_MODE_INTRO_STORAGE_KEY = 'VectorGpScoreModeIntroDismissed';
+const LEADERBOARD_NAME_ADJECTIVES = [
+    'Arctic', 'Blazing', 'Crimson', 'Electric', 'Flying', 'Golden', 'Hidden', 'Iron',
+    'Jade', 'Lucky', 'Midnight', 'Neon', 'Phantom', 'Quantum', 'Rapid', 'Rocket',
+    'Shadow', 'Silver', 'Turbo', 'Velvet', 'Wild', 'Winter', 'Zenith', 'Zero'
+];
+const LEADERBOARD_NAME_NOUNS = [
+    'Badger', 'Cobra', 'Falcon', 'Gecko', 'Jaguar', 'Koala', 'Lynx', 'Manta',
+    'Mustang', 'Orca', 'Otter', 'Panther', 'Pigeon', 'Raven', 'Shark', 'Sparrow',
+    'Tiger', 'Viper', 'Wolf', 'Wombat', 'Yak', 'Zebra', 'Comet', 'Meteor'
+];
+
+function readPersistedTrackCardRankSnapshots() {
+    if (typeof window === 'undefined' || !window.localStorage) return new Map();
+
+    try {
+        const raw = window.localStorage.getItem(TRACK_CARD_RANK_CACHE_STORAGE_KEY);
+        if (!raw) return new Map();
+
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return new Map();
+
+        const now = Date.now();
+        const snapshots = new Map();
+        Object.entries(parsed).forEach(([cacheKey, snapshot]) => {
+            const cachedAt = Number(snapshot?.cachedAt);
+            if (!Number.isFinite(cachedAt) || now - cachedAt > TRACK_CARD_RANK_CACHE_MS) return;
+            snapshots.set(cacheKey, {
+                rankLabel: typeof snapshot?.rankLabel === 'string' ? snapshot.rankLabel : null,
+                scoreboardSnapshot: snapshot?.scoreboardSnapshot && typeof snapshot.scoreboardSnapshot === 'object'
+                    ? snapshot.scoreboardSnapshot
+                    : null,
+                cachedAt
+            });
+        });
+        return snapshots;
+    } catch (error) {
+        console.error('Error reading track card rank cache:', error);
+        return new Map();
+    }
+}
+
+function writePersistedTrackCardRankSnapshots(rankSnapshots) {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+
+    try {
+        window.localStorage.setItem(
+            TRACK_CARD_RANK_CACHE_STORAGE_KEY,
+            JSON.stringify(Object.fromEntries(rankSnapshots.entries()))
+        );
+    } catch (error) {
+        console.error('Error saving track card rank cache:', error);
+    }
+}
+
+function readPersistedScoreModeIntroDismissed() {
+    if (typeof window === 'undefined' || !window.localStorage) return false;
+
+    try {
+        return window.localStorage.getItem(SCORE_MODE_INTRO_STORAGE_KEY) === '1';
+    } catch (error) {
+        console.error('Error reading score mode intro flag:', error);
+        return false;
+    }
+}
+
+function writePersistedScoreModeIntroDismissed(isDismissed) {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+
+    try {
+        window.localStorage.setItem(SCORE_MODE_INTRO_STORAGE_KEY, isDismissed ? '1' : '0');
+    } catch (error) {
+        console.error('Error saving score mode intro flag:', error);
+    }
+}
+
+function hashLeaderboardPlayerId(playerId) {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < playerId.length; i += 1) {
+        hash ^= playerId.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return hash >>> 0;
+}
+
+function getLeaderboardPlayerName(playerId) {
+    if (typeof playerId !== 'string' || !playerId) return 'Anonymous Racer';
+
+    const hash = hashLeaderboardPlayerId(playerId);
+    const adjective = LEADERBOARD_NAME_ADJECTIVES[hash % LEADERBOARD_NAME_ADJECTIVES.length];
+    const noun = LEADERBOARD_NAME_NOUNS[Math.floor(hash / LEADERBOARD_NAME_ADJECTIVES.length) % LEADERBOARD_NAME_NOUNS.length];
+    const suffixSeed = hash >>> 16;
+    const suffix = suffixSeed % 4 === 0 ? '' : ` ${2 + (suffixSeed % 98)}`;
+    return `${adjective} ${noun}${suffix}`;
+}
 
 export class GameUi {
     constructor({ onPreviewTrack, onPreviewPresentation, onStart, onReset, onShare, onShowPersonalBests, onPausePractice, onSupportClick, onHeaderMenuOpen, onHowToPlayOpen, previewQualityLevel = 0, previewFrameSkip = 0 }) {
@@ -49,6 +149,8 @@ export class GameUi {
         this.trackModeStandardBtn = document.getElementById('track-mode-standard-btn');
         this.trackModePracticeBtn = document.getElementById('track-mode-practice-btn');
         this.returningStartBtn = document.getElementById('returning-start-btn');
+        this.scoreModeIntro = document.getElementById('score-mode-intro');
+        this.scoreModeIntroDismiss = document.getElementById('score-mode-intro-dismiss');
         this.startLights = document.getElementById('start-lights');
         this.goMessage = document.getElementById('go-message');
         this.practiceLapFlash = document.getElementById('practice-lap-flash');
@@ -85,11 +187,14 @@ export class GameUi {
         this._modalPrimaryAction = onReset || null;
         this._defaultModalPrimaryAction = onReset || null;
         this._modalSecondaryAction = null;
+        this._modalRunsPayload = null;
         this._forceSharePanelVisible = false;
+        this._leaderboardRequestId = 0;
         this._hasPersonalBests = false;
         this._hudPersonalBestsAllowed = true;
         this._runsViewMode = 'back';
         this._startOverlayHasAnyData = false;
+        this._startOverlayIsReturningPlayer = false;
         this._introAcknowledged = false;
         this._currentTrackKey = 'circuit';
         this._returningTrackKeys = [];
@@ -100,6 +205,11 @@ export class GameUi {
         this._queuedTrackPreviewKeySet = new Set();
         this._pendingTrackPreviewRaf = null;
         this._returningTrackPersonalBests = new Map();
+        this._returningTrackRankSnapshots = readPersistedTrackCardRankSnapshots();
+        this._pendingReturningTrackRankRequests = new Map();
+        this._pendingReturningTrackRankSubmissions = new Map();
+        this._returningTrackRankRequestVersions = new Map();
+        this._scoreModeIntroDismissed = readPersistedScoreModeIntroDismissed();
         this._trackPreferences = new Map();
         this._selectedReturningTrackKey = null;
         this._carouselResizeObserver = null;
@@ -127,6 +237,7 @@ export class GameUi {
         this.bindModalActionRowPointerFocus();
         this.bindHowToPlay();
         this.bindPrimaryActions(onStart, onShare, onShowPersonalBests, onPausePractice);
+        this.bindScoreModeIntro();
         this.bindTrackModeControls();
         this.bindReturningPlayerKeyboardNavigation();
         this.updateShareState({ visible: false, ready: false, busy: false });
@@ -135,6 +246,9 @@ export class GameUi {
 
     setStartOverlayActive(isActive) {
         document.body.classList.toggle('start-overlay-active', Boolean(isActive));
+        if (!isActive) {
+            this._leaderboardRequestId += 1;
+        }
     }
 
     setStartSelectionMode(isActive) {
@@ -287,6 +401,7 @@ export class GameUi {
         }
         if (this.returningStartBtn && onStart) {
             this.returningStartBtn.addEventListener('click', () => {
+                if (this.isScoreModeIntroVisible()) return;
                 const trackKey = this._selectedReturningTrackKey || this._currentTrackKey || this._returningTrackKeys[0];
                 onStart(trackKey, this.getTrackPreferences(trackKey));
             });
@@ -311,12 +426,35 @@ export class GameUi {
         if (this.mobileSpeedometer && onPausePractice) this.bindTapAction(this.mobileSpeedometer, onPausePractice);
     }
 
+    bindScoreModeIntro() {
+        if (this.scoreModeIntroDismiss) {
+            this.scoreModeIntroDismiss.addEventListener('click', () => {
+                this.dismissScoreModeIntro();
+            });
+        }
+        if (this.scoreModeIntro) {
+            this.scoreModeIntro.addEventListener('keydown', (event) => {
+                if (!this.isScoreModeIntroVisible()) return;
+                if (event.key === 'Tab') {
+                    event.preventDefault();
+                    this.scoreModeIntroDismiss?.focus();
+                }
+            });
+        }
+    }
+
     bindTrackModeControls() {
         if (this.trackModeStandardBtn) {
-            this.trackModeStandardBtn.addEventListener('click', () => this.updateSelectedTrackPreferences({ mode: TRACK_MODE_STANDARD }));
+            this.trackModeStandardBtn.addEventListener('click', () => {
+                if (this.isScoreModeIntroVisible()) return;
+                this.updateSelectedTrackPreferences({ mode: TRACK_MODE_STANDARD });
+            });
         }
         if (this.trackModePracticeBtn) {
-            this.trackModePracticeBtn.addEventListener('click', () => this.updateSelectedTrackPreferences({ mode: TRACK_MODE_PRACTICE }));
+            this.trackModePracticeBtn.addEventListener('click', () => {
+                if (this.isScoreModeIntroVisible()) return;
+                this.updateSelectedTrackPreferences({ mode: TRACK_MODE_PRACTICE });
+            });
         }
     }
 
@@ -411,8 +549,22 @@ export class GameUi {
         const updated = saveTrackPreferences(trackKey, nextPreferences);
         this._trackPreferences.set(trackKey, updated);
         this.refreshReturningTrackPersonalBest(trackKey);
+        this.updateVisibleTrackRanks(trackKey);
         this.updateTrackModeControls();
         this.updateReturningPlayerStartButton();
+    }
+
+    createEmptyTrackPersonalBestState() {
+        return {
+            local: {
+                [TRACK_MODE_STANDARD]: null,
+                [TRACK_MODE_PRACTICE]: null
+            },
+            ranked: {
+                [TRACK_MODE_STANDARD]: null,
+                [TRACK_MODE_PRACTICE]: null
+            }
+        };
     }
 
     isModalActive() {
@@ -445,18 +597,32 @@ export class GameUi {
     /** PB shown on track cards after bulk load; used to avoid HUD flicker while switching tracks. */
     getCachedPersonalBestForTrack(trackKey) {
         if (!trackKey || !this._returningTrackPersonalBests.has(trackKey)) return null;
-        const mode = this.getTrackPreferences(trackKey).mode === TRACK_MODE_PRACTICE
+        const preferences = this.getTrackPreferences(trackKey);
+        const mode = preferences.mode === TRACK_MODE_PRACTICE
             ? TRACK_MODE_PRACTICE
             : TRACK_MODE_STANDARD;
-        const v = this._returningTrackPersonalBests.get(trackKey)?.[mode];
+        const namespace = preferences.ranked ? 'ranked' : 'local';
+        const v = this._returningTrackPersonalBests.get(trackKey)?.[namespace]?.[mode];
         return v !== null && v !== undefined ? v : null;
     }
 
-    setBestTime(bestLapTime, { persistToTrackCard = true, trackKey = this._currentTrackKey, mode = null } = {}) {
+    setBestTime(bestLapTime, {
+        persistToTrackCard = true,
+        trackKey = this._currentTrackKey,
+        mode = null,
+        ranked = null,
+        scoreboardSubmitPromise = null
+    } = {}) {
         if (!this.bestTimeDisplay || !this.bestTimeVal) return;
 
         if (persistToTrackCard && trackKey && mode && bestLapTime !== null && bestLapTime !== undefined) {
-            this.updateReturningTrackPersonalBest(trackKey, bestLapTime, mode);
+            const isRanked = ranked === null
+                ? Boolean(this.getTrackPreferences(trackKey).ranked)
+                : Boolean(ranked);
+            this.invalidateReturningTrackRankSnapshot(trackKey, mode, isRanked);
+            this.setPendingReturningTrackRankSubmission(trackKey, mode, isRanked, scoreboardSubmitPromise);
+            this.updateReturningTrackPersonalBest(trackKey, bestLapTime, mode, isRanked);
+            this.updateVisibleTrackRanks(trackKey);
         }
 
         if (bestLapTime !== null && bestLapTime !== undefined) {
@@ -501,16 +667,16 @@ export class GameUi {
         }
     }
 
-    refreshStartOverlay(status, hasAnyData) {
+    refreshStartOverlay(status, hasAnyData, isReturningPlayer = false) {
         if (status !== 'ready' || this.startOverlay?.style.display === 'none') return;
-        this.updateStartOverlayMode(hasAnyData);
+        this.updateStartOverlayMode(hasAnyData, isReturningPlayer);
     }
 
-    showStartOverlay(hasAnyData) {
+    showStartOverlay(hasAnyData, isReturningPlayer = false) {
         if (this.startOverlay) this.startOverlay.style.display = 'flex';
         if (this.startGroup) this.startGroup.style.display = 'flex';
         this.setStartOverlayActive(true);
-        this.updateStartOverlayMode(hasAnyData);
+        this.updateStartOverlayMode(hasAnyData, isReturningPlayer);
     }
 
     hideStartOverlay() {
@@ -550,14 +716,19 @@ export class GameUi {
             card.tabIndex = 0;
             card.innerHTML = `
                 <div class="modal-card track-card-modal">
+                    <button class="track-card-ranked-btn" type="button" data-track-ranked-toggle aria-pressed="false">LOCAL</button>
                     <div class="track-card-modal-view">
                         <div class="track-card-modal-content">
                             <h2 class="track-card-modal-title">${track.name}</h2>
                             <div class="modal-stats-row track-card-stats-row">
-                                <span class="modal-stat-center">
+                                <span class="modal-stat-left">
                                     <span class="modal-stat-label">Best</span>
                                     <span class="modal-stat-value modal-stat-value--best" data-track-pb>--</span>
                                 </span>
+                                <button class="modal-stat-right modal-stat-button track-card-rank-btn" type="button" data-track-rank-action disabled>
+                                    <span class="modal-stat-label">Rank</span>
+                                    <span class="modal-stat-value modal-stat-value--rank" data-track-rank>--</span>
+                                </button>
                             </div>
                         </div>
                         <div class="track-card-preview-wrap">
@@ -566,6 +737,36 @@ export class GameUi {
                     </div>
                 </div>
             `;
+            const rankedToggleBtn = card.querySelector('[data-track-ranked-toggle]');
+            if (rankedToggleBtn) {
+                rankedToggleBtn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (this.isScoreModeIntroVisible()) return;
+                    this.setReturningTrackSelection(trackKey, { scrollIntoView: true, syncPreviewTrack: true });
+                    const preferences = this.getTrackPreferences(trackKey);
+                    this.updateSelectedTrackPreferences({ ranked: !preferences.ranked });
+                });
+                rankedToggleBtn.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.stopPropagation();
+                    }
+                });
+            }
+            const trackRankBtn = card.querySelector('[data-track-rank-action]');
+            if (trackRankBtn) {
+                trackRankBtn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (this.isScoreModeIntroVisible()) return;
+                    this.openTrackCardLeaderboard(trackKey);
+                });
+                trackRankBtn.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.stopPropagation();
+                    }
+                });
+            }
             const previewCanvas = card.querySelector('.track-card-preview-canvas');
             this._returningTrackPreviewCanvases.set(trackKey, previewCanvas);
             card.addEventListener('click', (e) => {
@@ -575,9 +776,15 @@ export class GameUi {
                     e.stopPropagation();
                     return;
                 }
+                if (this.isScoreModeIntroVisible()) return;
                 this.setReturningTrackSelection(trackKey, { scrollIntoView: true, syncPreviewTrack: true });
             });
             card.addEventListener('keydown', (event) => {
+                if (this.isScoreModeIntroVisible()) {
+                    event.preventDefault();
+                    this.scoreModeIntroDismiss?.focus();
+                    return;
+                }
                 if (event.key === 'Enter') {
                     event.preventDefault();
                     this.setReturningTrackSelection(trackKey, { scrollIntoView: true, syncPreviewTrack: true });
@@ -603,10 +810,16 @@ export class GameUi {
         });
 
         if (this.trackPrevBtn) {
-            this.trackPrevBtn.addEventListener('click', () => this.moveReturningTrack(-1));
+            this.trackPrevBtn.addEventListener('click', () => {
+                if (this.isScoreModeIntroVisible()) return;
+                this.moveReturningTrack(-1);
+            });
         }
         if (this.trackNextBtn) {
-            this.trackNextBtn.addEventListener('click', () => this.moveReturningTrack(1));
+            this.trackNextBtn.addEventListener('click', () => {
+                if (this.isScoreModeIntroVisible()) return;
+                this.moveReturningTrack(1);
+            });
         }
 
         this.bindReturningPlayerSwipe();
@@ -687,6 +900,165 @@ export class GameUi {
         this.queueReturningTrackPreview(this._returningTrackKeys[currentIndex + 1]);
     }
 
+    getTrackCardRankCacheKey(trackKey, mode, ranked = false) {
+        return `${trackKey}:${mode}:${ranked ? 'ranked' : 'local'}`;
+    }
+
+    getTrackCardRankRequestVersion(cacheKey) {
+        return this._returningTrackRankRequestVersions.get(cacheKey) || 0;
+    }
+
+    bumpTrackCardRankRequestVersion(cacheKey) {
+        const nextVersion = this.getTrackCardRankRequestVersion(cacheKey) + 1;
+        this._returningTrackRankRequestVersions.set(cacheKey, nextVersion);
+        return nextVersion;
+    }
+
+    getTrackCardRankPrefetchKeys(trackKey) {
+        const currentIndex = this._returningTrackKeys.indexOf(trackKey);
+        if (currentIndex === -1) return [];
+        return this._returningTrackKeys.slice(
+            currentIndex,
+            Math.min(this._returningTrackKeys.length, currentIndex + TRACK_CARD_RANK_PREFETCH_COUNT)
+        );
+    }
+
+    invalidateReturningTrackRankSnapshot(trackKey, mode, ranked = false) {
+        const cacheKey = this.getTrackCardRankCacheKey(trackKey, mode, ranked);
+        this._returningTrackRankSnapshots.delete(cacheKey);
+        this._pendingReturningTrackRankRequests.delete(cacheKey);
+        this.bumpTrackCardRankRequestVersion(cacheKey);
+        writePersistedTrackCardRankSnapshots(this._returningTrackRankSnapshots);
+    }
+
+    getFreshReturningTrackRankCache(trackKey, mode, ranked = false) {
+        const cacheKey = this.getTrackCardRankCacheKey(trackKey, mode, ranked);
+        const cached = this._returningTrackRankSnapshots.get(cacheKey);
+        if (!cached) return null;
+        if (Date.now() - cached.cachedAt > TRACK_CARD_RANK_CACHE_MS) {
+            this._returningTrackRankSnapshots.delete(cacheKey);
+            writePersistedTrackCardRankSnapshots(this._returningTrackRankSnapshots);
+            return null;
+        }
+        return cached;
+    }
+
+    setPendingReturningTrackRankSubmission(trackKey, mode, ranked = false, submitPromise = null) {
+        const cacheKey = this.getTrackCardRankCacheKey(trackKey, mode, ranked);
+        if (!ranked || !submitPromise) {
+            this._pendingReturningTrackRankSubmissions.delete(cacheKey);
+            return;
+        }
+
+        const trackedPromise = Promise.resolve(submitPromise)
+            .catch((error) => {
+                console.error('Error waiting for track card rank submission:', error);
+                return null;
+            })
+            .finally(() => {
+                if (this._pendingReturningTrackRankSubmissions.get(cacheKey) === trackedPromise) {
+                    this._pendingReturningTrackRankSubmissions.delete(cacheKey);
+                }
+            });
+        this._pendingReturningTrackRankSubmissions.set(cacheKey, trackedPromise);
+    }
+
+    getCachedTrackCardRankLabel(trackKey, mode, ranked = false) {
+        return this.getFreshReturningTrackRankCache(trackKey, mode, ranked)?.rankLabel || null;
+    }
+
+    hasFreshTrackCardRankCache(trackKey, mode, ranked = false) {
+        return Boolean(this.getFreshReturningTrackRankCache(trackKey, mode, ranked));
+    }
+
+    getCachedTrackCardScoreboardSnapshot(trackKey, mode, ranked = false) {
+        return this.getFreshReturningTrackRankCache(trackKey, mode, ranked)?.scoreboardSnapshot || null;
+    }
+
+    async requestReturningTrackRankSnapshot(trackKey, mode, ranked = false) {
+        if (!trackKey || !TRACKS[trackKey] || !ranked) return null;
+
+        const cacheKey = this.getTrackCardRankCacheKey(trackKey, mode, true);
+        const requestVersion = this.getTrackCardRankRequestVersion(cacheKey);
+        const pendingRequest = this._pendingReturningTrackRankRequests.get(cacheKey);
+        if (pendingRequest && pendingRequest.version === requestVersion) {
+            return pendingRequest.promise;
+        }
+
+        if (this.hasFreshTrackCardRankCache(trackKey, mode, true)) {
+            return this.getCachedTrackCardScoreboardSnapshot(trackKey, mode, true);
+        }
+
+        const pendingSubmitPromise = this._pendingReturningTrackRankSubmissions.get(cacheKey) || null;
+        const requestPromise = Promise.resolve(pendingSubmitPromise)
+            .then(() => getScoreboardSnapshot({
+                trackKey,
+                mode,
+                limit: TRACK_CARD_LEADERBOARD_TOP_LIMIT
+            }))
+            .then((scoreboardSnapshot) => {
+                if (this.getTrackCardRankRequestVersion(cacheKey) !== requestVersion) {
+                    return scoreboardSnapshot || null;
+                }
+                this._returningTrackRankSnapshots.set(cacheKey, {
+                    rankLabel: scoreboardSnapshot?.playerRankLabel || null,
+                    scoreboardSnapshot: scoreboardSnapshot || null,
+                    cachedAt: Date.now()
+                });
+                writePersistedTrackCardRankSnapshots(this._returningTrackRankSnapshots);
+                this.refreshReturningTrackPersonalBest(trackKey);
+                return scoreboardSnapshot || null;
+            })
+            .catch((error) => {
+                console.error('Error loading track card rank:', error);
+                return null;
+            })
+            .finally(() => {
+                const activeRequest = this._pendingReturningTrackRankRequests.get(cacheKey);
+                if (activeRequest && activeRequest.version === requestVersion) {
+                    this._pendingReturningTrackRankRequests.delete(cacheKey);
+                }
+            });
+
+        this._pendingReturningTrackRankRequests.set(cacheKey, {
+            promise: requestPromise,
+            version: requestVersion
+        });
+        return requestPromise;
+    }
+
+    async refreshReturningTrackRankSnapshot(trackKey) {
+        if (!trackKey || !this._returningTrackCards.has(trackKey)) return;
+
+        const preferences = this.getTrackPreferences(trackKey);
+        const mode = preferences.mode === TRACK_MODE_PRACTICE
+            ? TRACK_MODE_PRACTICE
+            : TRACK_MODE_STANDARD;
+        const isRanked = Boolean(preferences.ranked);
+        const personalBestState = this._returningTrackPersonalBests.get(trackKey);
+        if (!isRanked) {
+            this.invalidateReturningTrackRankSnapshot(trackKey, mode, false);
+            this.refreshReturningTrackPersonalBest(trackKey);
+            return;
+        }
+        if (!personalBestState) {
+            this.refreshReturningTrackPersonalBest(trackKey);
+            return;
+        }
+        if (this.hasFreshTrackCardRankCache(trackKey, mode, true)) {
+            this.refreshReturningTrackPersonalBest(trackKey);
+            return;
+        }
+
+        return this.requestReturningTrackRankSnapshot(trackKey, mode, true);
+    }
+
+    updateVisibleTrackRanks(trackKey) {
+        this.getTrackCardRankPrefetchKeys(trackKey).forEach((prefetchTrackKey) => {
+            this.refreshReturningTrackRankSnapshot(prefetchTrackKey);
+        });
+    }
+
     refreshReturningTrackSliderMetrics() {
         if (!this.trackCarouselShell) return;
 
@@ -726,6 +1098,7 @@ export class GameUi {
         };
 
         this.trackCarouselShell.addEventListener('touchstart', (event) => {
+            if (this.isScoreModeIntroVisible()) return;
             if (event.touches.length !== 1) return;
             this._touchStartX = event.touches[0].clientX;
             this._touchDeltaX = 0;
@@ -750,6 +1123,13 @@ export class GameUi {
         }, { passive: true });
 
         const finishSwipe = () => {
+            if (this.isScoreModeIntroVisible()) {
+                this._touchStartX = null;
+                this._touchDeltaX = 0;
+                this._carouselTouchDragging = false;
+                this.trackCarousel.style.removeProperty('transition');
+                return;
+            }
             const hadTouch = this._touchStartX !== null;
             const delta = this._touchDeltaX;
 
@@ -796,6 +1176,7 @@ export class GameUi {
             if (event.key !== ' ' && event.code !== 'Space') return;
             if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
             if (!this.isReturningPlayerTrackSelectionOpen()) return;
+            if (this.isScoreModeIntroVisible()) return;
 
             const t = event.target;
             if (t instanceof HTMLElement) {
@@ -818,6 +1199,14 @@ export class GameUi {
         this._selectorKeydownHandler = (event) => {
             if (!this.isDesktopTrackSelectionActive()) return;
             if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+            if (this.isScoreModeIntroVisible()) {
+                if (event.target instanceof HTMLElement && this.scoreModeIntro?.contains(event.target)) {
+                    return;
+                }
+                event.preventDefault();
+                this.scoreModeIntroDismiss?.focus();
+                return;
+            }
 
             const target = event.target;
             if (target instanceof HTMLElement) {
@@ -890,6 +1279,7 @@ export class GameUi {
                 this.updateReturningTrackSlider();
             }
             this.updateVisibleTrackPreviews(trackKey);
+            this.updateVisibleTrackRanks(trackKey);
             if (syncPreviewTrack && this._onPreviewTrack) {
                 this._onPreviewTrack(trackKey);
             }
@@ -911,6 +1301,7 @@ export class GameUi {
         });
 
         this.updateVisibleTrackPreviews(trackKey);
+        this.updateVisibleTrackRanks(trackKey);
         this.updateReturningTrackSlider();
         if (syncPreviewTrack && this._onPreviewTrack) {
             this._onPreviewTrack(trackKey);
@@ -993,9 +1384,32 @@ export class GameUi {
         try {
             const trackDataList = await Promise.all(trackKeys.map((trackKey) => getTrackData(trackKey)));
             trackDataList.forEach((trackData, index) => {
-                this.updateReturningTrackPersonalBest(trackKeys[index], trackData.bestTimes?.[TRACK_MODE_STANDARD] ?? null, TRACK_MODE_STANDARD);
-                this.updateReturningTrackPersonalBest(trackKeys[index], trackData.bestTimes?.[TRACK_MODE_PRACTICE] ?? null, TRACK_MODE_PRACTICE);
+                this.updateReturningTrackPersonalBest(
+                    trackKeys[index],
+                    trackData.bestTimes?.[TRACK_MODE_STANDARD] ?? null,
+                    TRACK_MODE_STANDARD,
+                    false
+                );
+                this.updateReturningTrackPersonalBest(
+                    trackKeys[index],
+                    trackData.bestTimes?.[TRACK_MODE_PRACTICE] ?? null,
+                    TRACK_MODE_PRACTICE,
+                    false
+                );
+                this.updateReturningTrackPersonalBest(
+                    trackKeys[index],
+                    trackData.rankedBestTimes?.[TRACK_MODE_STANDARD] ?? null,
+                    TRACK_MODE_STANDARD,
+                    true
+                );
+                this.updateReturningTrackPersonalBest(
+                    trackKeys[index],
+                    trackData.rankedBestTimes?.[TRACK_MODE_PRACTICE] ?? null,
+                    TRACK_MODE_PRACTICE,
+                    true
+                );
             });
+            this.updateVisibleTrackRanks(this._selectedReturningTrackKey || this._currentTrackKey || this._returningTrackKeys[0]);
         } catch (error) {
             console.error('Error loading returning-player personal bests:', error);
         }
@@ -1004,41 +1418,126 @@ export class GameUi {
     refreshReturningTrackPersonalBest(trackKey) {
         if (!trackKey || !this._returningTrackCards.has(trackKey)) return;
 
-        const mode = this.getTrackPreferences(trackKey).mode === TRACK_MODE_PRACTICE
+        const preferences = this.getTrackPreferences(trackKey);
+        const mode = preferences.mode === TRACK_MODE_PRACTICE
             ? TRACK_MODE_PRACTICE
             : TRACK_MODE_STANDARD;
-        const bestTime = this._returningTrackPersonalBests.get(trackKey)?.[mode];
+        const isRanked = Boolean(preferences.ranked);
+        const namespace = isRanked ? 'ranked' : 'local';
+        const bestTime = this._returningTrackPersonalBests.get(trackKey)?.[namespace]?.[mode];
         const card = this._returningTrackCards.get(trackKey);
         const pbEl = card?.querySelector('[data-track-pb]');
-        if (!pbEl) return;
+        const rankEl = card?.querySelector('[data-track-rank]');
+        const rankBtn = card?.querySelector('[data-track-rank-action]');
+        const rankWrapEl = rankEl?.closest('.modal-stat-right');
+        const rankedToggleBtn = card?.querySelector('[data-track-ranked-toggle]');
+        if (!pbEl || !rankEl) return;
+
+        if (rankedToggleBtn) {
+            rankedToggleBtn.classList.toggle('is-active', isRanked);
+            rankedToggleBtn.setAttribute('aria-pressed', isRanked ? 'true' : 'false');
+            rankedToggleBtn.textContent = isRanked ? 'RANKED' : 'LOCAL';
+        }
 
         pbEl.textContent = bestTime !== null && bestTime !== undefined
             ? `${bestTime.toFixed(2)}s`
             : '--';
+        if (rankWrapEl) {
+            rankWrapEl.hidden = !isRanked;
+        }
+        const rankLabel = isRanked
+            ? (this.getCachedTrackCardRankLabel(trackKey, mode, true) || 'N/A')
+            : 'N/A';
+        rankEl.textContent = rankLabel;
+        if (rankBtn) {
+            const trackName = TRACKS[trackKey]?.name || 'this track';
+            rankBtn.disabled = !isRanked;
+            rankBtn.setAttribute(
+                'aria-label',
+                `Open ${TRACK_MODE_LABELS[mode] || 'Time trial'} leaderboard for ${trackName}. Your rank: ${rankLabel}.`
+            );
+        }
     }
 
-    updateReturningTrackPersonalBest(trackKey, bestTime, mode = TRACK_MODE_STANDARD) {
+    openTrackCardLeaderboard(trackKey) {
         if (!trackKey || !this._returningTrackCards.has(trackKey)) return;
 
-        const currentBests = this._returningTrackPersonalBests.get(trackKey) || {
-            [TRACK_MODE_STANDARD]: null,
-            [TRACK_MODE_PRACTICE]: null
-        };
-        const currentBest = currentBests[mode];
+        this.setReturningTrackSelection(trackKey, { scrollIntoView: true, syncPreviewTrack: true });
+        const preferences = this.getTrackPreferences(trackKey);
+        const mode = preferences.mode === TRACK_MODE_PRACTICE
+            ? TRACK_MODE_PRACTICE
+            : TRACK_MODE_STANDARD;
+        if (!preferences.ranked) return;
+
+        this.showTrackLeaderboardModal(trackKey, mode, 'close');
+    }
+
+    async showTrackLeaderboardModal(trackKey, mode = TRACK_MODE_STANDARD, returnMode = 'close') {
+        if (!trackKey || !TRACKS[trackKey]) return;
+
+        const scoreboardMode = mode === TRACK_MODE_PRACTICE
+            ? TRACK_MODE_PRACTICE
+            : TRACK_MODE_STANDARD;
+        const cachedSnapshot = this.getCachedTrackCardScoreboardSnapshot(trackKey, scoreboardMode, true);
+        const requestId = ++this._leaderboardRequestId;
+        this.showRunsModal(null, null, null, returnMode, {
+            scoreboardSnapshot: cachedSnapshot || { isLoading: true },
+            scoreboardMode,
+            scoreboardTrackKey: trackKey
+        });
+
+        if (cachedSnapshot) return;
+
+        try {
+            const scoreboardSnapshot = await this.requestReturningTrackRankSnapshot(trackKey, scoreboardMode, true);
+            if (requestId !== this._leaderboardRequestId) return;
+            this.showRunsModal(null, null, null, returnMode, {
+                scoreboardSnapshot,
+                scoreboardMode,
+                scoreboardTrackKey: trackKey
+            });
+        } catch (error) {
+            console.error('Error loading track leaderboard:', error);
+            if (requestId !== this._leaderboardRequestId) return;
+            this.showRunsModal(null, null, null, returnMode, {
+                scoreboardSnapshot: null,
+                scoreboardMode,
+                scoreboardTrackKey: trackKey
+            });
+        }
+    }
+
+    updateReturningTrackPersonalBest(trackKey, bestTime, mode = TRACK_MODE_STANDARD, ranked = false) {
+        if (!trackKey || !this._returningTrackCards.has(trackKey)) return;
+
+        const currentBests = this._returningTrackPersonalBests.get(trackKey)
+            || this.createEmptyTrackPersonalBestState();
+        const namespace = ranked ? 'ranked' : 'local';
+        const currentBest = currentBests[namespace][mode];
         const nextBest = bestTime !== null && bestTime !== undefined
             ? (currentBest !== null && currentBest !== undefined ? Math.min(currentBest, bestTime) : bestTime)
             : (currentBest !== null && currentBest !== undefined ? currentBest : null);
 
         this._returningTrackPersonalBests.set(trackKey, {
             ...currentBests,
-            [mode]: nextBest
+            [namespace]: {
+                ...currentBests[namespace],
+                [mode]: nextBest
+            }
         });
         this.refreshReturningTrackPersonalBest(trackKey);
     }
 
-    updateStartOverlayMode(hasAnyData) {
+    updateStartOverlayMode(hasAnyData, isReturningPlayer = this._startOverlayIsReturningPlayer) {
         this._startOverlayHasAnyData = Boolean(hasAnyData);
+        this._startOverlayIsReturningPlayer = Boolean(isReturningPlayer);
+        if (this._startOverlayHasAnyData && !this._startOverlayIsReturningPlayer && !this._scoreModeIntroDismissed) {
+            this._scoreModeIntroDismissed = true;
+            writePersistedScoreModeIntroDismissed(true);
+        }
         const showTrackSelection = hasAnyData || this._introAcknowledged;
+        const showScoreModeIntro = this.shouldShowScoreModeIntro(showTrackSelection);
+        const showReturningPlayerPanel = showTrackSelection && !showScoreModeIntro;
 
         if (this.firstTimeMsg) this.firstTimeMsg.style.display = showTrackSelection ? 'none' : 'block';
         if (this.startBtn) {
@@ -1046,13 +1545,14 @@ export class GameUi {
             this.startBtn.textContent = 'Got It';
         }
         if (this.returningPlayerPanel) {
-            this.returningPlayerPanel.hidden = !showTrackSelection;
-            this.returningPlayerPanel.style.display = showTrackSelection ? 'grid' : 'none';
+            this.returningPlayerPanel.hidden = !showReturningPlayerPanel;
+            this.returningPlayerPanel.style.display = showReturningPlayerPanel ? 'grid' : 'none';
         }
+        this.updateScoreModeIntro(showScoreModeIntro);
         document.body.classList.toggle('ftu-onboarding-active', !showTrackSelection);
         this.setStartSelectionMode(showTrackSelection);
 
-        if (showTrackSelection) {
+        if (showReturningPlayerPanel) {
             requestAnimationFrame(() => {
                 this.setReturningTrackSelection(
                     this._selectedReturningTrackKey || this._currentTrackKey || this._returningTrackKeys[0],
@@ -1060,6 +1560,36 @@ export class GameUi {
                 );
             });
         }
+    }
+
+    shouldShowScoreModeIntro(showTrackSelection) {
+        return Boolean(
+            showTrackSelection
+            && this._startOverlayHasAnyData
+            && this._startOverlayIsReturningPlayer
+            && !this._scoreModeIntroDismissed
+        );
+    }
+
+    isScoreModeIntroVisible() {
+        return Boolean(this.scoreModeIntro && !this.scoreModeIntro.hidden);
+    }
+
+    updateScoreModeIntro(isVisible) {
+        if (!this.scoreModeIntro) return;
+
+        this.scoreModeIntro.hidden = !isVisible;
+        if (isVisible) {
+            requestAnimationFrame(() => this.scoreModeIntroDismiss?.focus());
+        }
+    }
+
+    dismissScoreModeIntro() {
+        if (this._scoreModeIntroDismissed) return;
+
+        this._scoreModeIntroDismissed = true;
+        writePersistedScoreModeIntroDismissed(true);
+        this.updateStartOverlayMode(this._startOverlayHasAnyData);
     }
 
     showStartLights() {
@@ -1163,6 +1693,16 @@ export class GameUi {
         this.modal.classList.toggle('modal--standard-win', this._modalKind === 'standard-win');
         this._modalPrimaryAction = options.primaryAction || this._defaultModalPrimaryAction;
         this._modalSecondaryAction = options.secondaryAction || null;
+        this._modalRunsPayload = lapData
+            ? {
+                lapTimesArray: lapData.listData ?? lapData.lapTimesArray ?? null,
+                bestTime: lapData.bestTime ?? lapData.lapTime ?? null,
+                currentTime: lapData.lapTime ?? null,
+                scoreboardTrackKey: lapData.scoreboardTrackKey || this._currentTrackKey || null,
+                scoreboardSnapshot: lapData.scoreboardSnapshot ?? null,
+                scoreboardMode: lapData.scoreboardMode || TRACK_MODE_STANDARD
+            }
+            : null;
         this._forceSharePanelVisible = Boolean(options.forceSharePanelVisible);
         this.setModalResetButtonLabel(
             options.primaryActionLabel || 'Race Again',
@@ -1184,7 +1724,8 @@ export class GameUi {
                         lapData.sessionBestTime,
                         lapData.practiceBestTime,
                         lapData.deltaToBest,
-                        lapData.isNewBest
+                        lapData.isNewBest,
+                        lapData.scoreboardSnapshot
                     );
                     delete this.modalStatsRow.dataset.hasRuns;
                     this.modalStatsRow.style.display = 'grid';
@@ -1221,7 +1762,8 @@ export class GameUi {
                 } else if (lapData.isNewBest) {
                     this.setWinStats(
                         lapData.bestTime,
-                        null
+                        null,
+                        lapData.scoreboardSnapshot
                     );
                     this.modalStatsRow.dataset.hasRuns = lapData.lapTimesArray?.length ? 'true' : '';
                     this.modalStatsRow.style.display = 'grid';
@@ -1244,8 +1786,10 @@ export class GameUi {
         }
 
         if (lapData?.listData !== undefined && this.modalLapTimes) {
+            this.modalLapTimes.replaceChildren();
             this.renderLapTimesList(this.modalLapTimes, lapData.listData, lapData.bestTime, lapData.lapTime);
         } else if (lapData?.lapTimesArray !== undefined && this.modalLapTimes) {
+            this.modalLapTimes.replaceChildren();
             this.renderLapTimesList(this.modalLapTimes, lapData.lapTimesArray, lapData.bestTime, lapData.lapTime);
         } else if (lapData && this.modalLapTimes) {
             this.modalLapTimes.replaceChildren();
@@ -1266,23 +1810,36 @@ export class GameUi {
         requestAnimationFrame(() => this.activateModalFocusTrap(this.modal));
     }
 
-    showRunsModal(lapTimesArray, bestTime, currentTime = null, returnMode = 'close') {
+    showRunsModal(lapTimesArray, bestTime, currentTime = null, returnMode = 'close', {
+        scoreboardSnapshot = null,
+        scoreboardMode = TRACK_MODE_STANDARD,
+        scoreboardTrackKey = null
+    } = {}) {
         if (!this.modal || !this.modalTitle || !this.modalLapTimes || !this.modalRunsView || !this.modalMainView) return;
 
         this.cancelPendingModalClose();
         const wasActive = this.isModalActive();
         this.modal.classList.remove('modal--crash');
+        this.modalLapTimes.replaceChildren();
         this.renderLapTimesList(this.modalLapTimes, lapTimesArray, bestTime, currentTime);
+        const trackKey = scoreboardTrackKey || this._currentTrackKey || null;
+        this.renderScoreboardList(this.modalLapTimes, scoreboardSnapshot, scoreboardMode, trackKey);
         this._runsViewMode = returnMode === 'back' ? 'back' : 'close';
         if (this.backToMainBtn) this.backToMainBtn.textContent = this._runsViewMode === 'back' ? 'Back' : 'Close';
         this.modalMainView.classList.remove('active-view');
         this.modalRunsView.classList.add('active-view');
         this.modal.classList.add('active');
         if (wasActive) {
-            if (this.backToMainBtn) this.backToMainBtn.focus();
+            requestAnimationFrame(() => {
+                this.centerLeaderboardCurrentRow();
+                if (this.backToMainBtn) this.backToMainBtn.focus();
+            });
             return;
         }
-        requestAnimationFrame(() => this.activateModalFocusTrap(this.modal));
+        requestAnimationFrame(() => {
+            this.centerLeaderboardCurrentRow();
+            this.activateModalFocusTrap(this.modal);
+        });
     }
 
     closeModal() {
@@ -1290,6 +1847,7 @@ export class GameUi {
 
         const modal = this.modal;
         modal.classList.remove('active');
+        this._leaderboardRequestId += 1;
 
         this.cancelPendingModalClose();
 
@@ -1301,6 +1859,7 @@ export class GameUi {
             this._modalKind = null;
             this._modalPrimaryAction = this._defaultModalPrimaryAction;
             this._modalSecondaryAction = null;
+            this._modalRunsPayload = null;
             this._forceSharePanelVisible = false;
             this.setModalSecondaryButton('', false, null);
             this.setShareButtonContent('save your time', 'save');
@@ -1399,26 +1958,9 @@ export class GameUi {
         this.modalStatsRow.appendChild(right);
     }
 
-    setPracticePauseStats(sessionBestTime, _practiceBestTime, deltaToBest, isNewBest = false) {
+    setPracticePauseStats(sessionBestTime, _practiceBestTime, deltaToBest, isNewBest = false, scoreboardSnapshot = null) {
         if (!this.modalStatsRow) return;
         this.modalStatsRow.replaceChildren();
-
-        const buildStat = (labelText, valueText, valueClass = '') => {
-            const stat = document.createElement('span');
-            stat.className = 'modal-stat-stack';
-
-            const label = document.createElement('span');
-            label.className = 'modal-stat-label';
-            label.textContent = labelText;
-            stat.appendChild(label);
-
-            const value = document.createElement('span');
-            value.className = `modal-stat-value modal-stat-value--compact${valueClass ? ` ${valueClass}` : ''}`;
-            value.textContent = valueText;
-            stat.appendChild(value);
-
-            return stat;
-        };
 
         const sessionBestText = sessionBestTime === null || sessionBestTime === undefined
             ? '--'
@@ -1440,30 +1982,21 @@ export class GameUi {
             }
         }
 
-        this.modalStatsRow.appendChild(buildStat('Session Best', sessionBestText, sessionBestTime !== null && sessionBestTime !== undefined ? 'modal-stat-value--best' : ''));
-        this.modalStatsRow.appendChild(buildStat('Delta', deltaText, deltaClass));
+        this.modalStatsRow.appendChild(this.createModalStat(
+            'Session Best',
+            sessionBestText,
+            sessionBestTime !== null && sessionBestTime !== undefined ? 'modal-stat-value--best' : ''
+        ));
+        if (isNewBest && scoreboardSnapshot) {
+            this.modalStatsRow.appendChild(this.createRankModalStat(scoreboardSnapshot));
+            return;
+        }
+        this.modalStatsRow.appendChild(this.createModalStat('Delta', deltaText, deltaClass));
     }
 
     setStandardPauseStats(lapTime, deltaToBest, _bestTime) {
         if (!this.modalStatsRow) return;
         this.modalStatsRow.replaceChildren();
-
-        const buildStat = (labelText, valueText, valueClass = '') => {
-            const stat = document.createElement('span');
-            stat.className = 'modal-stat-stack';
-
-            const label = document.createElement('span');
-            label.className = 'modal-stat-label';
-            label.textContent = labelText;
-            stat.appendChild(label);
-
-            const value = document.createElement('span');
-            value.className = `modal-stat-value modal-stat-value--compact${valueClass ? ` ${valueClass}` : ''}`;
-            value.textContent = valueText;
-            stat.appendChild(value);
-
-            return stat;
-        };
 
         const lapText = lapTime === null || lapTime === undefined
             ? '--'
@@ -1482,30 +2015,13 @@ export class GameUi {
             }
         }
 
-        this.modalStatsRow.appendChild(buildStat('Lap Time', lapText));
-        this.modalStatsRow.appendChild(buildStat('Delta', deltaText, deltaClass));
+        this.modalStatsRow.appendChild(this.createModalStat('Lap Time', lapText));
+        this.modalStatsRow.appendChild(this.createModalStat('Delta', deltaText, deltaClass));
     }
 
-    setWinStats(lapTime, deltaToBest) {
+    setWinStats(lapTime, deltaToBest, scoreboardSnapshot = null) {
         if (!this.modalStatsRow) return;
         this.modalStatsRow.replaceChildren();
-
-        const buildStat = (labelText, valueText, valueClass = '') => {
-            const stat = document.createElement('span');
-            stat.className = 'modal-stat-stack';
-
-            const label = document.createElement('span');
-            label.className = 'modal-stat-label';
-            label.textContent = labelText;
-            stat.appendChild(label);
-
-            const value = document.createElement('span');
-            value.className = `modal-stat-value modal-stat-value--compact${valueClass ? ` ${valueClass}` : ''}`;
-            value.textContent = valueText;
-            stat.appendChild(value);
-
-            return stat;
-        };
 
         const lapText = lapTime !== null && lapTime !== undefined
             ? `${lapTime.toFixed(2)}s`
@@ -1528,8 +2044,115 @@ export class GameUi {
             deltaClass = 'modal-stat-value--delta-negative';
         }
 
-        this.modalStatsRow.appendChild(buildStat('Lap Time', lapText));
-        this.modalStatsRow.appendChild(buildStat('Delta', deltaText, deltaClass));
+        this.modalStatsRow.appendChild(this.createModalStat('Lap Time', lapText));
+        if (scoreboardSnapshot) {
+            this.modalStatsRow.appendChild(this.createRankModalStat(scoreboardSnapshot));
+            return;
+        }
+
+        this.modalStatsRow.appendChild(this.createModalStat('Delta', deltaText, deltaClass));
+    }
+
+    createModalStat(labelText, valueText, valueClass = '', onClick = null) {
+        const stat = onClick ? document.createElement('button') : document.createElement('span');
+        stat.className = `modal-stat-stack${onClick ? ' modal-stat-button' : ''}`;
+        if (onClick) {
+            stat.type = 'button';
+            stat.addEventListener('click', onClick);
+        }
+
+        const label = document.createElement('span');
+        label.className = 'modal-stat-label';
+        label.textContent = labelText;
+        stat.appendChild(label);
+
+        const value = document.createElement('span');
+        value.className = `modal-stat-value modal-stat-value--compact${valueClass ? ` ${valueClass}` : ''}`;
+        value.textContent = valueText;
+        stat.appendChild(value);
+
+        return stat;
+    }
+
+    createRankModalStat(scoreboardSnapshot) {
+        const hasRank = Boolean(scoreboardSnapshot?.playerRankLabel);
+        const isLoading = Boolean(scoreboardSnapshot?.isLoading);
+        const canOpenLeaderboard = Boolean(this._modalRunsPayload?.scoreboardTrackKey);
+        const stat = this.createModalStat(
+            'Rank',
+            hasRank ? scoreboardSnapshot.playerRankLabel : '',
+            'modal-stat-value--rank',
+            canOpenLeaderboard ? () => this.showModalLeaderboardPayload() : null
+        );
+        stat.dataset.modalRankStat = '';
+        const value = stat.querySelector('.modal-stat-value');
+        if (value) {
+            value.dataset.modalRankValue = '';
+            value.toggleAttribute('aria-busy', isLoading);
+            value.textContent = hasRank ? scoreboardSnapshot.playerRankLabel : (isLoading ? '' : 'N/A');
+            if (isLoading) {
+                const spinner = document.createElement('span');
+                spinner.className = 'modal-rank-spinner';
+                spinner.setAttribute('aria-hidden', 'true');
+                value.appendChild(spinner);
+            }
+        }
+        if (stat instanceof HTMLButtonElement) {
+            stat.disabled = isLoading;
+        }
+        return stat;
+    }
+
+    updateModalScoreboardSnapshot(scoreboardSnapshot) {
+        if (!this._modalRunsPayload) return;
+        this._modalRunsPayload.scoreboardSnapshot = scoreboardSnapshot || null;
+
+        const rankStat = this.modalStatsRow?.querySelector('[data-modal-rank-stat]');
+        const rankValue = this.modalStatsRow?.querySelector('[data-modal-rank-value]');
+        if (!rankStat || !rankValue) return;
+
+        if (!(rankStat instanceof HTMLButtonElement)) {
+            const nextRankStat = this.createRankModalStat(scoreboardSnapshot);
+            rankStat.replaceWith(nextRankStat);
+            return;
+        }
+
+        rankValue.replaceChildren();
+        rankValue.removeAttribute('aria-busy');
+        if (scoreboardSnapshot?.playerRankLabel) {
+            rankValue.textContent = scoreboardSnapshot.playerRankLabel;
+            rankStat.disabled = false;
+            return;
+        }
+
+        rankValue.textContent = 'N/A';
+        rankStat.disabled = false;
+    }
+
+    showModalLeaderboardPayload() {
+        if (!this._modalRunsPayload?.scoreboardTrackKey) return;
+
+        this.showTrackLeaderboardModal(
+            this._modalRunsPayload.scoreboardTrackKey,
+            this._modalRunsPayload.scoreboardMode,
+            'back'
+        );
+    }
+
+    showModalRunsPayload() {
+        if (!this._modalRunsPayload) return;
+
+        this.showRunsModal(
+            this._modalRunsPayload.lapTimesArray,
+            this._modalRunsPayload.bestTime,
+            this._modalRunsPayload.currentTime,
+            'back',
+            {
+                scoreboardSnapshot: this._modalRunsPayload.scoreboardSnapshot,
+                scoreboardMode: this._modalRunsPayload.scoreboardMode,
+                scoreboardTrackKey: this._modalRunsPayload.scoreboardTrackKey
+            }
+        );
     }
 
     createModalActionIcon(iconName) {
@@ -1580,6 +2203,15 @@ export class GameUi {
                 addPath('M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z');
                 addPath('m15 9-6 6');
                 addPath('m9 9 6 6');
+                break;
+            case 'done':
+                svg.setAttribute('fill', 'none');
+                svg.setAttribute('stroke', 'currentColor');
+                svg.setAttribute('stroke-width', '2');
+                svg.setAttribute('stroke-linecap', 'round');
+                svg.setAttribute('stroke-linejoin', 'round');
+                addPath('M21.801 10A10 10 0 1 1 17 3.335');
+                addPath('m9 11 3 3L22 4');
                 break;
             case 'retry':
                 svg.setAttribute('fill', 'none');
@@ -1651,7 +2283,6 @@ export class GameUi {
     }
 
     renderLapTimesList(container, lapTimesArray, bestTime, currentTime) {
-        container.replaceChildren();
         if (!lapTimesArray || (Array.isArray(lapTimesArray) && lapTimesArray.length === 0)) return;
 
         if (!Array.isArray(lapTimesArray)) {
@@ -1702,6 +2333,129 @@ export class GameUi {
         });
 
         container.appendChild(list);
+    }
+
+    renderScoreboardList(container, scoreboardSnapshot, scoreboardMode, trackKey = null) {
+        if (!container) return;
+        const isLoading = Boolean(scoreboardSnapshot?.isLoading);
+        const topRows = Array.isArray(scoreboardSnapshot?.topRows)
+            ? scoreboardSnapshot.topRows
+            : [];
+        const nearbyRows = Array.isArray(scoreboardSnapshot?.nearbyRows)
+            ? scoreboardSnapshot.nearbyRows
+            : [];
+        const currentPlayerRow = scoreboardSnapshot?.currentPlayerRow || null;
+        const trackMeta = trackKey && TRACKS[trackKey] ? TRACKS[trackKey] : null;
+        const trackName = trackMeta?.name || null;
+
+        const section = document.createElement('section');
+        const leaderboardOnly = container.childElementCount === 0;
+        section.className = `leaderboard-section${leaderboardOnly ? ' leaderboard-section--solo' : ''}`;
+        section.setAttribute('role', 'region');
+        section.setAttribute(
+            'aria-label',
+            trackName ? `Leaderboard for ${trackName}` : 'Global leaderboard'
+        );
+
+        const headerRow = document.createElement('div');
+        headerRow.className = 'runs-header-row leaderboard-header-row';
+
+        const headerStack = document.createElement('div');
+        headerStack.className = 'leaderboard-header-stack';
+
+        const trackLine = document.createElement('span');
+        trackLine.className = 'leaderboard-hero-track';
+        trackLine.textContent = trackName || 'This track';
+        headerStack.appendChild(trackLine);
+
+        const modeLabel = TRACK_MODE_LABELS[scoreboardMode] || 'Time trial';
+        const subhead = document.createElement('span');
+        subhead.className = 'leaderboard-subhead';
+        subhead.textContent = `Leaderboard · ${modeLabel}`;
+        headerStack.appendChild(subhead);
+        headerRow.appendChild(headerStack);
+        section.appendChild(headerRow);
+
+        if (!topRows.length && !nearbyRows.length && !currentPlayerRow) {
+            const emptyState = document.createElement('p');
+            emptyState.className = 'practice-empty-state';
+            if (isLoading) {
+                emptyState.classList.add('leaderboard-loading-state');
+                const spinner = document.createElement('span');
+                spinner.className = 'modal-rank-spinner';
+                spinner.setAttribute('aria-hidden', 'true');
+                emptyState.appendChild(spinner);
+                emptyState.appendChild(document.createTextNode('Loading leaderboard...'));
+            } else {
+                emptyState.textContent = 'No global times yet.';
+            }
+            section.appendChild(emptyState);
+            container.appendChild(section);
+            return;
+        }
+
+        const list = document.createElement('div');
+        list.className = 'lap-times-list leaderboard-list';
+
+        const appendScoreboardRow = (entry) => {
+            const item = document.createElement('div');
+            item.className = `lap-time-item leaderboard-row${entry.rank === 1 ? ' best' : ''}${entry.isCurrentPlayer ? ' current' : ''}`;
+
+            const runIndex = document.createElement('span');
+            runIndex.className = 'run-index';
+            runIndex.textContent = Number.isFinite(entry.rank)
+                ? `#${entry.rank}`
+                : (entry.rankLabel || '—');
+            item.appendChild(runIndex);
+
+            const rowLabel = document.createElement('span');
+            rowLabel.className = 'leaderboard-row-label';
+            if (entry.isCurrentPlayer) {
+                rowLabel.textContent = 'You';
+            } else {
+                rowLabel.textContent = getLeaderboardPlayerName(entry.playerId);
+            }
+            item.appendChild(rowLabel);
+
+            const runTime = document.createElement('span');
+            runTime.className = 'run-time';
+            runTime.textContent = `${entry.bestTime.toFixed(2)}s`;
+            item.appendChild(runTime);
+
+            list.appendChild(item);
+        };
+
+        topRows.forEach((entry) => appendScoreboardRow(entry));
+
+        if (nearbyRows.length) {
+            if (topRows.length > 0 && nearbyRows[0]?.rank > (topRows[topRows.length - 1]?.rank || 0) + 1) {
+                const gapRow = document.createElement('div');
+                gapRow.className = 'leaderboard-gap-row';
+                gapRow.setAttribute('aria-hidden', 'true');
+                gapRow.textContent = '· · ·';
+                list.appendChild(gapRow);
+            }
+            nearbyRows.forEach((entry) => appendScoreboardRow(entry));
+        } else if (
+            currentPlayerRow
+            && (Number.isFinite(currentPlayerRow.rank) || currentPlayerRow.rankLabel)
+            && !topRows.some((entry) => entry.playerId === currentPlayerRow.playerId)
+        ) {
+            appendScoreboardRow(currentPlayerRow);
+        }
+
+        section.appendChild(list);
+        container.appendChild(section);
+    }
+
+    centerLeaderboardCurrentRow() {
+        const list = this.modalLapTimes?.querySelector('.leaderboard-list');
+        const currentRow = list?.querySelector('.leaderboard-row.current');
+        if (!list || !currentRow || list.scrollHeight <= list.clientHeight) return;
+
+        const targetScrollTop = currentRow.offsetTop - (list.clientHeight / 2) + (currentRow.offsetHeight / 2);
+        const maxScrollTop = list.scrollHeight - list.clientHeight;
+        list.scrollTop = Math.max(0, Math.min(targetScrollTop, maxScrollTop));
     }
 
     renderPracticeLapTimesList(container, practiceSummary) {
