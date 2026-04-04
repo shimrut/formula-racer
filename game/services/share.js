@@ -2,7 +2,7 @@ import {
     buildShareImageBlob,
     getShareCaption,
     getShareFilename
-} from './share-renderer.js?v=0.81';
+} from './share-renderer.js?v=1.33';
 
 export class ShareService {
     constructor({ onStateChange, onPreviewChange }) {

@@ -1,5 +1,5 @@
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=0.03';
-import { TRACKS } from '../tracks.js?v=0.80';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.32';
+import { TRACKS } from '../tracks.js?v=1.32';
 
 const PLAYER_ID_STORAGE_KEY = 'VectorGpScoreboardPlayerId';
 const DEFAULT_SUBMIT_FUNCTION_NAME = 'scoreboard-submit';
