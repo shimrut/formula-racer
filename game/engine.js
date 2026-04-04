@@ -1,6 +1,6 @@
-import { getIntersection } from './math.js?v=0.71';
-import { CONFIG } from './config.js?v=0.71';
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=0.03';
+import { getIntersection } from './math.js?v=1.32';
+import { CONFIG } from './config.js?v=1.32';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.32';
 
 function lerpAngle(a, b, t) {
     let d = b - a;
@@ -8,17 +8,17 @@ function lerpAngle(a, b, t) {
     while (d < -Math.PI) d += 2 * Math.PI;
     return a + d * t;
 }
-import { TRACKS } from './tracks.js?v=0.80';
-import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=0.01';
-import { updateSimulation } from './core/simulation.js?v=0.73';
-import { RingBuffer } from './core/ring-buffer.js?v=0.73';
-import { saveLapTime, saveBestTime, getTrackData, hasAnyTrackData } from './storage.js?v=0.77';
-import { AnalyticsService } from './services/analytics.js?v=0.73';
-import { PlayerStatusStore } from './services/player-status.js?v=0.84';
-import { SessionFlagStore } from './services/session-flags.js?v=0.71';
-import { getScoreboardSnapshot } from './services/scoreboard.js?v=0.05';
-import { ShareService } from './services/share.js?v=0.81';
-import { GameUi } from './ui.js?v=1.15';
+import { TRACKS } from './tracks.js?v=1.32';
+import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.32';
+import { updateSimulation } from './core/simulation.js?v=1.32';
+import { RingBuffer } from './core/ring-buffer.js?v=1.32';
+import { saveLapTime, saveBestTime, getTrackData, hasAnyTrackData } from './storage.js?v=1.32';
+import { AnalyticsService } from './services/analytics.js?v=1.32';
+import { PlayerStatusStore } from './services/player-status.js?v=1.32';
+import { SessionFlagStore } from './services/session-flags.js?v=1.32';
+import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.32';
+import { ShareService } from './services/share.js?v=1.32';
+import { GameUi } from './ui.js?v=1.32';
 
 const SCOREBOARD_REPLAY_MAX_FRAMES = 20000;
 
@@ -916,7 +916,7 @@ export class RealTimeRacer {
             secondaryActionLabel: 'Done',
             secondaryActionIcon: 'done',
             secondaryAction: () => this.stopPracticeSession(),
-            shareActionLabel: 'Save',
+            shareActionLabel: 'Challenge',
             shareActionIcon: 'save'
         });
         if (practiceSharePayload) {
@@ -1264,7 +1264,7 @@ export class RealTimeRacer {
             secondaryActionLabel: 'Done',
             secondaryActionIcon: 'done',
             secondaryAction: () => this.reset(false),
-            shareActionLabel: 'Save',
+            shareActionLabel: 'Challenge',
             shareActionIcon: 'save'
         });
         // Keep the first modal frame cheap, then build the share preview after

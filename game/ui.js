@@ -1,10 +1,10 @@
-import { CONFIG } from './config.js?v=0.71';
-import { TRACKS } from './tracks.js?v=0.80';
-import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=0.03';
-import { getScoreboardSnapshot } from './services/scoreboard.js?v=0.05';
-import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=0.77';
-import { getTrackPreviewGeometry } from './core/track-assets.js?v=0.01';
-import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=0.81';
+import { CONFIG } from './config.js?v=1.32';
+import { TRACKS } from './tracks.js?v=1.32';
+import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.32';
+import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.32';
+import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=1.32';
+import { getTrackPreviewGeometry } from './core/track-assets.js?v=1.32';
+import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=1.33';
 
 /** Horizontal swipe distance (px) to change track on mobile carousel. */
 const MOBILE_CAROUSEL_SWIPE_PX = 42;
@@ -1714,7 +1714,7 @@ export class GameUi {
             Boolean(options.secondaryAction),
             options.secondaryActionIcon || null
         );
-        this.setShareButtonContent(options.shareActionLabel || 'save your time', options.shareActionIcon || 'save');
+        this.setShareButtonContent(options.shareActionLabel || 'Challenge', options.shareActionIcon || 'save');
 
         if (lapData) {
             if (this.modalMsg) this.modalMsg.style.display = 'none';
@@ -1862,7 +1862,7 @@ export class GameUi {
             this._modalRunsPayload = null;
             this._forceSharePanelVisible = false;
             this.setModalSecondaryButton('', false, null);
-            this.setShareButtonContent('save your time', 'save');
+            this.setShareButtonContent('Challenge', 'save');
             this.updateShareState({ visible: false, ready: false, busy: false });
             this.clearModalPreview();
             this.releaseModalFocusTrap(modal);
@@ -2188,6 +2188,21 @@ export class GameUi {
             svg.appendChild(circle);
         };
 
+        const addLine = (x1, y1, x2, y2) => {
+            const line = document.createElementNS(svgNs, 'line');
+            line.setAttribute('x1', x1);
+            line.setAttribute('y1', y1);
+            line.setAttribute('x2', x2);
+            line.setAttribute('y2', y2);
+            svg.appendChild(line);
+        };
+
+        const addPolyline = (points) => {
+            const polyline = document.createElementNS(svgNs, 'polyline');
+            polyline.setAttribute('points', points);
+            svg.appendChild(polyline);
+        };
+
         switch (iconName) {
             case 'play':
                 svg.setAttribute('fill', 'currentColor');
@@ -2224,8 +2239,22 @@ export class GameUi {
                 addPath('M4 13a8 8 0 0 1 8-7 8 8 0 1 1-5.3 14L4 17.6');
                 addPath('M9 17H4v5');
                 break;
-            case 'share':
             case 'save':
+                svg.setAttribute('fill', 'none');
+                svg.setAttribute('stroke', 'currentColor');
+                svg.setAttribute('stroke-width', '2');
+                svg.setAttribute('stroke-linecap', 'round');
+                svg.setAttribute('stroke-linejoin', 'round');
+                addPolyline('14.5 17.5 3 6 3 3 6 3 17.5 14.5');
+                addLine('13', '19', '19', '13');
+                addLine('16', '16', '20', '20');
+                addLine('19', '21', '21', '19');
+                addPolyline('14.5 6.5 18 3 21 3 21 6 17.5 9.5');
+                addLine('5', '14', '9', '18');
+                addLine('7', '17', '4', '20');
+                addLine('3', '19', '5', '21');
+                break;
+            case 'share':
                 svg.setAttribute('fill', 'none');
                 svg.setAttribute('stroke', 'currentColor');
                 svg.setAttribute('stroke-width', '2');
