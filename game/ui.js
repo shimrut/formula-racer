@@ -1,10 +1,10 @@
-import { CONFIG } from './config.js?v=1.35';
-import { TRACKS } from './tracks.js?v=1.35';
-import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.35';
-import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.35';
-import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=1.35';
-import { getTrackPreviewGeometry } from './core/track-assets.js?v=1.35';
-import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=1.33';
+import { CONFIG } from './config.js?v=1.36';
+import { TRACKS } from './tracks.js?v=1.36';
+import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.36';
+import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.36';
+import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=1.36';
+import { getTrackPreviewGeometry } from './core/track-assets.js?v=1.36';
+import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=1.36';
 
 /** Horizontal swipe distance (px) to change track on mobile carousel. */
 const MOBILE_CAROUSEL_SWIPE_PX = 42;

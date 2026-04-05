@@ -81,7 +81,7 @@ function buildCollisionSegmentsForPoly(poly) {
     return segments;
 }
 
-import { SpatialHash } from './spatial-hash.js?v=1.35';
+import { SpatialHash } from './spatial-hash.js?v=1.36';
 
 export function buildCollisionRuntime(geometry) {
     const segments = [
