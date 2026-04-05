@@ -1,6 +1,6 @@
-import { getIntersection } from './math.js?v=1.32';
-import { CONFIG } from './config.js?v=1.32';
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.32';
+import { getIntersection } from './math.js?v=1.35';
+import { CONFIG } from './config.js?v=1.35';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.35';
 
 function lerpAngle(a, b, t) {
     let d = b - a;
@@ -8,17 +8,17 @@ function lerpAngle(a, b, t) {
     while (d < -Math.PI) d += 2 * Math.PI;
     return a + d * t;
 }
-import { TRACKS } from './tracks.js?v=1.32';
-import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.32';
-import { updateSimulation } from './core/simulation.js?v=1.32';
-import { RingBuffer } from './core/ring-buffer.js?v=1.32';
-import { saveLapTime, saveBestTime, getTrackData, hasAnyTrackData } from './storage.js?v=1.32';
-import { AnalyticsService } from './services/analytics.js?v=1.32';
-import { PlayerStatusStore } from './services/player-status.js?v=1.32';
-import { SessionFlagStore } from './services/session-flags.js?v=1.32';
-import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.32';
-import { ShareService } from './services/share.js?v=1.32';
-import { GameUi } from './ui.js?v=1.32';
+import { TRACKS } from './tracks.js?v=1.35';
+import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.35';
+import { updateSimulation } from './core/simulation.js?v=1.35';
+import { RingBuffer } from './core/ring-buffer.js?v=1.35';
+import { saveLapTime, saveBestTime, getTrackData, hasAnyTrackData } from './storage.js?v=1.35';
+import { AnalyticsService } from './services/analytics.js?v=1.35';
+import { PlayerStatusStore } from './services/player-status.js?v=1.35';
+import { SessionFlagStore } from './services/session-flags.js?v=1.35';
+import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.35';
+import { ShareService } from './services/share.js?v=1.35';
+import { GameUi } from './ui.js?v=1.35';
 
 const SCOREBOARD_REPLAY_MAX_FRAMES = 20000;
 
@@ -135,6 +135,17 @@ export class RealTimeRacer {
         this.scoreboardReplaySegments = [];
         this.scoreboardReplayFrameCount = 0;
         this.scoreboardReplayOverflowed = false;
+        this.practiceLapReplaySegments = [];
+        this.practiceLapReplayFrameCount = 0;
+        this.practiceLapReplayOverflowed = false;
+        this.practiceLapReplayStartState = {
+            pos: { ...this.pos },
+            velocity: { ...this.velocity },
+            angle: this.angle,
+            nextCheckpointIndex: this.nextCheckpointIndex,
+            currentTime: this.currentTime,
+            relaunchDelayRemaining: this.relaunchDelayRemaining
+        };
 
         // Umami aggregates (sent once each on pagehide when that mode had any starts)
         this.trialRaceStats = {
@@ -589,16 +600,16 @@ export class RealTimeRacer {
         this.relaunchDelayRemaining = delaySeconds;
     }
 
-    persistPracticeBestTime(bestTime) {
+    persistPracticeBestTime(bestTime, replay = null) {
         const trackKey = this.currentTrackKey;
         const requestId = this.trackLoadRequestId;
 
-        const replay = this.currentIsRanked
-            ? this.getScoreboardReplayPayload(this.practiceSession?.lapCount || 1)
+        const replayPayload = this.currentIsRanked
+            ? replay
             : null;
         const savePromise = saveBestTime(trackKey, bestTime, TRACK_MODE_PRACTICE, {
             ranked: this.currentIsRanked,
-            replay
+            replay: replayPayload
         })
             .then((trackData) => {
                 if (requestId !== this.trackLoadRequestId || this.currentTrackKey !== trackKey) return;
@@ -674,20 +685,34 @@ export class RealTimeRacer {
         this.scoreboardReplaySegments = [];
         this.scoreboardReplayFrameCount = 0;
         this.scoreboardReplayOverflowed = false;
+        this.resetPracticeLapReplay();
     }
 
-    recordScoreboardReplayFrame() {
-        if (this.scoreboardReplayOverflowed) return;
+    resetPracticeLapReplay() {
+        this.practiceLapReplaySegments = [];
+        this.practiceLapReplayFrameCount = 0;
+        this.practiceLapReplayOverflowed = false;
+        // Authoritative pose when this lap's recording window opens (server must match this, not grid).
+        this.practiceLapReplayStartState = {
+            pos: { x: this.pos.x, y: this.pos.y },
+            velocity: { x: this.velocity.x, y: this.velocity.y },
+            angle: this.angle,
+            nextCheckpointIndex: this.nextCheckpointIndex,
+            currentTime: this.currentTime,
+            relaunchDelayRemaining: this.relaunchDelayRemaining
+        };
+    }
 
-        if (this.scoreboardReplayFrameCount >= SCOREBOARD_REPLAY_MAX_FRAMES) {
-            this.scoreboardReplayOverflowed = true;
+    recordReplayFrameToBuffer(segmentsKey, frameCountKey, overflowedKey, left, right, relaunchDelay) {
+        if (this[overflowedKey]) return;
+
+        if (this[frameCountKey] >= SCOREBOARD_REPLAY_MAX_FRAMES) {
+            this[overflowedKey] = true;
             return;
         }
 
-        const left = Boolean(this.keys.left);
-        const right = Boolean(this.keys.right);
-        const relaunchDelay = this.relaunchDelayRemaining > 0;
-        const lastSegment = this.scoreboardReplaySegments[this.scoreboardReplaySegments.length - 1];
+        const segments = this[segmentsKey];
+        const lastSegment = segments[segments.length - 1];
 
         if (
             lastSegment
@@ -697,7 +722,7 @@ export class RealTimeRacer {
         ) {
             lastSegment.frames += 1;
         } else {
-            this.scoreboardReplaySegments.push({
+            segments.push({
                 frames: 1,
                 left,
                 right,
@@ -705,17 +730,62 @@ export class RealTimeRacer {
             });
         }
 
-        this.scoreboardReplayFrameCount += 1;
+        this[frameCountKey] += 1;
     }
 
-    getScoreboardReplayPayload(targetLapNumber = 1) {
-        if (this.scoreboardReplayOverflowed || this.scoreboardReplayFrameCount <= 0) {
+    recordScoreboardReplayFrame() {
+        const left = Boolean(this.keys.left);
+        const right = Boolean(this.keys.right);
+        const relaunchDelay = this.relaunchDelayRemaining > 0;
+        this.recordReplayFrameToBuffer(
+            'scoreboardReplaySegments',
+            'scoreboardReplayFrameCount',
+            'scoreboardReplayOverflowed',
+            left,
+            right,
+            relaunchDelay
+        );
+        if (this.isPracticeMode()) {
+            this.recordReplayFrameToBuffer(
+                'practiceLapReplaySegments',
+                'practiceLapReplayFrameCount',
+                'practiceLapReplayOverflowed',
+                left,
+                right,
+                relaunchDelay
+            );
+        }
+    }
+
+    getReplayPayload(segmentsKey, frameCountKey, overflowedKey, targetLapNumber = 1) {
+        if (this[overflowedKey] || this[frameCountKey] <= 0) {
             return null;
         }
 
         return {
             targetLapNumber,
-            inputs: this.scoreboardReplaySegments.map((segment) => ({ ...segment }))
+            inputs: this[segmentsKey].map((segment) => ({ ...segment }))
+        };
+    }
+
+    getScoreboardReplayPayload(targetLapNumber = 1) {
+        return this.getReplayPayload(
+            'scoreboardReplaySegments',
+            'scoreboardReplayFrameCount',
+            'scoreboardReplayOverflowed',
+            targetLapNumber
+        );
+    }
+
+    getPracticeLapReplayPayload() {
+        if (this.practiceLapReplayOverflowed || this.practiceLapReplayFrameCount <= 0) {
+            return null;
+        }
+
+        return {
+            targetLapNumber: 1,
+            initialState: this.practiceLapReplayStartState,
+            inputs: this.practiceLapReplaySegments.map((segment) => ({ ...segment }))
         };
     }
 
@@ -970,6 +1040,15 @@ export class RealTimeRacer {
             this, dt, CONFIG, this.currentTrack, this.collisionSegments, getIntersection
         );
 
+        // Lap / win before practice crash reset so the same frame can both finish a legal lap
+        // and trigger a wall reset without wiping the practice replay buffer first (must match
+        // replay-validation.ts, which applies lap completion before practiceCrashReset).
+        if (events.lapCompleted) {
+            this.handlePracticeLapCompleted(events.completedLapTime);
+        }
+        if (events.winTriggered) {
+            this.handleWin(events.winData);
+        }
         if (events.practiceCrashReset) {
             this.sessionRaceStats[this.getCurrentScoreModeAnalyticsKey()].crash++;
             this.restartPracticeLapAfterCrash();
@@ -995,18 +1074,15 @@ export class RealTimeRacer {
                 secondaryActionIcon: 'done'
             });
         }
-        if (events.lapCompleted) {
-            this.handlePracticeLapCompleted(events.completedLapTime);
-        }
-        if (events.winTriggered) {
-            this.handleWin(events.winData);
-        }
     }
 
     handlePracticeLapCompleted(lapTime) {
         if (!this.isPracticeMode() || !this.practiceSession || lapTime === null || lapTime === undefined) return;
 
         const lapNumber = this.practiceSession.lapCount + 1;
+        const completedLapReplay = this.currentIsRanked
+            ? this.getPracticeLapReplayPayload()
+            : null;
         this.recordRunPoint(this.pos);
         const runHistorySnapshot = this.runHistory.toArray();
         const bestLapBeforeCurrent = this.bestTimesByMode[TRACK_MODE_PRACTICE];
@@ -1032,7 +1108,7 @@ export class RealTimeRacer {
             this.bestTimesByMode[TRACK_MODE_PRACTICE] = lapTime;
             this.bestLapTime = this.currentModeKey === TRACK_MODE_PRACTICE ? lapTime : this.bestLapTime;
             this.practiceSession.hasNewPersonalBest = true;
-            this.persistPracticeBestTime(lapTime);
+            this.persistPracticeBestTime(lapTime, completedLapReplay);
         }
 
         if (!this.practiceSession.bestLap || lapTime < this.practiceSession.bestLap.time) {
@@ -1050,6 +1126,7 @@ export class RealTimeRacer {
         this.runHistory.clear();
         this.runHistoryTimer = 0;
         this.trailTimer = 0;
+        this.resetPracticeLapReplay();
         this.recordRunPoint(this.pos);
         this.ui.setBestTime(this.bestLapTime, {
             trackKey: this.currentTrackKey,
@@ -1085,6 +1162,7 @@ export class RealTimeRacer {
         this.runHistory.clear();
         this.runHistoryTimer = 0;
         this.trailTimer = 0;
+        this.resetPracticeLapReplay();
         this.recordRunPoint(this.pos);
         this.ui.syncHud({ time: 0, speed: 0, force: true });
         this.requestRender();
