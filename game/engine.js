@@ -1,6 +1,6 @@
-import { getIntersection } from './math.js?v=1.35';
-import { CONFIG } from './config.js?v=1.35';
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.35';
+import { getIntersection } from './math.js?v=1.36';
+import { CONFIG } from './config.js?v=1.36';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.36';
 
 function lerpAngle(a, b, t) {
     let d = b - a;
@@ -8,17 +8,17 @@ function lerpAngle(a, b, t) {
     while (d < -Math.PI) d += 2 * Math.PI;
     return a + d * t;
 }
-import { TRACKS } from './tracks.js?v=1.35';
-import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.35';
-import { updateSimulation } from './core/simulation.js?v=1.35';
-import { RingBuffer } from './core/ring-buffer.js?v=1.35';
-import { saveLapTime, saveBestTime, getTrackData, hasAnyTrackData } from './storage.js?v=1.35';
-import { AnalyticsService } from './services/analytics.js?v=1.35';
-import { PlayerStatusStore } from './services/player-status.js?v=1.35';
-import { SessionFlagStore } from './services/session-flags.js?v=1.35';
-import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.35';
-import { ShareService } from './services/share.js?v=1.35';
-import { GameUi } from './ui.js?v=1.35';
+import { TRACKS } from './tracks.js?v=1.36';
+import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.36';
+import { updateSimulation } from './core/simulation.js?v=1.36';
+import { RingBuffer } from './core/ring-buffer.js?v=1.36';
+import { saveLapTime, saveBestTime, getTrackData, hasAnyTrackData } from './storage.js?v=1.36';
+import { AnalyticsService } from './services/analytics.js?v=1.36';
+import { PlayerStatusStore } from './services/player-status.js?v=1.36';
+import { SessionFlagStore } from './services/session-flags.js?v=1.36';
+import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.36';
+import { ShareService } from './services/share.js?v=1.36';
+import { GameUi } from './ui.js?v=1.36';
 
 const SCOREBOARD_REPLAY_MAX_FRAMES = 20000;
 

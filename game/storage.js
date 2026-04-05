@@ -1,6 +1,6 @@
 // IndexedDB storage for lap times
-import { DEFAULT_TRACK_PREFERENCES, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.35';
-import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.35';
+import { DEFAULT_TRACK_PREFERENCES, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.36';
+import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.36';
 
 const DB_NAME = 'RacerLapTimes';
 const DB_VERSION = 1;
