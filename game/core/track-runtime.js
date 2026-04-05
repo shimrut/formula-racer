@@ -8,7 +8,9 @@ export function smoothPoly(points, radius, qualityLevel, frameSkip) {
 
     const newPoints = [];
     const len = uniquePoints.length;
-    const steps = (qualityLevel > 0 || frameSkip > 0) ? 3 : 5;
+    // Fixed 5 steps: must match supabase/functions/scoreboard-submit/replay-validation.ts
+    // so collision (and scoreboard replays) match the server validator on all devices.
+    const steps = 5;
 
     for (let i = 0; i < len; i++) {
         const prev = uniquePoints[(i - 1 + len) % len];
@@ -79,7 +81,7 @@ function buildCollisionSegmentsForPoly(poly) {
     return segments;
 }
 
-import { SpatialHash } from './spatial-hash.js?v=1.32';
+import { SpatialHash } from './spatial-hash.js?v=1.35';
 
 export function buildCollisionRuntime(geometry) {
     const segments = [

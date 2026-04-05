@@ -60,25 +60,17 @@ export function createSparkParticles(pos, count, sparkColor) {
     return particles;
 }
 
-// Reusable buffer for spatial hash query results (zero alloc after first use)
-const _queryBuffer = [];
-
 export function checkWallCollision(p1, p2, collisionHash, carRadius, getIntersection) {
     if (!collisionHash || collisionHash.length === 0) return false;
 
     const carRadiusSq = carRadius * carRadius;
-    const minX = Math.min(p1.x, p2.x) - carRadius;
-    const maxX = Math.max(p1.x, p2.x) + carRadius;
-    const minY = Math.min(p1.y, p2.y) - carRadius;
-    const maxY = Math.max(p1.y, p2.y) + carRadius;
 
-    // Query spatial hash for only nearby segments
-    const nearby = collisionHash.query
-        ? collisionHash.query(minX, minY, maxX, maxY, _queryBuffer)
-        : collisionHash; // Fallback: plain array (no spatial hash)
+    // Always test every segment (same as scoreboard replay-validation on the server).
+    // Spatial-hash queries can omit walls in edge cases, which desyncs replays from validation.
+    const segments = collisionHash._segments ? collisionHash._segments : collisionHash;
 
-    for (let i = 0; i < nearby.length; i++) {
-        const segment = nearby[i];
+    for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
 
         if (getIntersection(p1, p2, segment.start, segment.end)) return true;
 

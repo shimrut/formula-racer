@@ -1,5 +1,5 @@
-import { buildTrackCanvas } from './track-canvas.js?v=1.32';
-import { buildCollisionRuntime, buildTrackGeometry } from './track-runtime.js?v=1.32';
+import { buildTrackCanvas } from './track-canvas.js?v=1.35';
+import { buildCollisionRuntime, buildTrackGeometry } from './track-runtime.js?v=1.35';
 
 const geometryCache = new Map();
 const runtimeCache = new Map();
