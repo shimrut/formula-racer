@@ -1,5 +1,5 @@
 import { getIntersection } from './math.js?v=1.36';
-import { CONFIG } from './config.js?v=1.36';
+import { CONFIG } from './config.js?v=1.37';
 import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.36';
 
 function lerpAngle(a, b, t) {
