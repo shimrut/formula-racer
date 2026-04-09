@@ -1,5 +1,4 @@
-import { getIntersection } from './math.js?v=1.36';
-import { CONFIG } from './config.js?v=1.37';
+import { CONFIG } from './config.js?v=1.36';
 import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.36';
 
 function lerpAngle(a, b, t) {
@@ -10,17 +9,25 @@ function lerpAngle(a, b, t) {
 }
 import { TRACKS } from './tracks.js?v=1.36';
 import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.36';
-import { updateSimulation } from './core/simulation.js?v=1.36';
+import { updateSimulation } from './core/simulation.js?v=1.53';
 import { RingBuffer } from './core/ring-buffer.js?v=1.36';
 import { saveLapTime, saveBestTime, getTrackData, hasAnyTrackData } from './storage.js?v=1.36';
 import { AnalyticsService } from './services/analytics.js?v=1.36';
 import { PlayerStatusStore } from './services/player-status.js?v=1.36';
 import { SessionFlagStore } from './services/session-flags.js?v=1.36';
-import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.36';
 import { ShareService } from './services/share.js?v=1.36';
-import { GameUi } from './ui.js?v=1.36';
+import { GameUi } from './ui.js?v=1.55';
 
 const SCOREBOARD_REPLAY_MAX_FRAMES = 20000;
+
+/** Camera look-ahead uses clamped dt so uneven frame times don't swing smoothing strength. */
+const CAMERA_DT_MIN_S = 1 / 120;
+const CAMERA_DT_MAX_S = 1 / 45;
+/** Adaptive quality: hysteresis on rolling avg frame time (ms) to avoid frameSkip flicker. */
+const FRAME_SKIP_ENTER_MS = 22;
+const FRAME_SKIP_EXIT_MS = 18;
+/** Skid polyline: break stroke when consecutive samples are farther apart (new skid after a gap). Grid units². */
+const SKID_GAP_BREAK_DIST_SQ = 0.45 * 0.45;
 
 function shouldExposeDebugHooks() {
     if (typeof window === 'undefined') return false;
@@ -361,7 +368,8 @@ export class RealTimeRacer {
         this.ui.setBestTime(this.bestLapTime, {
             trackKey: this.currentTrackKey,
             mode: this.currentModeKey,
-            ranked: this.currentIsRanked
+            ranked: this.currentIsRanked,
+            persistToTrackCard: false
         });
     }
 
@@ -825,8 +833,8 @@ export class RealTimeRacer {
         this.currentTrack = nextTrack;
         this.currentTrackKey = trackKey;
 
-        // Sync selector
-        this.ui.setTrackSelection(trackKey);
+        // Sync carousel highlight only — do not prefetch leaderboard (that is for the track picker).
+        this.ui.setTrackSelection(trackKey, { refreshRankSnapshots: false });
 
         const trackAssetOptions = {
             qualityLevel: this.qualityLevel,
@@ -836,7 +844,7 @@ export class RealTimeRacer {
         this.activeGeometry.outer = runtime.outer;
         this.activeGeometry.inner = runtime.inner;
         this.collisionSegments = runtime.collisionSegments;
-        this.collisionHash = runtime.collisionHash;
+        this.collisionHash = null;
         const trackCanvasRuntime = getTrackCanvasAsset(trackKey, this.currentTrack, trackAssetOptions);
         this.trackCanvas = trackCanvasRuntime.canvas;
         this.trackCanvasOrigin = trackCanvasRuntime.origin;
@@ -1002,11 +1010,7 @@ export class RealTimeRacer {
         if (!hasPracticePb || !this.currentIsRanked) return;
 
         Promise.resolve(this.pendingPracticeBestSavePromise || null)
-            .then(() => getScoreboardSnapshot({
-                trackKey,
-                mode: TRACK_MODE_PRACTICE,
-                limit: 10
-            }))
+            .then(() => this.ui.requestReturningTrackRankSnapshot(trackKey, TRACK_MODE_PRACTICE, true))
             .then((scoreboardSnapshot) => {
                 if (requestId !== this.trackLoadRequestId || this.currentTrackKey !== trackKey) return;
                 this.ui.updateModalScoreboardSnapshot(scoreboardSnapshot);
@@ -1037,7 +1041,7 @@ export class RealTimeRacer {
         // Mutate-in-place: simulation writes directly to `this.*` fields.
         // Only event flags are returned (via a reused object).
         const events = updateSimulation(
-            this, dt, CONFIG, this.currentTrack, this.collisionSegments, getIntersection
+            this, dt, CONFIG, this.currentTrack, this.collisionSegments
         );
 
         // Lap / win before practice crash reset so the same frame can both finish a legal lap
@@ -1131,7 +1135,8 @@ export class RealTimeRacer {
         this.ui.setBestTime(this.bestLapTime, {
             trackKey: this.currentTrackKey,
             mode: TRACK_MODE_PRACTICE,
-            ranked: this.currentIsRanked
+            ranked: this.currentIsRanked,
+            persistToTrackCard: isPersistedBest
         });
         this.ui.setHudPersonalBestsOpenAllowed(true);
         this.ui.showPracticeLapFlash({
@@ -1298,7 +1303,8 @@ export class RealTimeRacer {
             trackKey,
             mode: TRACK_MODE_STANDARD,
             ranked: this.currentIsRanked,
-            scoreboardSubmitPromise: trackData.scoreboardSubmitPromise || null
+            scoreboardSubmitPromise: trackData.scoreboardSubmitPromise || null,
+            persistToTrackCard: Boolean(trackData.scoreboardSubmitPromise)
         });
         this.ui.setHudPersonalBestsOpenAllowed(true);
 
@@ -1360,11 +1366,7 @@ export class RealTimeRacer {
         if (!isNewBest || !this.currentIsRanked) return;
 
         Promise.resolve(trackData.scoreboardSubmitPromise || null)
-            .then(() => getScoreboardSnapshot({
-                trackKey,
-                mode: TRACK_MODE_STANDARD,
-                limit: 10
-            }))
+            .then(() => this.ui.requestReturningTrackRankSnapshot(trackKey, TRACK_MODE_STANDARD, true))
             .then((scoreboardSnapshot) => {
                 if (trackLoadRequestId !== this.trackLoadRequestId || this.currentTrackKey !== trackKey) return;
                 this.ui.updateModalScoreboardSnapshot(scoreboardSnapshot);
@@ -1387,24 +1389,11 @@ export class RealTimeRacer {
         if (this.isPracticeMode()) {
             const practiceSummary = this.getPracticeSummary();
             if (!practiceSummary.bestLap) return;
-            const trackKey = this.currentTrackKey;
-            const requestId = this.trackLoadRequestId;
             const returnMode = this.ui.isModalActive() ? 'back' : 'close';
-            const scoreboardSnapshot = this.currentIsRanked
-                ? await getScoreboardSnapshot({
-                    trackKey,
-                    mode: TRACK_MODE_PRACTICE,
-                    limit: 10
-                }).catch((error) => {
-                    console.error('Error loading session leaderboard:', error);
-                    return null;
-                })
-                : null;
-            if (requestId !== this.trackLoadRequestId || this.currentTrackKey !== trackKey) return;
             this.ui.showRunsModal(practiceSummary, practiceSummary.bestLap.time, null, returnMode, {
-                scoreboardSnapshot,
+                showGlobalLeaderboard: false,
                 scoreboardMode: TRACK_MODE_PRACTICE,
-                scoreboardTrackKey: trackKey
+                scoreboardTrackKey: this.currentTrackKey
             });
             return;
         }
@@ -1414,26 +1403,14 @@ export class RealTimeRacer {
         const trackKey = this.currentTrackKey;
         const requestId = this.trackLoadRequestId;
         try {
-            const [trackData, scoreboardSnapshot] = await Promise.all([
-                getTrackData(trackKey),
-                this.currentIsRanked
-                    ? getScoreboardSnapshot({
-                        trackKey,
-                        mode: TRACK_MODE_STANDARD,
-                        limit: 10
-                    }).catch((error) => {
-                        console.error('Error loading time trial leaderboard:', error);
-                        return null;
-                    })
-                    : Promise.resolve(null)
-            ]);
+            const trackData = await getTrackData(trackKey);
             if (requestId !== this.trackLoadRequestId || this.currentTrackKey !== trackKey) return;
             const lapTimes = this.currentIsRanked ? trackData.rankedLapTimes : trackData.lapTimes;
             const bestTime = this.currentIsRanked ? trackData.rankedBestTime : trackData.bestTime;
             if (!lapTimes?.length || bestTime === null || bestTime === undefined) return;
             const returnMode = this.ui.isModalActive() ? 'back' : 'close';
             this.ui.showRunsModal(lapTimes, bestTime, null, returnMode, {
-                scoreboardSnapshot,
+                showGlobalLeaderboard: false,
                 scoreboardMode: TRACK_MODE_STANDARD,
                 scoreboardTrackKey: trackKey
             });
@@ -1627,10 +1604,11 @@ export class RealTimeRacer {
 
         const desiredLookAhead = this.getDesiredLookAhead(speed, cw, ch, mobileCameraMode);
 
-        // Keep the original camera lead response; only the rendered car uses corrected interpolation.
-        // Mobile uses a softer smoothing constant to absorb frame-rate variance (12x multiplier amplifies jitter).
         const smoothSpeed = mobileCameraMode ? 2 : 4;
-        const lerpFactor = 1 - Math.exp(-dt * smoothSpeed);
+        const cameraDt = dt > 0
+            ? Math.min(Math.max(dt, CAMERA_DT_MIN_S), CAMERA_DT_MAX_S)
+            : 0;
+        const lerpFactor = cameraDt > 0 ? 1 - Math.exp(-cameraDt * smoothSpeed) : 0;
 
         this._lookAheadX += (desiredLookAhead.x - this._lookAheadX) * lerpFactor;
         this._lookAheadY += (desiredLookAhead.y - this._lookAheadY) * lerpFactor;
@@ -1650,26 +1628,48 @@ export class RealTimeRacer {
             ctx.drawImage(this.trackCanvas, this.trackCanvasOrigin.x, this.trackCanvasOrigin.y);
         }
 
-        // 4. Skid Marks — ring buffer with pre-computed cos/sin
+        // 4. Skid marks — two stroked polylines (perp offset from stored heading); cheap vs hundreds of setTransform+fillRect.
         if (this.skidMarks.length > 0) {
-            ctx.fillStyle = CONFIG.skidColor;
             const startIdx = this.frameSkip > 0 ? Math.max(0, this.skidMarks.length - 50) : 0;
+            const len = this.skidMarks.length;
+            const tw = 0.17;
             const z = this.zoom;
-            const cx = this.camera.x;
-            const cy = this.camera.y;
 
-            for (let i = startIdx; i < this.skidMarks.length; i++) {
+            ctx.save();
+            ctx.strokeStyle = CONFIG.skidColor;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.lineWidth = Math.max(3.4, 4.2 / z);
+
+            const m0 = this.skidMarks.get(startIdx);
+            ctx.beginPath();
+            ctx.moveTo((m0.x - m0.sin * tw) * gs, (m0.y + m0.cos * tw) * gs);
+            for (let i = startIdx + 1; i < len; i++) {
+                const prev = this.skidMarks.get(i - 1);
                 const m = this.skidMarks.get(i);
-                const mx = m.x * gs;
-                const my = m.y * gs;
-                const a = z * m.cos;
-                const b = z * m.sin;
-                ctx.setTransform(a, b, -b, a, z * (mx - cx), z * (my - cy));
-                ctx.fillRect(-10, -5, 4, 10);
-                ctx.fillRect(-10, 5, 4, 10);
+                const dx = m.x - prev.x;
+                const dy = m.y - prev.y;
+                const lx = (m.x - m.sin * tw) * gs;
+                const ly = (m.y + m.cos * tw) * gs;
+                if (dx * dx + dy * dy > SKID_GAP_BREAK_DIST_SQ) ctx.moveTo(lx, ly);
+                else ctx.lineTo(lx, ly);
             }
-            // Restore parent transform (zoom + camera offset)
-            ctx.setTransform(z, 0, 0, z, -cx * z, -cy * z);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo((m0.x + m0.sin * tw) * gs, (m0.y - m0.cos * tw) * gs);
+            for (let i = startIdx + 1; i < len; i++) {
+                const prev = this.skidMarks.get(i - 1);
+                const m = this.skidMarks.get(i);
+                const dx = m.x - prev.x;
+                const dy = m.y - prev.y;
+                const rx = (m.x + m.sin * tw) * gs;
+                const ry = (m.y - m.cos * tw) * gs;
+                if (dx * dx + dy * dy > SKID_GAP_BREAK_DIST_SQ) ctx.moveTo(rx, ry);
+                else ctx.lineTo(rx, ry);
+            }
+            ctx.stroke();
+            ctx.restore();
         }
 
         // 4.5 Route Trace (Always Visible) — ring buffer iteration
@@ -1691,13 +1691,35 @@ export class RealTimeRacer {
             ctx.stroke();
         }
 
-        // 8. Particles
+        // 8. Particles — batch by color + quantized alpha to cut fill() calls
         if (this.particles.length > 0) {
-            for (const p of this.particles) {
-                ctx.fillStyle = p.color;
-                ctx.globalAlpha = p.life / p.maxLife;
+            const buckets = new Map();
+            for (let i = 0; i < this.particles.length; i++) {
+                const p = this.particles[i];
+                const rawA = p.maxLife > 0 ? p.life / p.maxLife : 0;
+                const aQ = Math.round(rawA * 12) / 12;
+                const key = `${p.color}\0${aQ}`;
+                let list = buckets.get(key);
+                if (!list) {
+                    list = [];
+                    buckets.set(key, list);
+                }
+                list.push(p);
+            }
+            for (const [key, list] of buckets) {
+                const sep = key.indexOf('\0');
+                const color = key.slice(0, sep);
+                const alpha = Number(key.slice(sep + 1));
+                ctx.fillStyle = color;
+                ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
                 ctx.beginPath();
-                ctx.arc(p.x * gs, p.y * gs, p.size, 0, Math.PI * 2);
+                for (let j = 0; j < list.length; j++) {
+                    const p = list[j];
+                    const px = p.x * gs;
+                    const py = p.y * gs;
+                    ctx.moveTo(px + p.size, py);
+                    ctx.arc(px, py, p.size, 0, Math.PI * 2);
+                }
                 ctx.fill();
             }
             ctx.globalAlpha = 1.0;
@@ -1739,10 +1761,12 @@ export class RealTimeRacer {
                 this.frameTimeHistoryIndex = (this.frameTimeHistoryIndex + 1) % 10;
             }
 
-            // Calculate average frame time
             const avgFrameTime = this.frameTimeTotal / this.frameTimeHistory.length;
-            // If average frame time > 20ms (below 50fps), reduce quality
-            this.frameSkip = avgFrameTime > 20 ? 1 : 0;
+            if (this.frameSkip) {
+                if (avgFrameTime < FRAME_SKIP_EXIT_MS) this.frameSkip = 0;
+            } else if (avgFrameTime > FRAME_SKIP_ENTER_MS) {
+                this.frameSkip = 1;
+            }
 
             // Fixed timestep: run physics at 60Hz for consistent movement
             this.accumulator += rawDt;
