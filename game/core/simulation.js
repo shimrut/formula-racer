@@ -1,3 +1,5 @@
+import { segmentsIntersect } from '../math.js?v=1.53';
+
 /**
  * Mutate-in-place simulation. The `state` object (the engine instance) is
  * modified directly — no packing, no return-object copy-back. Only the
@@ -60,19 +62,18 @@ export function createSparkParticles(pos, count, sparkColor) {
     return particles;
 }
 
-export function checkWallCollision(p1, p2, collisionHash, carRadius, getIntersection) {
-    if (!collisionHash || collisionHash.length === 0) return false;
+export function checkWallCollision(p1, p2, wallSegments, carRadius) {
+    if (!wallSegments || wallSegments.length === 0) return false;
 
     const carRadiusSq = carRadius * carRadius;
 
     // Always test every segment (same as scoreboard replay-validation on the server).
-    // Spatial-hash queries can omit walls in edge cases, which desyncs replays from validation.
-    const segments = collisionHash._segments ? collisionHash._segments : collisionHash;
+    const segments = wallSegments._segments ? wallSegments._segments : wallSegments;
 
     for (let i = 0; i < segments.length; i++) {
         const segment = segments[i];
 
-        if (getIntersection(p1, p2, segment.start, segment.end)) return true;
+        if (segmentsIntersect(p1, p2, segment.start, segment.end)) return true;
 
         const ax = p2.x - segment.start.x;
         const ay = p2.y - segment.start.y;
@@ -104,8 +105,8 @@ export function checkWallCollision(p1, p2, collisionHash, carRadius, getIntersec
     return false;
 }
 
-export function checkFinishLine(p1, p2, startLine, getIntersection) {
-    return !!getIntersection(p1, p2, startLine.p1, startLine.p2);
+export function checkFinishLine(p1, p2, startLine) {
+    return segmentsIntersect(p1, p2, startLine.p1, startLine.p2);
 }
 
 /**
@@ -113,7 +114,7 @@ export function checkFinishLine(p1, p2, startLine, getIntersection) {
  * Returns the shared `_events` descriptor (valid until the next call).
  */
 export function updateSimulation(
-    state, dt, config, currentTrack, collisionSegments, getIntersection
+    state, dt, config, currentTrack, collisionSegments
 ) {
     resetEvents();
 
@@ -140,19 +141,19 @@ export function updateSimulation(
             _nextPos.x = state.pos.x + state.velocity.x * dt;
             _nextPos.y = state.pos.y + state.velocity.y * dt;
 
-            const hitWall = checkWallCollision(state.pos, _nextPos, state.collisionHash || collisionSegments, config.carRadius, getIntersection);
+            const hitWall = checkWallCollision(state.pos, _nextPos, state.collisionHash || collisionSegments, config.carRadius);
 
             // Checkpoint detection
             const checkpoints = currentTrack.checkpoints || [];
             if (state.nextCheckpointIndex < checkpoints.length) {
                 const cp = checkpoints[state.nextCheckpointIndex];
-                if (getIntersection(state.pos, _nextPos, cp.p1, cp.p2)) {
+                if (segmentsIntersect(state.pos, _nextPos, cp.p1, cp.p2)) {
                     state.nextCheckpointIndex++;
                 }
             }
 
             // Finish line
-            const crossedFinish = checkFinishLine(state.pos, _nextPos, currentTrack.startLine, getIntersection);
+            const crossedFinish = checkFinishLine(state.pos, _nextPos, currentTrack.startLine);
             const allPassed = checkpoints.length === 0 || state.nextCheckpointIndex >= checkpoints.length;
             if (crossedFinish) {
                 if (allPassed && state.currentTime >= 2.0) {

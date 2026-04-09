@@ -1,13 +1,15 @@
 import { CONFIG } from './config.js?v=1.36';
 import { TRACKS } from './tracks.js?v=1.36';
 import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.36';
-import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.36';
+import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.45';
 import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=1.36';
 import { getTrackPreviewGeometry } from './core/track-assets.js?v=1.36';
 import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=1.36';
 
 /** Horizontal swipe distance (px) to change track on mobile carousel. */
 const MOBILE_CAROUSEL_SWIPE_PX = 42;
+/** Speed readout: cap DOM writes (lap timer updates every frame when centiseconds change). */
+const HUD_SPEED_MIN_MS = 1000 / 15;
 const TRACK_CARD_RANK_CACHE_MS = 10 * 60 * 1000;
 const TRACK_CARD_LEADERBOARD_TOP_LIMIT = 10;
 const TRACK_CARD_RANK_PREFETCH_COUNT = 3;
@@ -525,11 +527,15 @@ export class GameUi {
         button.addEventListener('mouseleave', release);
     }
 
-    setTrackSelection(trackKey) {
+    /**
+     * @param {object} [options]
+     * @param {boolean} [options.refreshRankSnapshots=true] Set false when syncing engine track (e.g. loadTrack) — carousel rank fetch is for the picker only.
+     */
+    setTrackSelection(trackKey, { refreshRankSnapshots = true } = {}) {
         if (!trackKey) return;
 
         this._currentTrackKey = trackKey;
-        this.setReturningTrackSelection(trackKey, { scrollIntoView: true });
+        this.setReturningTrackSelection(trackKey, { scrollIntoView: true, refreshRankSnapshots });
     }
 
     getTrackPreferences(trackKey) {
@@ -549,7 +555,8 @@ export class GameUi {
         const updated = saveTrackPreferences(trackKey, nextPreferences);
         this._trackPreferences.set(trackKey, updated);
         this.refreshReturningTrackPersonalBest(trackKey);
-        this.updateVisibleTrackRanks(trackKey);
+        // Mode/ranked only affects this card — do not prefetch neighbor tracks (avoids 3× snapshot load + preflights).
+        this.updateVisibleTrackRanks(trackKey, { prefetchNeighbors: false });
         this.updateTrackModeControls();
         this.updateReturningPlayerStartButton();
     }
@@ -572,17 +579,31 @@ export class GameUi {
     }
 
     syncHud({ time, speed, force = false }) {
+        const now = typeof performance !== 'undefined' ? performance.now() : 0;
         const timeText = time.toFixed(2);
-        if (force || this._lastTimeText !== timeText) {
+        const speedText = Math.round(speed * 20).toString();
+
+        if (force) {
+            if (this.timeVal) this.timeVal.textContent = timeText;
+            this._lastTimeText = timeText;
+            if (this.speedVal) this.speedVal.textContent = speedText;
+            if (this.mobileSpeedVal) this.mobileSpeedVal.textContent = speedText;
+            this._lastSpeedText = speedText;
+            this._lastHudSpeedWrite = now;
+            return;
+        }
+
+        if (this._lastTimeText !== timeText) {
             if (this.timeVal) this.timeVal.textContent = timeText;
             this._lastTimeText = timeText;
         }
 
-        const speedText = Math.round(speed * 20).toString();
-        if (force || this._lastSpeedText !== speedText) {
+        const speedDue = !this._lastHudSpeedWrite || (now - this._lastHudSpeedWrite) >= HUD_SPEED_MIN_MS;
+        if (speedDue && this._lastSpeedText !== speedText) {
             if (this.speedVal) this.speedVal.textContent = speedText;
             if (this.mobileSpeedVal) this.mobileSpeedVal.textContent = speedText;
             this._lastSpeedText = speedText;
+            this._lastHudSpeedWrite = now;
         }
     }
 
@@ -592,6 +613,7 @@ export class GameUi {
         if (this.mobileSpeedVal) this.mobileSpeedVal.textContent = '0';
         this._lastTimeText = '0.00';
         this._lastSpeedText = '0';
+        this._lastHudSpeedWrite = undefined;
     }
 
     /** PB shown on track cards after bulk load; used to avoid HUD flicker while switching tracks. */
@@ -975,6 +997,19 @@ export class GameUi {
         return this.getFreshReturningTrackRankCache(trackKey, mode, ranked)?.scoreboardSnapshot || null;
     }
 
+    hasLoadedTrackPersonalBestState(trackKey) {
+        return Boolean(trackKey) && this._returningTrackPersonalBests.has(trackKey);
+    }
+
+    hasTrackPersonalBest(trackKey, mode, ranked = false) {
+        if (!trackKey || !mode || !this.hasLoadedTrackPersonalBestState(trackKey)) return false;
+
+        const personalBestState = this._returningTrackPersonalBests.get(trackKey);
+        const namespace = ranked ? 'ranked' : 'local';
+        const bestTime = personalBestState?.[namespace]?.[mode];
+        return bestTime !== null && bestTime !== undefined;
+    }
+
     async requestReturningTrackRankSnapshot(trackKey, mode, ranked = false) {
         if (!trackKey || !TRACKS[trackKey] || !ranked) return null;
 
@@ -1035,13 +1070,17 @@ export class GameUi {
             ? TRACK_MODE_PRACTICE
             : TRACK_MODE_STANDARD;
         const isRanked = Boolean(preferences.ranked);
-        const personalBestState = this._returningTrackPersonalBests.get(trackKey);
         if (!isRanked) {
             this.invalidateReturningTrackRankSnapshot(trackKey, mode, false);
             this.refreshReturningTrackPersonalBest(trackKey);
             return;
         }
-        if (!personalBestState) {
+        if (!this.hasLoadedTrackPersonalBestState(trackKey)) {
+            this.refreshReturningTrackPersonalBest(trackKey);
+            return;
+        }
+        if (!this.hasTrackPersonalBest(trackKey, mode, true)) {
+            this.invalidateReturningTrackRankSnapshot(trackKey, mode, true);
             this.refreshReturningTrackPersonalBest(trackKey);
             return;
         }
@@ -1053,7 +1092,16 @@ export class GameUi {
         return this.requestReturningTrackRankSnapshot(trackKey, mode, true);
     }
 
-    updateVisibleTrackRanks(trackKey) {
+    /**
+     * Refreshes leaderboard rank for track card(s). Neighbor prefetch warms the next carousel slides;
+     * skip it when only this track's preferences changed (mode/ranked) to avoid redundant Supabase traffic.
+     */
+    updateVisibleTrackRanks(trackKey, { prefetchNeighbors = true } = {}) {
+        if (!trackKey) return;
+        if (!prefetchNeighbors) {
+            this.refreshReturningTrackRankSnapshot(trackKey);
+            return;
+        }
         this.getTrackCardRankPrefetchKeys(trackKey).forEach((prefetchTrackKey) => {
             this.refreshReturningTrackRankSnapshot(prefetchTrackKey);
         });
@@ -1271,7 +1319,7 @@ export class GameUi {
         this.setReturningTrackSelection(nextTrackKey, { scrollIntoView: true, syncPreviewTrack: true });
     }
 
-    setReturningTrackSelection(trackKey, { scrollIntoView = false, syncPreviewTrack = false } = {}) {
+    setReturningTrackSelection(trackKey, { scrollIntoView = false, syncPreviewTrack = false, refreshRankSnapshots = true } = {}) {
         if (!trackKey || !this._returningTrackCards.has(trackKey)) return;
 
         if (this._selectedReturningTrackKey === trackKey) {
@@ -1279,7 +1327,9 @@ export class GameUi {
                 this.updateReturningTrackSlider();
             }
             this.updateVisibleTrackPreviews(trackKey);
-            this.updateVisibleTrackRanks(trackKey);
+            if (refreshRankSnapshots) {
+                this.updateVisibleTrackRanks(trackKey);
+            }
             if (syncPreviewTrack && this._onPreviewTrack) {
                 this._onPreviewTrack(trackKey);
             }
@@ -1301,7 +1351,9 @@ export class GameUi {
         });
 
         this.updateVisibleTrackPreviews(trackKey);
-        this.updateVisibleTrackRanks(trackKey);
+        if (refreshRankSnapshots) {
+            this.updateVisibleTrackRanks(trackKey);
+        }
         this.updateReturningTrackSlider();
         if (syncPreviewTrack && this._onPreviewTrack) {
             this._onPreviewTrack(trackKey);
@@ -1700,7 +1752,8 @@ export class GameUi {
                 currentTime: lapData.lapTime ?? null,
                 scoreboardTrackKey: lapData.scoreboardTrackKey || this._currentTrackKey || null,
                 scoreboardSnapshot: lapData.scoreboardSnapshot ?? null,
-                scoreboardMode: lapData.scoreboardMode || TRACK_MODE_STANDARD
+                scoreboardMode: lapData.scoreboardMode || TRACK_MODE_STANDARD,
+                showGlobalLeaderboard: lapData.showGlobalLeaderboard !== false
             }
             : null;
         this._forceSharePanelVisible = Boolean(options.forceSharePanelVisible);
@@ -1813,7 +1866,8 @@ export class GameUi {
     showRunsModal(lapTimesArray, bestTime, currentTime = null, returnMode = 'close', {
         scoreboardSnapshot = null,
         scoreboardMode = TRACK_MODE_STANDARD,
-        scoreboardTrackKey = null
+        scoreboardTrackKey = null,
+        showGlobalLeaderboard = true
     } = {}) {
         if (!this.modal || !this.modalTitle || !this.modalLapTimes || !this.modalRunsView || !this.modalMainView) return;
 
@@ -1823,7 +1877,9 @@ export class GameUi {
         this.modalLapTimes.replaceChildren();
         this.renderLapTimesList(this.modalLapTimes, lapTimesArray, bestTime, currentTime);
         const trackKey = scoreboardTrackKey || this._currentTrackKey || null;
-        this.renderScoreboardList(this.modalLapTimes, scoreboardSnapshot, scoreboardMode, trackKey);
+        if (showGlobalLeaderboard) {
+            this.renderScoreboardList(this.modalLapTimes, scoreboardSnapshot, scoreboardMode, trackKey);
+        }
         this._runsViewMode = returnMode === 'back' ? 'back' : 'close';
         if (this.backToMainBtn) this.backToMainBtn.textContent = this._runsViewMode === 'back' ? 'Back' : 'Close';
         this.modalMainView.classList.remove('active-view');
@@ -2150,7 +2206,8 @@ export class GameUi {
             {
                 scoreboardSnapshot: this._modalRunsPayload.scoreboardSnapshot,
                 scoreboardMode: this._modalRunsPayload.scoreboardMode,
-                scoreboardTrackKey: this._modalRunsPayload.scoreboardTrackKey
+                scoreboardTrackKey: this._modalRunsPayload.scoreboardTrackKey,
+                showGlobalLeaderboard: this._modalRunsPayload.showGlobalLeaderboard !== false
             }
         );
     }

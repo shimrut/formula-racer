@@ -1974,7 +1974,7 @@ ol.ftu-sheet-body.ftu-crash-rules {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+    transition: transform 0.12s ease;
 }
 
 #modal-reset-btn:hover {
@@ -2171,7 +2171,7 @@ ol.ftu-sheet-body.ftu-crash-rules {
     font-size: 1rem;
     line-height: 1;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+    transition: transform 0.12s ease;
 }
 
 .modal--practice-pause .modal-action-icon,

@@ -10,13 +10,8 @@ const MAX_SCOREBOARD_LIMIT = 100;
 const DEFAULT_SCOREBOARD_PREVIEW_LIMIT = 10;
 const SCOREBOARD_TOP_SEGMENT_LIMIT = 5;
 const SCOREBOARD_PLAYER_WINDOW_RADIUS = 2;
-const SCOREBOARD_RANK_BUCKETS = [
-    { cutoffField: 'top_25_ms', maxRank: 25, label: 'Top 25' },
-    { cutoffField: 'top_50_ms', maxRank: 50, label: 'Top 50' },
-    { cutoffField: 'top_100_ms', maxRank: 100, label: 'Top 100' },
-    { cutoffField: 'top_500_ms', maxRank: 500, label: 'Top 500' },
-    { cutoffField: 'top_1000_ms', maxRank: 1000, label: 'Top 1000' }
-];
+/** Same-key concurrent callers share one network round-trip (defense in depth vs duplicate UI/engine paths). */
+const inflightScoreboardSnapshots = new Map();
 
 function getScoreboardConfig() {
     const rawConfig = typeof window !== 'undefined' && window.VECTORGP_SCOREBOARD_CONFIG
@@ -41,11 +36,18 @@ function getScoreboardConfig() {
         return null;
     }
 
+    const useSnapshotRpc = rawConfig.useScoreboardSnapshotRpc !== false;
+    const snapshotRpcName = typeof rawConfig.snapshotRpcName === 'string' && rawConfig.snapshotRpcName.trim()
+        ? rawConfig.snapshotRpcName.trim()
+        : 'get_scoreboard_snapshot';
+
     return {
         submitUrl: `${supabaseUrl}/functions/v1/${submitFunctionName}`,
         scoresUrl: `${supabaseUrl}/rest/v1/scoreboard_best_times`,
-        rankBucketsUrl: `${supabaseUrl}/rest/v1/scoreboard_rank_buckets`,
-        supabaseAnonKey
+        restV1Url: `${supabaseUrl}/rest/v1`,
+        supabaseAnonKey,
+        useScoreboardSnapshotRpc: useSnapshotRpc,
+        snapshotRpcName
     };
 }
 
@@ -121,26 +123,6 @@ async function fetchScoreboardRows(config, queryParams, { count = false } = {}) 
     };
 }
 
-async function fetchScoreboardRankBuckets(config, trackKey, mode) {
-    const query = new URLSearchParams({
-        track_key: `eq.${trackKey}`,
-        mode: `eq.${mode}`,
-        select: 'top_25_ms,top_50_ms,top_100_ms,top_500_ms,top_1000_ms,sample_count',
-        limit: '1'
-    });
-    const response = await fetch(`${config.rankBucketsUrl}?${query.toString()}`, {
-        method: 'GET',
-        headers: getScoreboardHeaders(config)
-    });
-
-    if (!response.ok) {
-        throw new Error(`Scoreboard rank bucket fetch failed: ${response.status}`);
-    }
-
-    const rows = await response.json();
-    return Array.isArray(rows) && rows[0] ? rows[0] : null;
-}
-
 function mapScoreboardRow(row, rank = null) {
     const bestTimeMs = Number(row?.best_time_ms);
     const playerId = typeof row?.player_id === 'string' ? row.player_id : '';
@@ -164,23 +146,6 @@ function formatPlayerRankLabel(playerRank) {
     return `#${playerRank}`;
 }
 
-function formatPlayerRankBucketLabel(rankBucketRow, bestTimeMs) {
-    if (!rankBucketRow || !Number.isFinite(bestTimeMs)) return null;
-
-    const sampleCount = Number(rankBucketRow.sample_count);
-    for (const rankBucket of SCOREBOARD_RANK_BUCKETS) {
-        const cutoffMs = Number(rankBucketRow[rankBucket.cutoffField]);
-        if (Number.isFinite(cutoffMs) && bestTimeMs <= cutoffMs) {
-            return rankBucket.label;
-        }
-        if (!Number.isFinite(cutoffMs) && Number.isFinite(sampleCount) && sampleCount > 0 && sampleCount <= rankBucket.maxRank) {
-            return rankBucket.label;
-        }
-    }
-
-    return Number.isFinite(sampleCount) && sampleCount > 0 ? '1000+' : null;
-}
-
 function createScoreboardRowsQuery(trackKey, mode, { limit, offset = 0, select = 'player_id,best_time_ms,updated_at' } = {}) {
     const query = new URLSearchParams({
         track_key: `eq.${trackKey}`,
@@ -195,21 +160,34 @@ function createScoreboardRowsQuery(trackKey, mode, { limit, offset = 0, select =
     return query;
 }
 
-async function fetchCurrentPlayerRank(config, trackKey, mode, currentPlayerRow) {
-    if (
-        !config
-        || !TRACKS[trackKey]
-        || !isValidScoreboardMode(mode)
-        || !currentPlayerRow
-        || !Number.isFinite(currentPlayerRow.bestTimeMs)
-        || typeof currentPlayerRow.updatedAt !== 'string'
-        || !currentPlayerRow.updatedAt
-        || typeof currentPlayerRow.playerId !== 'string'
-        || !currentPlayerRow.playerId
-    ) {
-        return null;
-    }
+/** PostgREST string literal for filter atoms that need quoting (timestamps, UUIDs, etc.). */
+function postgrestQuotedFilterValue(value) {
+    return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
 
+/**
+ * One count query for rows strictly before this player in leaderboard order
+ * (best_time_ms asc, updated_at asc, player_id asc). Replaces three parallel count requests.
+ */
+function createStrictlyBeforePlayerCountQuery(trackKey, mode, row) {
+    const t = row.bestTimeMs;
+    const tk = postgrestQuotedFilterValue(trackKey);
+    const u = postgrestQuotedFilterValue(row.updatedAt);
+    const p = postgrestQuotedFilterValue(row.playerId);
+    const orBranches = [
+        `best_time_ms.lt.${t}`,
+        `and(best_time_ms.eq.${t},updated_at.lt.${u})`,
+        `and(best_time_ms.eq.${t},updated_at.eq.${u},player_id.lt.${p})`
+    ].join(',');
+    const andExpr = `(track_key.eq.${tk},mode.eq.${mode},or(${orBranches}))`;
+    return new URLSearchParams({
+        and: andExpr,
+        select: 'player_id',
+        limit: '1'
+    });
+}
+
+async function fetchCurrentPlayerRankLegacy(config, trackKey, mode, currentPlayerRow) {
     const createCountQuery = (extraParams = {}) => new URLSearchParams({
         track_key: `eq.${trackKey}`,
         mode: `eq.${mode}`,
@@ -253,6 +231,165 @@ async function fetchCurrentPlayerRank(config, trackKey, mode, currentPlayerRow) 
     const sameTimeEarlierCount = Number(sameTimeEarlierRowsResult?.totalCount) || 0;
     const sameMomentEarlierCount = Number(sameMomentEarlierPlayerResult?.totalCount) || 0;
     return fasterCount + sameTimeEarlierCount + sameMomentEarlierCount + 1;
+}
+
+async function fetchCurrentPlayerRank(config, trackKey, mode, currentPlayerRow) {
+    if (
+        !config
+        || !TRACKS[trackKey]
+        || !isValidScoreboardMode(mode)
+        || !currentPlayerRow
+        || !Number.isFinite(currentPlayerRow.bestTimeMs)
+        || typeof currentPlayerRow.updatedAt !== 'string'
+        || !currentPlayerRow.updatedAt
+        || typeof currentPlayerRow.playerId !== 'string'
+        || !currentPlayerRow.playerId
+    ) {
+        return null;
+    }
+
+    try {
+        const query = createStrictlyBeforePlayerCountQuery(trackKey, mode, currentPlayerRow);
+        const { totalCount } = await fetchScoreboardRows(config, query, { count: true });
+        return (Number(totalCount) || 0) + 1;
+    } catch (error) {
+        console.warn('Scoreboard compound rank query failed, using split counts:', error);
+        return fetchCurrentPlayerRankLegacy(config, trackKey, mode, currentPlayerRow);
+    }
+}
+
+function normalizeScoreboardRpcPayload(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    return {
+        topRows: Array.isArray(raw.topRows) ? raw.topRows : [],
+        nearbyRows: Array.isArray(raw.nearbyRows) ? raw.nearbyRows : [],
+        currentPlayerRow: raw.currentPlayerRow && typeof raw.currentPlayerRow === 'object'
+            ? raw.currentPlayerRow
+            : null,
+        totalCount: Number(raw.totalCount) || 0,
+        playerRank: raw.playerRank != null && Number.isFinite(Number(raw.playerRank))
+            ? Number(raw.playerRank)
+            : null,
+        playerRankLabel: raw.playerRankLabel != null ? String(raw.playerRankLabel) : null
+    };
+}
+
+async function fetchScoreboardSnapshotRpc(config, trackKey, mode, playerId, safeLimit) {
+    const name = config.snapshotRpcName || 'get_scoreboard_snapshot';
+    const response = await fetch(`${config.restV1Url}/rpc/${encodeURIComponent(name)}`, {
+        method: 'POST',
+        headers: {
+            ...getScoreboardHeaders(config),
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        },
+        body: JSON.stringify({
+            p_track_key: trackKey,
+            p_mode: mode,
+            p_player_id: playerId,
+            p_limit: safeLimit
+        })
+    });
+    if (!response.ok) {
+        const err = new Error(`Scoreboard RPC failed: ${response.status}`);
+        err.status = response.status;
+        throw err;
+    }
+    const data = await response.json();
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || typeof row !== 'object') return null;
+    return row[name] !== undefined ? row[name] : row;
+}
+
+async function loadScoreboardSnapshotViaRest(config, trackKey, mode, safeLimit, currentPlayerId) {
+        const topQuery = createScoreboardRowsQuery(trackKey, mode, { limit: safeLimit });
+        const { rows: topRowsRaw, totalCount: boardTotalCount } = await fetchScoreboardRows(
+            config,
+            topQuery,
+            { count: true }
+        );
+        const totalCount = Number(boardTotalCount) || 0;
+
+        const topRows = topRowsRaw
+            .map((row, index) => {
+                const mappedRow = mapScoreboardRow(row, index + 1);
+                if (!mappedRow) return null;
+                mappedRow.isCurrentPlayer = mappedRow.playerId === currentPlayerId;
+                return mappedRow;
+            })
+            .filter(Boolean);
+
+        const playerInTop = topRows.find((row) => row.playerId === currentPlayerId);
+        if (playerInTop) {
+            const currentPlayerRow = { ...playerInTop, isCurrentPlayer: true };
+            return {
+                topRows,
+                nearbyRows: [],
+                currentPlayerRow,
+                totalCount,
+                playerRank: playerInTop.rank,
+                playerRankLabel: formatPlayerRankLabel(playerInTop.rank)
+            };
+        }
+
+        const ownQuery = new URLSearchParams({
+            player_id: `eq.${currentPlayerId}`,
+            track_key: `eq.${trackKey}`,
+            mode: `eq.${mode}`,
+            select: 'player_id,best_time_ms,updated_at',
+            limit: '1'
+        });
+        const { rows: ownRows } = await fetchScoreboardRows(config, ownQuery);
+
+        const currentPlayerRow = mapScoreboardRow(ownRows[0], null);
+        if (!currentPlayerRow) {
+            return {
+                topRows,
+                nearbyRows: [],
+                currentPlayerRow: null,
+                totalCount,
+                playerRank: null,
+                playerRankLabel: null
+            };
+        }
+
+        currentPlayerRow.isCurrentPlayer = true;
+
+        const currentPlayerRank = await fetchCurrentPlayerRank(config, trackKey, mode, currentPlayerRow);
+        if (currentPlayerRank) {
+            currentPlayerRow.rank = currentPlayerRank;
+            currentPlayerRow.rankLabel = formatPlayerRankLabel(currentPlayerRank);
+        }
+
+        let nearbyRows = [];
+        if (Number.isFinite(currentPlayerRow.rank) && currentPlayerRow.rank > safeLimit) {
+            const nearbyOffset = Math.max(0, currentPlayerRow.rank - SCOREBOARD_PLAYER_WINDOW_RADIUS - 1);
+            const nearbyLimit = (SCOREBOARD_PLAYER_WINDOW_RADIUS * 2) + 1;
+            const nearbyQuery = createScoreboardRowsQuery(trackKey, mode, {
+                limit: nearbyLimit,
+                offset: nearbyOffset
+            });
+            const { rows: nearbyRowsRaw } = await fetchScoreboardRows(config, nearbyQuery);
+            nearbyRows = nearbyRowsRaw
+                .map((row, index) => {
+                    const mappedRow = mapScoreboardRow(row, nearbyOffset + index + 1);
+                    if (!mappedRow) return null;
+                    mappedRow.isCurrentPlayer = mappedRow.playerId === currentPlayerId;
+                    return mappedRow;
+                })
+                .filter(Boolean);
+        }
+
+        return {
+            topRows: Number.isFinite(currentPlayerRow.rank) && currentPlayerRow.rank > safeLimit
+                ? topRows.slice(0, SCOREBOARD_TOP_SEGMENT_LIMIT)
+                : topRows,
+            nearbyRows,
+            currentPlayerRow,
+            totalCount,
+            playerRank: currentPlayerRow.rank,
+            playerRankLabel: currentPlayerRow.rankLabel
+        };
 }
 
 export async function submitScoreboardBestTime({ trackKey, mode, bestTime, replay } = {}) {
@@ -312,118 +449,59 @@ export async function getScoreboardBestTimes({ trackKey, mode, limit = DEFAULT_S
 }
 
 export async function getScoreboardSnapshot({ trackKey, mode, limit = DEFAULT_SCOREBOARD_PREVIEW_LIMIT } = {}) {
+    const emptySnapshot = () => ({
+        topRows: [],
+        nearbyRows: [],
+        currentPlayerRow: null,
+        totalCount: 0,
+        playerRank: null,
+        playerRankLabel: null
+    });
+
     const config = getScoreboardConfig();
     if (!config || typeof fetch !== 'function') {
-        return {
-            topRows: [],
-            nearbyRows: [],
-            currentPlayerRow: null,
-            totalCount: 0,
-            playerRank: null,
-            playerRankLabel: null
-        };
+        return emptySnapshot();
     }
     if (!TRACKS[trackKey] || !isValidScoreboardMode(mode)) {
-        return {
-            topRows: [],
-            nearbyRows: [],
-            currentPlayerRow: null,
-            totalCount: 0,
-            playerRank: null,
-            playerRankLabel: null
-        };
+        return emptySnapshot();
     }
 
-    const currentPlayerId = getOrCreatePlayerId();
     const safeLimit = Number.isFinite(limit)
         ? Math.min(Math.max(Math.trunc(limit), 1), MAX_SCOREBOARD_LIMIT)
         : DEFAULT_SCOREBOARD_PREVIEW_LIMIT;
+    const dedupeKey = `${trackKey}\u0000${mode}\u0000${safeLimit}`;
+    const inflight = inflightScoreboardSnapshots.get(dedupeKey);
+    if (inflight) return inflight;
 
-    const topQuery = createScoreboardRowsQuery(trackKey, mode, { limit: safeLimit });
-    const ownQuery = new URLSearchParams({
-        player_id: `eq.${currentPlayerId}`,
-        track_key: `eq.${trackKey}`,
-        mode: `eq.${mode}`,
-        select: 'player_id,best_time_ms,updated_at',
-        limit: '1'
+    const promise = (async () => {
+        const currentPlayerId = getOrCreatePlayerId();
+
+        if (config.useScoreboardSnapshotRpc !== false && config.restV1Url) {
+            try {
+                const raw = await fetchScoreboardSnapshotRpc(
+                    config,
+                    trackKey,
+                    mode,
+                    currentPlayerId,
+                    safeLimit
+                );
+                const normalized = normalizeScoreboardRpcPayload(raw);
+                if (normalized) {
+                    return normalized;
+                }
+            } catch (error) {
+                console.warn('Scoreboard snapshot RPC unavailable, using REST:', error);
+            }
+        }
+
+        return loadScoreboardSnapshotViaRest(config, trackKey, mode, safeLimit, currentPlayerId);
+    })();
+
+    inflightScoreboardSnapshots.set(dedupeKey, promise);
+    promise.finally(() => {
+        if (inflightScoreboardSnapshots.get(dedupeKey) === promise) {
+            inflightScoreboardSnapshots.delete(dedupeKey);
+        }
     });
-
-    const [{ rows: topRowsRaw }, { rows: ownRows }, rankBucketRow] = await Promise.all([
-        fetchScoreboardRows(config, topQuery),
-        fetchScoreboardRows(config, ownQuery),
-        fetchScoreboardRankBuckets(config, trackKey, mode)
-    ]);
-
-    const topRows = topRowsRaw
-        .map((row, index) => {
-            const mappedRow = mapScoreboardRow(row, index + 1);
-            if (!mappedRow) return null;
-            mappedRow.isCurrentPlayer = mappedRow.playerId === currentPlayerId;
-            return mappedRow;
-        })
-        .filter(Boolean);
-
-    const currentPlayerRow = mapScoreboardRow(ownRows[0], null);
-    if (!currentPlayerRow) {
-        return {
-            topRows,
-            nearbyRows: [],
-            currentPlayerRow: null,
-            totalCount: Number(rankBucketRow?.sample_count) || 0,
-            playerRank: null,
-            playerRankLabel: null
-        };
-    }
-
-    currentPlayerRow.isCurrentPlayer = true;
-    const playerRankInTopRows = topRows.find((row) => row.playerId === currentPlayerId)?.rank;
-    if (playerRankInTopRows) {
-        currentPlayerRow.rank = playerRankInTopRows;
-        return {
-            topRows,
-            nearbyRows: [],
-            currentPlayerRow,
-            totalCount: Number(rankBucketRow?.sample_count) || 0,
-            playerRank: playerRankInTopRows,
-            playerRankLabel: formatPlayerRankLabel(playerRankInTopRows)
-        };
-    }
-
-    const currentPlayerRank = await fetchCurrentPlayerRank(config, trackKey, mode, currentPlayerRow);
-    if (currentPlayerRank) {
-        currentPlayerRow.rank = currentPlayerRank;
-        currentPlayerRow.rankLabel = formatPlayerRankLabel(currentPlayerRank);
-    } else {
-        currentPlayerRow.rankLabel = formatPlayerRankBucketLabel(rankBucketRow, currentPlayerRow.bestTimeMs);
-    }
-
-    let nearbyRows = [];
-    if (Number.isFinite(currentPlayerRow.rank) && currentPlayerRow.rank > safeLimit) {
-        const nearbyOffset = Math.max(0, currentPlayerRow.rank - SCOREBOARD_PLAYER_WINDOW_RADIUS - 1);
-        const nearbyLimit = (SCOREBOARD_PLAYER_WINDOW_RADIUS * 2) + 1;
-        const nearbyQuery = createScoreboardRowsQuery(trackKey, mode, {
-            limit: nearbyLimit,
-            offset: nearbyOffset
-        });
-        const { rows: nearbyRowsRaw } = await fetchScoreboardRows(config, nearbyQuery);
-        nearbyRows = nearbyRowsRaw
-            .map((row, index) => {
-                const mappedRow = mapScoreboardRow(row, nearbyOffset + index + 1);
-                if (!mappedRow) return null;
-                mappedRow.isCurrentPlayer = mappedRow.playerId === currentPlayerId;
-                return mappedRow;
-            })
-            .filter(Boolean);
-    }
-
-    return {
-        topRows: Number.isFinite(currentPlayerRow.rank) && currentPlayerRow.rank > safeLimit
-            ? topRows.slice(0, SCOREBOARD_TOP_SEGMENT_LIMIT)
-            : topRows,
-        nearbyRows,
-        currentPlayerRow,
-        totalCount: Number(rankBucketRow?.sample_count) || 0,
-        playerRank: currentPlayerRow.rank,
-        playerRankLabel: currentPlayerRow.rankLabel
-    };
+    return promise;
 }

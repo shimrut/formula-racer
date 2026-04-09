@@ -1,4 +1,4 @@
-import { CONFIG } from '../config.js?v=1.36';
+import { CONFIG } from '../config.js?v=1.40';
 
 const MODAL_SURFACE_COLOR = '#020617';
 const SHARE_POSTER_TOP_INSET = 236;
