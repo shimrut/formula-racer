@@ -81,8 +81,6 @@ function buildCollisionSegmentsForPoly(poly) {
     return segments;
 }
 
-import { SpatialHash } from './spatial-hash.js?v=1.36';
-
 export function buildCollisionRuntime(geometry) {
     const segments = [
         ...buildCollisionSegmentsForPoly(geometry.outer),
@@ -90,10 +88,7 @@ export function buildCollisionRuntime(geometry) {
     ];
 
     return {
-        collisionSegments: segments,
-        // Cell size of 5 world units balances cell count vs query precision.
-        // Tracks span ~60 units, giving ~12×12 = 144 cells with good locality.
-        collisionHash: new SpatialHash(5, segments)
+        collisionSegments: segments
     };
 }
 

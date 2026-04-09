@@ -1,4 +1,4 @@
-import { CONFIG } from '../config.js?v=1.36';
+import { CONFIG } from '../config.js?v=1.40';
 
 function drawCheckeredLine(ctx, p1, p2, width) {
     const dx = p2.x - p1.x;
