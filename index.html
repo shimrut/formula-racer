@@ -15,7 +15,11 @@
         window.VECTORGP_SCOREBOARD_CONFIG = {
             supabaseUrl: 'https://dlrivpzruldnrbzchtsp.supabase.co',
             supabaseAnonKey: 'sb_publishable_L87lKcVexjguJ2lu0_Zr9g_yCivz1Md',
-            submitFunctionName: 'scoreboard-submit'
+            submitFunctionName: 'scoreboard-submit',
+            dailySubmitFunctionName: 'daily-challenge-submit',
+            dailyActiveRpcName: 'get_active_daily_challenge',
+            dailySnapshotRpcName: 'get_daily_challenge_snapshot',
+            dailyAdminFunctionName: 'daily-challenge-admin'
         };
     </script>
     <meta charset="UTF-8">
@@ -46,7 +50,7 @@
 
     <link rel="canonical" href="https://vectorgp.run/">
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="styles.css?v=1.40">
+    <link rel="stylesheet" href="styles.css?v=1.51">
     <script src="site/support-dropdown.js?v=1.40" defer></script>
 
     <!-- Structured Data (GEO: quotable summary for generative engines) -->
@@ -81,10 +85,11 @@
         <div class="header-right">
             <div class="support-dropdown" data-support-dropdown>
                 <a href="https://buy.stripe.com/4gM14pc3ScQecEq1F69sk00" class="header-support-link support-dropdown-trigger"
-                    target="_blank" rel="noopener noreferrer" title="Support Vector GP"
+                    target="_blank" rel="noopener noreferrer" title="Donate to Vector GP"
                     aria-expanded="false" aria-haspopup="true" aria-controls="support-dropdown-menu-home"
                     data-support-trigger>
-                    Support the game
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart-handshake-icon lucide-heart-handshake" aria-hidden="true"><path d="M19.414 14.414C21 12.828 22 11.5 22 9.5a5.5 5.5 0 0 0-9.591-3.676.6.6 0 0 1-.818.001A5.5 5.5 0 0 0 2 9.5c0 2.3 1.5 4 3 5.5l5.535 5.362a2 2 0 0 0 2.879.052 2.12 2.12 0 0 0-.004-3 2.124 2.124 0 1 0 3-3 2.124 2.124 0 0 0 3.004 0 2 2 0 0 0 0-2.828l-1.881-1.882a2.41 2.41 0 0 0-3.409 0l-1.71 1.71a2 2 0 0 1-2.828 0 2 2 0 0 1 0-2.828l2.823-2.762"/></svg>
+                    Donate
                 </a>
                 <div id="support-dropdown-menu-home" class="support-dropdown-menu" hidden
                     data-support-menu>
@@ -137,7 +142,7 @@
                                 <button type="button" id="menu-how-to-play" class="header-nav-item">How to play</button>
                             </li>
                             <li>
-                                <a href="about.html" class="header-nav-item" target="_blank" rel="noopener">About</a>
+                                <a href="about.html" class="header-nav-item" target="_blank" rel="noopener">About Vector GP</a>
                             </li>
                             <li>
                                 <a href="changelog.html" class="header-nav-item" target="_blank" rel="noopener">Changelog</a>
@@ -171,6 +176,25 @@
                                     <span>Threads</span>
                                 </a>
                             </li>
+                            <li>
+                                <a href="https://discord.gg/nyCTZRBq" class="header-nav-item header-nav-item--with-icon" target="_blank" rel="noopener noreferrer">
+                                    <svg class="header-nav-icon header-nav-icon--discord" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 126.644 96" fill="currentColor" aria-hidden="true">
+                                        <path d="M81.15,0c-1.2376,2.1973-2.3489,4.4704-3.3591,6.794-9.5975-1.4396-19.3718-1.4396-28.9945,0-.985-2.3236-2.1216-4.5967-3.3591-6.794-9.0166,1.5407-17.8059,4.2431-26.1405,8.0568C2.779,32.5304-1.6914,56.3725.5312,79.8863c9.6732,7.1476,20.5083,12.603,32.0505,16.0884,2.6014-3.4854,4.8998-7.1981,6.8698-11.0623-3.738-1.3891-7.3497-3.1318-10.8098-5.1523.9092-.6567,1.7932-1.3386,2.6519-1.9953,20.281,9.547,43.7696,9.547,64.0758,0,.8587.7072,1.7427,1.3891,2.6519,1.9953-3.4601,2.0457-7.0718,3.7632-10.835,5.1776,1.97,3.8642,4.2683,7.5769,6.8698,11.0623,11.5419-3.4854,22.3769-8.9156,32.0509-16.0631,2.626-27.2771-4.496-50.9172-18.817-71.8548C98.9811,4.2684,90.1918,1.5659,81.1752.0505l-.0252-.0505ZM42.2802,65.4144c-6.2383,0-11.4159-5.6575-11.4159-12.6535s4.9755-12.6788,11.3907-12.6788,11.5169,5.708,11.4159,12.6788c-.101,6.9708-5.026,12.6535-11.3907,12.6535ZM84.3576,65.4144c-6.2637,0-11.3907-5.6575-11.3907-12.6535s4.9755-12.6788,11.3907-12.6788,11.4917,5.708,11.3906,12.6788c-.101,6.9708-5.026,12.6535-11.3906,12.6535Z" />
+                                    </svg>
+                                    <span>Discord</span>
+                                </a>
+                            </li>
+                        </ul>
+                        <ul class="header-nav-list header-nav-list--follow-contact">
+                            <li>
+                                <a href="mailto:start@vgp.run" class="header-nav-item header-nav-item--with-icon">
+                                    <svg class="header-nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/>
+                                        <rect x="2" y="4" width="20" height="16" rx="2"/>
+                                    </svg>
+                                    <span>start@vgp.run</span>
+                                </a>
+                            </li>
                         </ul>
                     </section>
                 </div>
@@ -181,11 +205,16 @@
     <main id="game-container" role="main" aria-label="Vector GP racing game">
         <!-- HUD Bar -->
         <div class="hud-bar">
-            <button id="hud-stats-btn" class="hud-stats" type="button" aria-label="Show your 5 personal best lap times" disabled>
-                <div class="hud-stat"><span class="hud-label">LAP</span><span id="time-val" class="hud-value">0.00</span></div>
-                <div class="hud-divider" id="best-time-divider" style="display: none;"></div>
-                <div class="hud-stat" id="best-time-display" style="display: none;"><span class="hud-label">BEST</span><span id="best-time-val" class="hud-value">--</span></div>
-            </button>
+            <div class="hud-lap-cluster">
+                <button id="hud-stats-btn" class="hud-stats" type="button" aria-label="Show your 5 personal best lap times" disabled>
+                    <div class="hud-stat"><span class="hud-label">LAP</span><span id="time-val" class="hud-value">0.00</span></div>
+                    <div class="hud-divider" id="best-time-divider" style="display: none;"></div>
+                    <div class="hud-stat" id="best-time-display" style="display: none;"><span id="best-time-label" class="hud-label">BEST</span><span id="best-time-val" class="hud-value">--</span></div>
+                </button>
+                <div id="daily-challenge-hud-inline" class="daily-challenge-hud daily-challenge-hud--inline" aria-live="polite" hidden>
+                    <span class="daily-challenge-hud__progress">Lap 1 / 1</span>
+                </div>
+            </div>
         </div>
 
         <canvas id="gameCanvas" aria-label="Racing track and car"></canvas>
@@ -198,7 +227,7 @@
             </button>
         </div>
         <div class="key-hint">
-            <span class="version-label">v 0.51</span>
+            <span class="version-label">v 0.6</span>
         </div>
 
         <!-- Start Screen Overlay -->
@@ -212,7 +241,7 @@
                     <div class="ftu-section">
                         <h2 class="ftu-section-heading">Crash course</h2>
                         <ol class="ftu-sheet-body ftu-crash-rules" id="game-rules">
-                            <li>Choose a mode and a track to compete</li>
+                            <li>Choose a mode, then a track to compete</li>
                             <li>Start the race and steer with the arrows</li>
                             <li>Tiny steering inputs beat big corrections</li>
                             <li>Finish clean laps to set a personal best</li>
@@ -244,14 +273,68 @@
                         <button id="score-mode-intro-dismiss" type="button">Got It</button>
                     </div>
                 </section>
+                <section id="daily-challenge-panel" class="daily-challenge-panel" aria-labelledby="daily-challenge-title" hidden>
+                    <div class="track-card is-active daily-challenge-card">
+                        <article class="modal-card track-card-modal daily-challenge-detail">
+                            <div class="track-card-modal-view">
+                                <div class="track-card-modal-content daily-challenge-detail__content">
+                                    <h2 id="daily-challenge-title" class="track-card-modal-title">Loading today’s challenge…</h2>
+                                    <p id="daily-challenge-reset" class="daily-challenge-detail__eyebrow daily-challenge-detail__reset-time" aria-label="Time until next daily challenge">--</p>
+                                    <div class="modal-stats-row track-card-stats-row daily-challenge-detail__stats">
+                                        <span class="modal-stat-left">
+                                            <span id="daily-challenge-best-label" class="modal-stat-label">Best</span>
+                                            <span id="daily-challenge-best" class="modal-stat-value modal-stat-value--best">--</span>
+                                        </span>
+                                        <button id="daily-challenge-rank-btn" class="modal-stat-right modal-stat-button daily-challenge-detail__rank" type="button" disabled>
+                                            <span class="modal-stat-label">Rank</span>
+                                            <span id="daily-challenge-rank" class="modal-stat-value modal-stat-value--rank">--</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="track-card-preview-wrap daily-challenge-preview-wrap">
+                                    <canvas id="daily-challenge-preview" class="track-card-preview-canvas daily-challenge-preview-canvas" width="640" height="420" aria-hidden="true"></canvas>
+                                </div>
+                                <div class="daily-challenge-detail__preview-badges">
+                                    <span id="daily-challenge-objective" class="daily-challenge-detail__badge">Fetching objective.</span>
+                                    <div id="daily-challenge-modifiers" class="daily-challenge-detail__modifier-badges" aria-label="Car setup"></div>
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+                    <button id="daily-challenge-start-btn" class="track-start-btn daily-challenge-start-btn" type="button" disabled>Start Daily GP</button>
+                    <button id="daily-challenge-back-btn" class="track-selection-mode-btn" type="button">Change mode</button>
+                </section>
+                <section id="mode-selection-panel" class="mode-selection-panel" aria-labelledby="mode-selection-title" hidden>
+                    <h2 id="mode-selection-title" class="sr-only">Choose mode</h2>
+                    <div class="mode-selection-list" role="group" aria-labelledby="mode-selection-title">
+                        <button id="mode-select-daily-btn" class="mode-selection-row mode-selection-row--daily" type="button" aria-pressed="false" hidden>
+                            <span class="mode-selection-row__content">
+                                <span class="mode-selection-row__title">
+                                    <span class="mode-selection-row__title-label">Daily GP</span>
+                                </span>
+                                <span id="mode-select-daily-copy" class="mode-selection-row__copy">Loading today’s special event.</span>
+                            </span>
+                        </button>
+                        <button id="mode-select-standard-btn" class="mode-selection-row" type="button" aria-pressed="false">
+                            <span class="mode-selection-row__content">
+                                <span class="mode-selection-row__title">
+                                    <span class="mode-selection-row__title-label">Time trial</span>
+                                </span>
+                                <span class="mode-selection-row__copy">Set the best time in one lap</span>
+                            </span>
+                        </button>
+                        <button id="mode-select-practice-btn" class="mode-selection-row" type="button" aria-pressed="false">
+                            <span class="mode-selection-row__content">
+                                <span class="mode-selection-row__title">
+                                    <span class="mode-selection-row__title-label">Session</span>
+                                </span>
+                                <span class="mode-selection-row__copy">Multiple laps with quick resets</span>
+                            </span>
+                        </button>
+                    </div>
+                </section>
                 <section id="returning-player-panel" class="returning-player-panel" aria-labelledby="returning-player-heading" hidden>
                     <h2 id="returning-player-heading" class="sr-only">Classic Circuit</h2>
-                    <section class="track-mode-panel" aria-label="Track mode settings">
-                        <div class="track-mode-toggle" role="group" aria-label="Track mode">
-                            <button id="track-mode-standard-btn" class="track-mode-btn is-active" type="button" aria-pressed="true">Time trial</button>
-                            <button id="track-mode-practice-btn" class="track-mode-btn" type="button" aria-pressed="false">Session</button>
-                        </div>
-                    </section>
                     <div class="track-selector-frame">
                         <button id="track-prev-btn" class="track-carousel-nav track-carousel-nav--arrow" type="button" aria-label="Show previous track">‹</button>
                         <div class="track-carousel-shell">
@@ -261,6 +344,7 @@
                     </div>
                     <p id="track-count-indicator" class="track-count-indicator" aria-live="polite" aria-atomic="true">1 / 1</p>
                     <button id="returning-start-btn" class="track-start-btn" type="button">Start Your Engine</button>
+                    <button id="change-track-mode-btn" class="track-selection-mode-btn" type="button">Change mode</button>
                 </section>
             </div>
         </div>
@@ -353,12 +437,12 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
                 </button>
             </div>
-            <p class="htp-modal-subtitle">Free arcade racing game in your browser. Pick a mode, learn the line, and lower your best lap on each track. Keep watch for a new track each Wednesday at 07:00 UTC.</p>
+            <p class="htp-modal-subtitle">Free arcade racing game in your browser. Pick a mode, learn the line, and chase your best result on each track or in today’s Daily GP. Keep watch for a new track each Wednesday at 07:00 UTC.</p>
             <div class="htp-sections">
                 <section class="htp-section" aria-labelledby="htp-crash-heading">
                     <h3 id="htp-crash-heading" class="htp-section-title">Crash course</h3>
                     <ol class="htp-crash-rules">
-                        <li>Choose a mode and a track to compete</li>
+                        <li>Choose a mode, then a track to compete</li>
                         <li>Start the race and steer with the arrows</li>
                         <li>Tiny steering inputs beat big corrections</li>
                         <li>Finish clean laps to set a personal best</li>
@@ -369,12 +453,17 @@
                     <div class="htp-shortcuts-grid">
                         <div class="htp-shortcut"><kbd>Esc</kbd><span>Pause</span></div>
                         <div class="htp-shortcut"><kbd>R</kbd><span>Retry</span></div>
-                        <div class="htp-shortcut"><kbd>Space</kbd><span>Toggle mode</span></div>
+                        <div class="htp-shortcut"><kbd>← →</kbd><span>Change track</span></div>
+                        <div class="htp-shortcut"><kbd>Enter</kbd><span>Start selected track</span></div>
                     </div>
                 </section>
                 <section class="htp-section" aria-label="Game modes">
                     <h3 class="htp-section-title">Game Modes</h3>
                     <dl class="htp-modes">
+                        <div class="htp-mode">
+                            <dt>Daily GP</dt>
+                            <dd>One featured event per day with its own track, modifiers, best result, and leaderboard. Challenges can be single-lap, multi-lap total-time, or crash-budget runs.</dd>
+                        </div>
                         <div class="htp-mode">
                             <dt>Time Trial</dt>
                             <dd>Single-lap runs. Crash or finish - your 5 best personal records are saved. Pure arcade racing at its core.</dd>
@@ -409,19 +498,20 @@
             <p>Vector GP is a free arcade racing game in your browser. No downloads, no sign-ups, and a new track every Wednesday at 07:00 UTC.</p>
             <h2>How to play</h2>
             <ol>
-                <li>Choose a mode and a track.</li>
+                <li>Choose a mode, then a track.</li>
                 <li>Start the race and steer with the arrows.</li>
                 <li>Tiny steering inputs beat big corrections.</li>
                 <li>Finish clean laps to set a personal best.</li>
             </ol>
             <h2>Game modes</h2>
+            <p><strong>Daily GP</strong> — One featured event per day with its own track, modifiers, best result, and leaderboard.</p>
             <p><strong>Time Trial</strong> — Single-lap runs. Your 5 best personal records are saved.</p>
             <p><strong>Session</strong> — Multi-lap practice. Crashes reset you instantly for continuous racing.</p>
             <p>This arcade video game requires JavaScript to play.</p>
         </div>
     </noscript>
 
-    <script type="module" src="game/index.js?v=1.55"></script>
+    <script type="module" src="game/index.js?v=1.71"></script>
 </body>
 
 </html>
