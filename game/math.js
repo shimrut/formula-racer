@@ -20,12 +20,3 @@ export function segmentsIntersect(A, B, C, D) {
     return segmentIntersectionParams(A, B, C, D) !== null;
 }
 
-export function getIntersection(A, B, C, D) {
-    const r = segmentIntersectionParams(A, B, C, D);
-    if (!r) return null;
-    const u = r.u;
-    return Point(
-        C.x + (D.x - C.x) * u,
-        C.y + (D.y - C.y) * u
-    );
-}

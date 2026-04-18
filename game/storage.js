@@ -1,6 +1,5 @@
 // IndexedDB storage for lap times
 import { DEFAULT_TRACK_PREFERENCES, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.40';
-import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.45';
 
 const DB_NAME = 'RacerLapTimes';
 const DB_VERSION = 1;
@@ -142,17 +141,11 @@ function writeTrackPreferencesMap(preferencesMap) {
     }
 }
 
-function normalizeBestTime(value) {
-    return value !== null && value !== undefined ? value : null;
-}
-
 function normalizeTrackData(trackName, rawTrackData) {
-    const standardBest = normalizeBestTime(rawTrackData?.bestTimes?.[TRACK_MODE_STANDARD] ?? rawTrackData?.bestTime);
-    const practiceBest = normalizeBestTime(rawTrackData?.bestTimes?.[TRACK_MODE_PRACTICE]);
-    const rankedStandardBest = normalizeBestTime(
-        rawTrackData?.rankedBestTimes?.[TRACK_MODE_STANDARD] ?? rawTrackData?.rankedBestTime
-    );
-    const rankedPracticeBest = normalizeBestTime(rawTrackData?.rankedBestTimes?.[TRACK_MODE_PRACTICE]);
+    const standardBest = (rawTrackData?.bestTimes?.[TRACK_MODE_STANDARD] ?? rawTrackData?.bestTime) ?? null;
+    const practiceBest = rawTrackData?.bestTimes?.[TRACK_MODE_PRACTICE] ?? null;
+    const rankedStandardBest = (rawTrackData?.rankedBestTimes?.[TRACK_MODE_STANDARD] ?? rawTrackData?.rankedBestTime) ?? null;
+    const rankedPracticeBest = rawTrackData?.rankedBestTimes?.[TRACK_MODE_PRACTICE] ?? null;
 
     return {
         trackName,
@@ -248,11 +241,6 @@ async function restoreAllTrackDataFromBackup(database) {
         const transaction = database.transaction([STORE_NAME], 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
 
-        if (!backupEntries.length) {
-            resolve(false);
-            return;
-        }
-
         let pendingWrites = backupEntries.length;
         let settled = false;
 
@@ -344,19 +332,7 @@ export async function saveLapTime(trackName, lapTime, { ranked = false, replay =
                 hasAnyTrackDataCache = true;
                 trackDataCache.set(trackName, cloneTrackData(trackData));
                 saveTrackDataBackup(trackData);
-                const savedTrackData = cloneTrackData(trackData);
-                if (ranked && isNewBest && replay) {
-                    savedTrackData.scoreboardSubmitPromise = submitScoreboardBestTime({
-                        trackKey: trackName,
-                        mode: TRACK_MODE_STANDARD,
-                        bestTime: lapTime,
-                        replay
-                    }).catch((error) => {
-                        console.error('Error submitting standard scoreboard time:', error);
-                        return null;
-                    });
-                }
-                resolve(savedTrackData);
+                resolve(cloneTrackData(trackData));
             };
             putRequest.onerror = () => reject(putRequest.error);
         };
@@ -395,19 +371,50 @@ export async function saveBestTime(trackName, bestTime, mode = TRACK_MODE_PRACTI
                 hasAnyTrackDataCache = true;
                 trackDataCache.set(trackName, cloneTrackData(trackData));
                 saveTrackDataBackup(trackData);
-                const savedTrackData = cloneTrackData(trackData);
-                if (ranked && isNewBest && replay) {
-                    savedTrackData.scoreboardSubmitPromise = submitScoreboardBestTime({
-                        trackKey: trackName,
-                        mode,
-                        bestTime,
-                        replay
-                    }).catch((error) => {
-                        console.error('Error submitting scoreboard best time:', error);
-                        return null;
-                    });
+                resolve(cloneTrackData(trackData));
+            };
+            putRequest.onerror = () => reject(putRequest.error);
+        };
+
+        getRequest.onerror = () => reject(getRequest.error);
+    });
+}
+
+export async function syncBestTime(trackName, bestTime, mode = TRACK_MODE_STANDARD, { ranked = false, appendLapTime = false } = {}) {
+    if (!isSavableLapTime(bestTime)) {
+        throw new TypeError(`Invalid best time: ${bestTime}`);
+    }
+
+    const database = await initDB();
+
+    return new Promise((resolve, reject) => {
+        const transaction = database.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const getRequest = store.get(trackName);
+
+        getRequest.onsuccess = () => {
+            const trackData = normalizeTrackData(trackName, getRequest.result);
+            const lapTimesKey = ranked ? 'rankedLapTimes' : 'lapTimes';
+            const bestTimesKey = ranked ? 'rankedBestTimes' : 'bestTimes';
+            const bestTimeKey = ranked ? 'rankedBestTime' : 'bestTime';
+
+            trackData[bestTimesKey][mode] = bestTime;
+            trackData[bestTimeKey] = trackData[bestTimesKey][TRACK_MODE_STANDARD];
+
+            if (appendLapTime && mode === TRACK_MODE_STANDARD) {
+                trackData[lapTimesKey].push(bestTime);
+                trackData[lapTimesKey].sort((a, b) => a - b);
+                if (trackData[lapTimesKey].length > 5) {
+                    trackData[lapTimesKey] = trackData[lapTimesKey].slice(0, 5);
                 }
-                resolve(savedTrackData);
+            }
+
+            const putRequest = store.put(trackData);
+            putRequest.onsuccess = () => {
+                hasAnyTrackDataCache = true;
+                trackDataCache.set(trackName, cloneTrackData(trackData));
+                saveTrackDataBackup(trackData);
+                resolve(cloneTrackData(trackData));
             };
             putRequest.onerror = () => reject(putRequest.error);
         };

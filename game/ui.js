@@ -1,6 +1,15 @@
 import { CONFIG } from './config.js?v=1.36';
 import { TRACKS } from './tracks.js?v=1.36';
 import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.36';
+import {
+    getDailyChallengeCopyLabels,
+    getDailyChallengeModeSelectObjectiveLine,
+    getDailyChallengeSnapshot
+} from './services/daily-challenge.js?v=1.39';
+import {
+    getDailyChallengeVerificationEntry,
+    getDailyChallengeVerificationState
+} from './services/verification-queue.js';
 import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.45';
 import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=1.36';
 import { getTrackPreviewGeometry } from './core/track-assets.js?v=1.36';
@@ -110,12 +119,24 @@ function getLeaderboardPlayerName(playerId) {
     return `${adjective} ${noun}${suffix}`;
 }
 
+function formatDailyChallengeBestLabel(objectiveType, bestTime, completedLaps = null) {
+    if (objectiveType === 'finish_with_crash_budget') {
+        const laps = Math.max(0, Math.trunc(completedLaps || 0));
+        return laps > 0 ? `${laps} lap${laps === 1 ? '' : 's'}` : '--';
+    }
+
+    return Number.isFinite(bestTime) ? `${Number(bestTime).toFixed(2)}s` : '--';
+}
+
 export class GameUi {
-    constructor({ onPreviewTrack, onPreviewPresentation, onStart, onReset, onShare, onShowPersonalBests, onPausePractice, onSupportClick, onHeaderMenuOpen, onHowToPlayOpen, previewQualityLevel = 0, previewFrameSkip = 0 }) {
+    constructor({ onPreviewTrack, onPreviewPresentation, onStart, onStartDailyChallenge, onModeSelected, onReset, onShare, onShowPersonalBests, onPausePractice, onSupportClick, onHeaderMenuOpen, onHowToPlayOpen, previewQualityLevel = 0, previewFrameSkip = 0 }) {
         this.header = document.querySelector('header');
         this.hudBar = document.querySelector('.hud-bar');
+        this.hudLapCluster = document.querySelector('.hud-lap-cluster');
         this.hudStatsBtn = document.getElementById('hud-stats-btn');
         this.timeVal = document.getElementById('time-val');
+        this.timeDisplay = this.timeVal?.closest('.hud-stat') || null;
+        this.timeLabel = this.timeDisplay?.querySelector('.hud-label') || null;
         this.speedVal = document.getElementById('speed-val');
         this.desktopSpeedometer = document.getElementById('desktop-speedometer');
         this.desktopPracticePauseBtn = document.getElementById('desktop-practice-pause-btn');
@@ -124,6 +145,7 @@ export class GameUi {
         this.mobilePracticePauseBtn = document.getElementById('mobile-practice-pause-btn');
         this.bestTimeDisplay = document.getElementById('best-time-display');
         this.bestTimeDivider = document.getElementById('best-time-divider');
+        this.bestTimeLabel = document.getElementById('best-time-label');
         this.bestTimeVal = document.getElementById('best-time-val');
         this.modal = document.getElementById('modal');
         this.modalTitle = document.getElementById('modal-title');
@@ -140,19 +162,36 @@ export class GameUi {
         this.startOverlay = document.getElementById('start-overlay');
         this.startGroup = document.getElementById('start-group');
         this.firstTimeMsg = document.getElementById('first-time-msg');
+        this.modeSelectionPanel = document.getElementById('mode-selection-panel');
+        this.modeSelectStandardBtn = document.getElementById('mode-select-standard-btn');
+        this.modeSelectPracticeBtn = document.getElementById('mode-select-practice-btn');
+        this.modeSelectDailyBtn = document.getElementById('mode-select-daily-btn');
+        this.modeSelectDailyCopy = document.getElementById('mode-select-daily-copy');
         this.returningPlayerPanel = document.getElementById('returning-player-panel');
         this.returningPlayerHeading = document.getElementById('returning-player-heading');
+        this.changeTrackModeBtn = document.getElementById('change-track-mode-btn');
         this.trackCountIndicator = document.getElementById('track-count-indicator');
         this.trackSelectorFrame = document.querySelector('.track-selector-frame');
         this.trackCarouselShell = document.querySelector('.track-carousel-shell');
         this.trackCarousel = document.getElementById('track-carousel');
         this.trackPrevBtn = document.getElementById('track-prev-btn');
         this.trackNextBtn = document.getElementById('track-next-btn');
-        this.trackModeStandardBtn = document.getElementById('track-mode-standard-btn');
-        this.trackModePracticeBtn = document.getElementById('track-mode-practice-btn');
         this.returningStartBtn = document.getElementById('returning-start-btn');
         this.scoreModeIntro = document.getElementById('score-mode-intro');
         this.scoreModeIntroDismiss = document.getElementById('score-mode-intro-dismiss');
+        this.dailyChallengePanel = document.getElementById('daily-challenge-panel');
+        this.dailyChallengeTitle = document.getElementById('daily-challenge-title');
+        this.dailyChallengeTrack = document.getElementById('daily-challenge-track');
+        this.dailyChallengeObjective = document.getElementById('daily-challenge-objective');
+        this.dailyChallengeModifiers = document.getElementById('daily-challenge-modifiers');
+        this.dailyChallengeBestLabel = document.getElementById('daily-challenge-best-label');
+        this.dailyChallengeBest = document.getElementById('daily-challenge-best');
+        this.dailyChallengeRankBtn = document.getElementById('daily-challenge-rank-btn');
+        this.dailyChallengeRank = document.getElementById('daily-challenge-rank');
+        this.dailyChallengeReset = document.getElementById('daily-challenge-reset');
+        this.dailyChallengeStartBtn = document.getElementById('daily-challenge-start-btn');
+        this.dailyChallengeBackBtn = document.getElementById('daily-challenge-back-btn');
+        this.dailyChallengePreviewCanvas = document.getElementById('daily-challenge-preview');
         this.startLights = document.getElementById('start-lights');
         this.goMessage = document.getElementById('go-message');
         this.practiceLapFlash = document.getElementById('practice-lap-flash');
@@ -169,6 +208,7 @@ export class GameUi {
         this.modalResetBtn = document.getElementById('modal-reset-btn');
         this.leftTouchBtn = document.getElementById('btn-left');
         this.rightTouchBtn = document.getElementById('btn-right');
+        this.dailyChallengeHudInline = document.getElementById('daily-challenge-hud-inline');
         this.countdownLights = [
             document.getElementById('light-1'),
             document.getElementById('light-2'),
@@ -177,6 +217,7 @@ export class GameUi {
 
         this._lastTimeText = '';
         this._lastSpeedText = '';
+        this._hudPrimaryMetricMode = 'time';
         this._modalPreviewUrl = null;
         this._focusBeforeModal = null;
         this._activeTrapModal = null;
@@ -198,6 +239,7 @@ export class GameUi {
         this._startOverlayHasAnyData = false;
         this._startOverlayIsReturningPlayer = false;
         this._introAcknowledged = false;
+        this._startOverlaySelection = null;
         this._currentTrackKey = 'circuit';
         this._returningTrackKeys = [];
         this._returningTrackCards = new Map();
@@ -225,9 +267,15 @@ export class GameUi {
         this._carouselTouchDragging = false;
         this._suppressCarouselCardClick = false;
         this._selectorKeydownHandler = null;
+        this._dailyChallengeSummary = null;
+        this._dailyChallengeCountdownInterval = null;
+        this._pendingDailyChallengeSnapshotRequest = null;
+        this._dailyChallengePreviewTrackKey = null;
         this._onPreviewTrack = onPreviewTrack;
         this._onPreviewPresentation = onPreviewPresentation;
         this._onStart = onStart;
+        this._onStartDailyChallenge = onStartDailyChallenge || null;
+        this._onModeSelected = onModeSelected || null;
         this._onSupportClick = onSupportClick || null;
         this._onHeaderMenuOpen = onHeaderMenuOpen || null;
         this._onHowToPlayOpen = onHowToPlayOpen || null;
@@ -238,7 +286,7 @@ export class GameUi {
         this.bindModalViewToggles();
         this.bindModalActionRowPointerFocus();
         this.bindHowToPlay();
-        this.bindPrimaryActions(onStart, onShare, onShowPersonalBests, onPausePractice);
+        this.bindPrimaryActions(onStart, onStartDailyChallenge, onShare, onShowPersonalBests, onPausePractice);
         this.bindScoreModeIntro();
         this.bindTrackModeControls();
         this.bindReturningPlayerKeyboardNavigation();
@@ -390,7 +438,7 @@ export class GameUi {
         document.addEventListener('keydown', this._headerMenuEscape);
     }
 
-    bindPrimaryActions(onStart, onShare, onShowPersonalBests, onPausePractice) {
+    bindPrimaryActions(onStart, onStartDailyChallenge, onShare, onShowPersonalBests, onPausePractice) {
         if (this.startBtn && onStart) {
             this.startBtn.addEventListener('click', () => {
                 if (!this._startOverlayHasAnyData && !this._introAcknowledged) {
@@ -406,6 +454,24 @@ export class GameUi {
                 if (this.isScoreModeIntroVisible()) return;
                 const trackKey = this._selectedReturningTrackKey || this._currentTrackKey || this._returningTrackKeys[0];
                 onStart(trackKey, this.getTrackPreferences(trackKey));
+            });
+        }
+        if (this.modeSelectDailyBtn) {
+            this.modeSelectDailyBtn.addEventListener('click', () => {
+                if (this.isScoreModeIntroVisible() || this.modeSelectDailyBtn.hidden || this.modeSelectDailyBtn.disabled) return;
+                this.selectDailyChallenge();
+            });
+        }
+        if (this.dailyChallengeStartBtn && onStartDailyChallenge) {
+            this.dailyChallengeStartBtn.addEventListener('click', () => {
+                if (this.isScoreModeIntroVisible() || this.dailyChallengeStartBtn.disabled) return;
+                onStartDailyChallenge();
+            });
+        }
+        if (this.dailyChallengeRankBtn) {
+            this.dailyChallengeRankBtn.addEventListener('click', () => {
+                if (this.isScoreModeIntroVisible() || this.dailyChallengeRankBtn.disabled) return;
+                void this.openDailyChallengeLeaderboard();
             });
         }
         if (this.hudStatsBtn && onShowPersonalBests) {
@@ -446,16 +512,30 @@ export class GameUi {
     }
 
     bindTrackModeControls() {
-        if (this.trackModeStandardBtn) {
-            this.trackModeStandardBtn.addEventListener('click', () => {
+        if (this.modeSelectStandardBtn) {
+            this.modeSelectStandardBtn.addEventListener('click', () => {
                 if (this.isScoreModeIntroVisible()) return;
-                this.updateSelectedTrackPreferences({ mode: TRACK_MODE_STANDARD });
+                this.selectTrackMode(TRACK_MODE_STANDARD);
             });
         }
-        if (this.trackModePracticeBtn) {
-            this.trackModePracticeBtn.addEventListener('click', () => {
+        if (this.modeSelectPracticeBtn) {
+            this.modeSelectPracticeBtn.addEventListener('click', () => {
                 if (this.isScoreModeIntroVisible()) return;
-                this.updateSelectedTrackPreferences({ mode: TRACK_MODE_PRACTICE });
+                this.selectTrackMode(TRACK_MODE_PRACTICE);
+            });
+        }
+        if (this.changeTrackModeBtn) {
+            this.changeTrackModeBtn.addEventListener('click', () => {
+                if (this.isScoreModeIntroVisible()) return;
+                this._startOverlaySelection = null;
+                this.updateStartOverlayMode(this._startOverlayHasAnyData);
+            });
+        }
+        if (this.dailyChallengeBackBtn) {
+            this.dailyChallengeBackBtn.addEventListener('click', () => {
+                if (this.isScoreModeIntroVisible()) return;
+                this._startOverlaySelection = null;
+                this.updateStartOverlayMode(this._startOverlayHasAnyData);
             });
         }
     }
@@ -555,10 +635,46 @@ export class GameUi {
         const updated = saveTrackPreferences(trackKey, nextPreferences);
         this._trackPreferences.set(trackKey, updated);
         this.refreshReturningTrackPersonalBest(trackKey);
-        // Mode/ranked only affects this card — do not prefetch neighbor tracks (avoids 3× snapshot load + preflights).
+        // The ranked toggle only affects this card — do not prefetch neighbor tracks (avoids redundant snapshot loads).
         this.updateVisibleTrackRanks(trackKey, { prefetchNeighbors: false });
         this.updateTrackModeControls();
         this.updateReturningPlayerStartButton();
+    }
+
+    getSelectedTrackMode(trackKey = this._selectedReturningTrackKey || this._currentTrackKey) {
+        const preferences = this.getTrackPreferences(trackKey);
+        return preferences.mode === TRACK_MODE_PRACTICE
+            ? TRACK_MODE_PRACTICE
+            : TRACK_MODE_STANDARD;
+    }
+
+    selectTrackMode(mode) {
+        const nextMode = mode === TRACK_MODE_PRACTICE
+            ? TRACK_MODE_PRACTICE
+            : TRACK_MODE_STANDARD;
+        this._onModeSelected?.(nextMode);
+        const trackKeys = this._returningTrackKeys.length
+            ? this._returningTrackKeys
+            : [this._selectedReturningTrackKey || this._currentTrackKey].filter(Boolean);
+
+        trackKeys.forEach((trackKey) => {
+            const updated = saveTrackPreferences(trackKey, { mode: nextMode });
+            this._trackPreferences.set(trackKey, updated);
+            this.refreshReturningTrackPersonalBest(trackKey);
+        });
+
+        this._startOverlaySelection = nextMode;
+        this.updateTrackModeControls();
+        this.updateReturningPlayerStartButton();
+        this.updateStartOverlayMode(this._startOverlayHasAnyData);
+    }
+
+    selectDailyChallenge() {
+        if (!this._dailyChallengeSummary?.available) return;
+        this._onModeSelected?.('daily');
+        this._startOverlaySelection = 'daily';
+        this.updateTrackModeControls();
+        this.updateStartOverlayMode(this._startOverlayHasAnyData);
     }
 
     createEmptyTrackPersonalBestState() {
@@ -582,10 +698,13 @@ export class GameUi {
         const now = typeof performance !== 'undefined' ? performance.now() : 0;
         const timeText = time.toFixed(2);
         const speedText = Math.round(speed * 20).toString();
+        const useLapTimer = this._hudPrimaryMetricMode === 'time';
 
         if (force) {
-            if (this.timeVal) this.timeVal.textContent = timeText;
-            this._lastTimeText = timeText;
+            if (useLapTimer) {
+                if (this.timeVal) this.timeVal.textContent = timeText;
+                this._lastTimeText = timeText;
+            }
             if (this.speedVal) this.speedVal.textContent = speedText;
             if (this.mobileSpeedVal) this.mobileSpeedVal.textContent = speedText;
             this._lastSpeedText = speedText;
@@ -593,7 +712,7 @@ export class GameUi {
             return;
         }
 
-        if (this._lastTimeText !== timeText) {
+        if (useLapTimer && this._lastTimeText !== timeText) {
             if (this.timeVal) this.timeVal.textContent = timeText;
             this._lastTimeText = timeText;
         }
@@ -608,12 +727,50 @@ export class GameUi {
     }
 
     resetHud() {
+        if (this.timeLabel) this.timeLabel.textContent = 'LAP';
         if (this.timeVal) this.timeVal.textContent = '0.00';
         if (this.speedVal) this.speedVal.textContent = '0';
         if (this.mobileSpeedVal) this.mobileSpeedVal.textContent = '0';
+        this._hudPrimaryMetricMode = 'time';
         this._lastTimeText = '0.00';
         this._lastSpeedText = '0';
         this._lastHudSpeedWrite = undefined;
+    }
+
+    setHudPrimaryMetric({ label = 'LAP', value = '0.00', useTimer = true, visible = true } = {}) {
+        if (!this.timeDisplay || !this.timeVal) return;
+
+        this.setHudLapTimeVisible(visible);
+        if (this.timeLabel) this.timeLabel.textContent = label;
+        this._hudPrimaryMetricMode = useTimer ? 'time' : 'custom';
+
+        if (!useTimer) {
+            const nextValue = String(value);
+            this.timeVal.textContent = nextValue;
+            this._lastTimeText = nextValue;
+        }
+    }
+
+    setHudLapTimeVisible(isVisible) {
+        if (!this.timeDisplay) return;
+        this.timeDisplay.style.display = isVisible ? '' : 'none';
+    }
+
+    setHudBestMetric({ label = 'BEST', value = '--', visible = false } = {}) {
+        if (!this.bestTimeDisplay || !this.bestTimeVal) return;
+
+        if (visible) {
+            if (this.bestTimeLabel) this.bestTimeLabel.textContent = label;
+            this.bestTimeVal.textContent = value;
+            this.bestTimeDisplay.style.display = 'flex';
+            if (this.bestTimeDivider) this.bestTimeDivider.style.display = 'block';
+            return;
+        }
+
+        if (this.bestTimeLabel) this.bestTimeLabel.textContent = 'BEST';
+        this.bestTimeVal.textContent = '--';
+        this.bestTimeDisplay.style.display = 'none';
+        if (this.bestTimeDivider) this.bestTimeDivider.style.display = 'none';
     }
 
     /** PB shown on track cards after bulk load; used to avoid HUD flicker while switching tracks. */
@@ -648,16 +805,17 @@ export class GameUi {
         }
 
         if (bestLapTime !== null && bestLapTime !== undefined) {
-            this.bestTimeVal.textContent = bestLapTime.toFixed(2);
-            this.bestTimeDisplay.style.display = 'flex';
-            if (this.bestTimeDivider) this.bestTimeDivider.style.display = 'block';
+            this.setHudBestMetric({
+                label: 'BEST',
+                value: bestLapTime.toFixed(2),
+                visible: true
+            });
             this._hasPersonalBests = true;
             this.updateHudStatsButtonState();
             return;
         }
 
-        this.bestTimeDisplay.style.display = 'none';
-        if (this.bestTimeDivider) this.bestTimeDivider.style.display = 'none';
+        this.setHudBestMetric({ visible: false });
         this._hasPersonalBests = false;
         this.updateHudStatsButtonState();
     }
@@ -888,6 +1046,30 @@ export class GameUi {
         this._renderedTrackPreviewKeys.add(trackKey);
     }
 
+    renderDailyChallengePreview(trackKey) {
+        if (!trackKey || this._dailyChallengePreviewTrackKey === trackKey) return;
+
+        const track = TRACKS[trackKey];
+        const previewCanvas = this.dailyChallengePreviewCanvas;
+        if (!track || !previewCanvas) return;
+
+        const previewGeometry = getTrackPreviewGeometry(trackKey, track, {
+            qualityLevel: this._previewQualityLevel,
+            frameSkip: this._previewFrameSkip
+        });
+        renderTrackPreviewCanvas(previewCanvas, {
+            trackGeometry: {
+                outer: previewGeometry.outer,
+                inner: previewGeometry.inner
+            },
+            startLine: track.startLine,
+            startPos: track.startPos,
+            startAngle: track.startAngle,
+            runHistory: []
+        });
+        this._dailyChallengePreviewTrackKey = trackKey;
+    }
+
     queueReturningTrackPreview(trackKey) {
         if (!trackKey || this._renderedTrackPreviewKeys.has(trackKey) || this._queuedTrackPreviewKeySet.has(trackKey)) {
             return;
@@ -1110,7 +1292,10 @@ export class GameUi {
     refreshReturningTrackSliderMetrics() {
         if (!this.trackCarouselShell) return;
 
-        const shellWidth = this.trackCarouselShell.clientWidth;
+        const shellStyle = window.getComputedStyle(this.trackCarouselShell);
+        const shellPaddingLeft = parseFloat(shellStyle.paddingLeft) || 0;
+        const shellPaddingRight = parseFloat(shellStyle.paddingRight) || 0;
+        const shellWidth = this.trackCarouselShell.clientWidth - shellPaddingLeft - shellPaddingRight;
         if (shellWidth <= 0) return;
 
         const nextCenters = new Map();
@@ -1220,30 +1405,6 @@ export class GameUi {
     bindReturningPlayerKeyboardNavigation() {
         if (this._selectorKeydownHandler) return;
 
-        this._trackModeSpaceCaptureHandler = (event) => {
-            if (event.key !== ' ' && event.code !== 'Space') return;
-            if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-            if (!this.isReturningPlayerTrackSelectionOpen()) return;
-            if (this.isScoreModeIntroVisible()) return;
-
-            const t = event.target;
-            if (t instanceof HTMLElement) {
-                if (t.isContentEditable) return;
-                const tag = t.tagName;
-                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-            }
-
-            event.preventDefault();
-            event.stopPropagation();
-
-            const trackKey = this._selectedReturningTrackKey || this._currentTrackKey;
-            if (!trackKey) return;
-            const prefs = this.getTrackPreferences(trackKey);
-            const nextMode = prefs.mode === TRACK_MODE_PRACTICE ? TRACK_MODE_STANDARD : TRACK_MODE_PRACTICE;
-            this.updateSelectedTrackPreferences({ mode: nextMode });
-        };
-        document.addEventListener('keydown', this._trackModeSpaceCaptureHandler, true);
-
         this._selectorKeydownHandler = (event) => {
             if (!this.isDesktopTrackSelectionActive()) return;
             if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -1296,14 +1457,6 @@ export class GameUi {
         if (!this.startOverlay || this.startOverlay.style.display === 'none') return false;
         if (!this.returningPlayerPanel || this.returningPlayerPanel.hidden || this.returningPlayerPanel.style.display === 'none') return false;
         return window.matchMedia('(min-width: 769px)').matches;
-    }
-
-    /** Returning-player track picker visible (any viewport); used for Space → toggle trial/session. */
-    isReturningPlayerTrackSelectionOpen() {
-        if (this.isModalActive()) return false;
-        if (!this.startOverlay || this.startOverlay.style.display === 'none') return false;
-        if (!this.returningPlayerPanel || this.returningPlayerPanel.hidden || this.returningPlayerPanel.style.display === 'none') return false;
-        return true;
     }
 
     getTrackCarouselKeys() {
@@ -1418,16 +1571,28 @@ export class GameUi {
         const trackKey = this._selectedReturningTrackKey || this._currentTrackKey;
         if (!trackKey) return;
 
-        const preferences = this.getTrackPreferences(trackKey);
-        const isPractice = preferences.mode === TRACK_MODE_PRACTICE;
+        const activeMode = this.getSelectedTrackMode(trackKey);
+        const selectedOverlay = this._startOverlaySelection;
+        const isStandardSelected = selectedOverlay === TRACK_MODE_STANDARD;
+        const isPracticeSelected = selectedOverlay === TRACK_MODE_PRACTICE;
+        const isDailySelected = selectedOverlay === 'daily';
 
-        if (this.trackModeStandardBtn) {
-            this.trackModeStandardBtn.classList.toggle('is-active', !isPractice);
-            this.trackModeStandardBtn.setAttribute('aria-pressed', isPractice ? 'false' : 'true');
+        if (this.modeSelectStandardBtn) {
+            this.modeSelectStandardBtn.classList.toggle('is-active', isStandardSelected);
+            this.modeSelectStandardBtn.setAttribute('aria-pressed', isStandardSelected ? 'true' : 'false');
         }
-        if (this.trackModePracticeBtn) {
-            this.trackModePracticeBtn.classList.toggle('is-active', isPractice);
-            this.trackModePracticeBtn.setAttribute('aria-pressed', isPractice ? 'true' : 'false');
+        if (this.modeSelectPracticeBtn) {
+            this.modeSelectPracticeBtn.classList.toggle('is-active', isPracticeSelected);
+            this.modeSelectPracticeBtn.setAttribute('aria-pressed', isPracticeSelected ? 'true' : 'false');
+        }
+        if (this.modeSelectDailyBtn) {
+            this.modeSelectDailyBtn.classList.toggle('is-active', isDailySelected);
+            this.modeSelectDailyBtn.setAttribute('aria-pressed', isDailySelected ? 'true' : 'false');
+        }
+        if (this.changeTrackModeBtn) {
+            const modeLabel = TRACK_MODE_LABELS[activeMode] || 'Time trial';
+            this.changeTrackModeBtn.setAttribute('aria-label', `Change mode. Current mode: ${modeLabel}.`);
+            this.changeTrackModeBtn.title = `Change mode from ${modeLabel}`;
         }
     }
 
@@ -1465,6 +1630,12 @@ export class GameUi {
         } catch (error) {
             console.error('Error loading returning-player personal bests:', error);
         }
+    }
+
+    refreshAllReturningTrackPersonalBests() {
+        this._returningTrackKeys.forEach((trackKey) => {
+            this.refreshReturningTrackPersonalBest(trackKey);
+        });
     }
 
     refreshReturningTrackPersonalBest(trackKey) {
@@ -1524,6 +1695,67 @@ export class GameUi {
         this.showTrackLeaderboardModal(trackKey, mode, 'close');
     }
 
+    async requestDailyChallengeLeaderboardSnapshot(challengeId) {
+        if (!challengeId) return null;
+
+        const pendingRequest = this._pendingDailyChallengeSnapshotRequest;
+        if (pendingRequest?.challengeId === challengeId) {
+            return pendingRequest.promise;
+        }
+
+        const requestPromise = getDailyChallengeSnapshot({ challengeId })
+            .then((scoreboardSnapshot) => {
+                if (this._dailyChallengeSummary?.challengeId === challengeId) {
+                    this.setDailyChallengeSummary({
+                        ...this._dailyChallengeSummary,
+                        rankLabel: scoreboardSnapshot?.playerRankLabel || '--',
+                        scoreboardSnapshot: scoreboardSnapshot || null
+                    });
+                }
+                return scoreboardSnapshot || null;
+            })
+            .catch((error) => {
+                console.error('Error loading daily challenge leaderboard:', error);
+                return null;
+            })
+            .finally(() => {
+                if (this._pendingDailyChallengeSnapshotRequest?.challengeId === challengeId) {
+                    this._pendingDailyChallengeSnapshotRequest = null;
+                }
+            });
+
+        this._pendingDailyChallengeSnapshotRequest = {
+            challengeId,
+            promise: requestPromise
+        };
+        return requestPromise;
+    }
+
+    async openDailyChallengeLeaderboard(returnMode = 'close') {
+        const summary = this._dailyChallengeSummary;
+        if (!summary?.challengeId || !summary.trackKey) return;
+
+        const requestId = ++this._leaderboardRequestId;
+        const sharedOptions = {
+            scoreboardMode: TRACK_MODE_STANDARD,
+            scoreboardTrackKey: summary.trackKey,
+            scoreboardSubhead: 'Leaderboard · Daily Challenge'
+        };
+        this.showRunsModal(null, null, null, returnMode, {
+            ...sharedOptions,
+            scoreboardChallengeId: summary.challengeId,
+            scoreboardSnapshot: summary.scoreboardSnapshot || { isLoading: true }
+        });
+
+        const scoreboardSnapshot = await this.requestDailyChallengeLeaderboardSnapshot(summary.challengeId);
+        if (requestId !== this._leaderboardRequestId) return;
+        this.showRunsModal(null, null, null, returnMode, {
+            ...sharedOptions,
+            scoreboardChallengeId: summary.challengeId,
+            scoreboardSnapshot
+        });
+    }
+
     async showTrackLeaderboardModal(trackKey, mode = TRACK_MODE_STANDARD, returnMode = 'close') {
         if (!trackKey || !TRACKS[trackKey]) return;
 
@@ -1580,6 +1812,250 @@ export class GameUi {
         this.refreshReturningTrackPersonalBest(trackKey);
     }
 
+    setDailyChallengeSummary(summary) {
+        if (!summary || typeof summary !== 'object') {
+            this._dailyChallengeSummary = null;
+        } else {
+            this._dailyChallengeSummary = {
+                ...summary,
+                verifiedBestTime: Object.prototype.hasOwnProperty.call(summary, 'verifiedBestTime')
+                    ? summary.verifiedBestTime
+                    : (Number.isFinite(summary.bestTime) ? summary.bestTime : null),
+                verifiedBestLabel: Object.prototype.hasOwnProperty.call(summary, 'verifiedBestLabel')
+                    ? summary.verifiedBestLabel
+                    : (typeof summary.bestLabel === 'string' ? summary.bestLabel : '--'),
+                verifiedRankLabel: Object.prototype.hasOwnProperty.call(summary, 'verifiedRankLabel')
+                    ? summary.verifiedRankLabel
+                    : (typeof summary.rankLabel === 'string' ? summary.rankLabel : '--'),
+                verifiedScoreboardSnapshot: Object.prototype.hasOwnProperty.call(summary, 'verifiedScoreboardSnapshot')
+                    ? (summary.verifiedScoreboardSnapshot && typeof summary.verifiedScoreboardSnapshot === 'object'
+                        ? summary.verifiedScoreboardSnapshot
+                        : null)
+                    : (summary.scoreboardSnapshot && typeof summary.scoreboardSnapshot === 'object'
+                        ? summary.scoreboardSnapshot
+                        : null)
+            };
+        }
+
+        const hasChallenge = Boolean(this._dailyChallengeSummary?.available);
+        if (!hasChallenge && this._startOverlaySelection === 'daily') {
+            this._startOverlaySelection = null;
+        }
+        if (this.dailyChallengeTitle) {
+            this.dailyChallengeTitle.textContent = hasChallenge
+                ? (this._dailyChallengeSummary.title || 'Daily')
+                : 'No daily challenge right now';
+        }
+        if (this.dailyChallengeTrack) {
+            this.dailyChallengeTrack.textContent = hasChallenge
+                ? ''
+                : 'Check back at the next UTC reset.';
+            this.dailyChallengeTrack.style.display = hasChallenge ? 'none' : 'block';
+        }
+        if (this.dailyChallengeObjective) {
+            this.dailyChallengeObjective.textContent = hasChallenge
+                ? (this._dailyChallengeSummary.objectiveLabel || 'Daily objective unavailable')
+                : 'A fresh challenge appears every day.';
+            this.dailyChallengeObjective.style.display = hasChallenge ? 'inline-flex' : 'none';
+        }
+        if (this.dailyChallengeModifiers) {
+            this.dailyChallengeModifiers.replaceChildren();
+            const badgeTexts = hasChallenge
+                ? (Array.isArray(this._dailyChallengeSummary.modifierBadges)
+                  && this._dailyChallengeSummary.modifierBadges.length
+                    ? this._dailyChallengeSummary.modifierBadges
+                    : [this._dailyChallengeSummary.modifierLabel || 'Stock'])
+                : [];
+            for (const text of badgeTexts) {
+                const span = document.createElement('span');
+                span.className = 'daily-challenge-detail__badge';
+                span.textContent = text;
+                this.dailyChallengeModifiers.appendChild(span);
+            }
+            this.dailyChallengeModifiers.style.display = hasChallenge && badgeTexts.length ? 'flex' : 'none';
+        }
+        if (this.dailyChallengeBest) {
+            const bestTime = this._dailyChallengeSummary?.bestTime;
+            this.dailyChallengeBest.textContent = this._dailyChallengeSummary?.bestLabel
+                || (Number.isFinite(bestTime) ? `${bestTime.toFixed(2)}s` : '--');
+        }
+        if (this.dailyChallengeBestLabel) {
+            this.dailyChallengeBestLabel.textContent = getDailyChallengeCopyLabels({
+                objectiveType: this._dailyChallengeSummary?.objectiveType
+            }).bestSummaryLabel;
+        }
+        const dailyChallengeRankLabel = this._dailyChallengeSummary?.rankLabel || '--';
+        this.applyDailyChallengeRankContent(this._dailyChallengeSummary?.scoreboardSnapshot, dailyChallengeRankLabel);
+        if (this.dailyChallengeRankBtn) {
+            const rankLabel = this._dailyChallengeSummary?.scoreboardSnapshot?.playerRankLabel
+                || this.getModalScoreboardStatusText(this._dailyChallengeSummary?.scoreboardSnapshot)
+                || dailyChallengeRankLabel;
+            const trackName = this._dailyChallengeSummary?.trackName || "today's daily challenge";
+            this.dailyChallengeRankBtn.disabled = !hasChallenge;
+            this.dailyChallengeRankBtn.setAttribute(
+                'aria-label',
+                hasChallenge
+                    ? `Open leaderboard for ${trackName}. Your rank: ${rankLabel}.`
+                    : 'Daily challenge leaderboard unavailable.'
+            );
+        }
+        if (this.modeSelectDailyBtn) {
+            this.modeSelectDailyBtn.hidden = !hasChallenge;
+            this.modeSelectDailyBtn.disabled = !hasChallenge;
+            this.modeSelectDailyBtn.setAttribute('aria-pressed', this._startOverlaySelection === 'daily' ? 'true' : 'false');
+        }
+        if (this.modeSelectDailyCopy) {
+            this.modeSelectDailyCopy.textContent = hasChallenge
+                ? `${this._dailyChallengeSummary.trackName || 'Track unavailable'} • ${getDailyChallengeModeSelectObjectiveLine({
+                    objectiveType: this._dailyChallengeSummary.objectiveType
+                })}`
+                : 'Loading today’s special event.';
+        }
+        if (this.dailyChallengeStartBtn) {
+            this.dailyChallengeStartBtn.disabled = !hasChallenge || Boolean(this._dailyChallengeSummary?.loading);
+        }
+        if (hasChallenge && typeof this._dailyChallengeSummary.trackKey === 'string') {
+            this.renderDailyChallengePreview(this._dailyChallengeSummary.trackKey);
+        }
+
+        this.updateDailyChallengeCountdown();
+        this.updateStartOverlayMode(this._startOverlayHasAnyData, this._startOverlayIsReturningPlayer);
+
+        if (this._dailyChallengeCountdownInterval !== null) {
+            clearInterval(this._dailyChallengeCountdownInterval);
+            this._dailyChallengeCountdownInterval = null;
+        }
+        if (hasChallenge && this._dailyChallengeSummary?.endsAt) {
+            this._dailyChallengeCountdownInterval = window.setInterval(
+                () => this.updateDailyChallengeCountdown(),
+                1000
+            );
+        }
+    }
+
+    getDailyChallengeScoreboardSnapshot() {
+        return this._dailyChallengeSummary?.scoreboardSnapshot || null;
+    }
+
+    applyDailyChallengeRankContent(scoreboardSnapshot, fallbackLabel = '--') {
+        if (!this.dailyChallengeRankBtn || !this.dailyChallengeRank) return;
+
+        const hasRank = Boolean(scoreboardSnapshot?.playerRankLabel);
+        const isLoading = Boolean(scoreboardSnapshot?.isLoading);
+        const statusText = this.getModalScoreboardStatusText(scoreboardSnapshot);
+        let status = this.dailyChallengeRankBtn.querySelector?.('[data-daily-rank-status]');
+
+        this.dailyChallengeRank.replaceChildren();
+        this.dailyChallengeRank.toggleAttribute?.('aria-busy', isLoading);
+        this.dailyChallengeRank.textContent = hasRank
+            ? scoreboardSnapshot.playerRankLabel
+            : (isLoading ? '' : fallbackLabel);
+
+        if (isLoading) {
+            const spinner = document.createElement('span');
+            spinner.className = 'modal-rank-spinner';
+            spinner.setAttribute('aria-hidden', 'true');
+            this.dailyChallengeRank.appendChild(spinner);
+        }
+
+        if (statusText) {
+            if (!status) {
+                status = document.createElement('span');
+                status.className = 'modal-stat-status';
+                status.dataset.dailyRankStatus = '';
+                this.dailyChallengeRankBtn.appendChild(status);
+            }
+            status.textContent = statusText;
+        } else {
+            status?.remove();
+        }
+    }
+
+    refreshDailyChallengeVerificationState(challengeId = this._dailyChallengeSummary?.challengeId) {
+        if (!challengeId || this._dailyChallengeSummary?.challengeId !== challengeId) return;
+
+        const summary = this._dailyChallengeSummary;
+        const verificationEntry = getDailyChallengeVerificationEntry(challengeId);
+        const verificationState = getDailyChallengeVerificationState(challengeId);
+        const verifiedBestTime = Number.isFinite(summary?.verifiedBestTime) ? summary.verifiedBestTime : null;
+        const verifiedBestLabel = typeof summary?.verifiedBestLabel === 'string' ? summary.verifiedBestLabel : '--';
+        const verifiedRankLabel = typeof summary?.verifiedRankLabel === 'string' ? summary.verifiedRankLabel : '--';
+        const verifiedScoreboardSnapshot = summary?.verifiedScoreboardSnapshot && typeof summary.verifiedScoreboardSnapshot === 'object'
+            ? summary.verifiedScoreboardSnapshot
+            : null;
+
+        const nextSummary = {
+            ...summary,
+            bestTime: verifiedBestTime,
+            bestLabel: verifiedBestLabel,
+            rankLabel: verifiedRankLabel,
+            scoreboardSnapshot: verifiedScoreboardSnapshot
+        };
+
+        if (verificationState === 'pending' && verificationEntry) {
+            nextSummary.bestTime = Number.isFinite(verificationEntry.bestTime)
+                ? verificationEntry.bestTime
+                : verifiedBestTime;
+            nextSummary.bestLabel = formatDailyChallengeBestLabel(
+                summary.objectiveType,
+                verificationEntry.bestTime,
+                verificationEntry.completedLaps
+            );
+            nextSummary.scoreboardSnapshot = {
+                ...(verifiedScoreboardSnapshot || {}),
+                playerRankLabel: null,
+                isLoading: true,
+                verificationState: 'pending',
+                statusText: 'Pending verification'
+            };
+        } else if (verificationState === 'rejected') {
+            nextSummary.scoreboardSnapshot = {
+                ...(verifiedScoreboardSnapshot || {}),
+                isLoading: false,
+                verificationState: 'rejected',
+                statusText: 'Rejected'
+            };
+        }
+
+        this.setDailyChallengeSummary(nextSummary);
+    }
+
+    updateDailyChallengeCountdown() {
+        if (!this.dailyChallengeReset) return;
+
+        if (!this._dailyChallengeSummary?.available || !this._dailyChallengeSummary?.endsAt) {
+            this.dailyChallengeReset.textContent = '--';
+            return;
+        }
+
+        const remainingMs = Date.parse(this._dailyChallengeSummary.endsAt) - Date.now();
+        if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+            this.dailyChallengeReset.textContent = 'soon';
+            return;
+        }
+
+        const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const parts = [];
+        if (hours > 0) parts.push(`${hours}h`);
+        parts.push(`${minutes}m`);
+        this.dailyChallengeReset.textContent = parts.join(' ');
+    }
+
+    setDailyChallengeHud(state = null) {
+        const isVisible = Boolean(state?.visible);
+        const text = isVisible ? (state?.progressText || '') : '';
+        if (this.dailyChallengeHudInline) {
+            this.dailyChallengeHudInline.hidden = !isVisible;
+            const span = this.dailyChallengeHudInline.querySelector('.daily-challenge-hud__progress');
+            if (span) span.textContent = text;
+        }
+        if (this.hudLapCluster) {
+            this.hudLapCluster.classList.toggle('hud-lap-cluster--daily-active', isVisible);
+        }
+    }
+
     updateStartOverlayMode(hasAnyData, isReturningPlayer = this._startOverlayIsReturningPlayer) {
         this._startOverlayHasAnyData = Boolean(hasAnyData);
         this._startOverlayIsReturningPlayer = Boolean(isReturningPlayer);
@@ -1587,22 +2063,58 @@ export class GameUi {
             this._scoreModeIntroDismissed = true;
             writePersistedScoreModeIntroDismissed(true);
         }
-        const showTrackSelection = hasAnyData || this._introAcknowledged;
-        const showScoreModeIntro = this.shouldShowScoreModeIntro(showTrackSelection);
-        const showReturningPlayerPanel = showTrackSelection && !showScoreModeIntro;
+        const showSelectionFlow = hasAnyData || this._introAcknowledged;
+        const showScoreModeIntro = this.shouldShowScoreModeIntro(showSelectionFlow);
+        const selectedOverlay = this._startOverlaySelection;
+        const showModeSelection = showSelectionFlow && !showScoreModeIntro && !selectedOverlay;
+        const showReturningPlayerPanel = showSelectionFlow && !showScoreModeIntro && (
+            selectedOverlay === TRACK_MODE_STANDARD || selectedOverlay === TRACK_MODE_PRACTICE
+        );
+        const showDailyChallengePanel = showSelectionFlow && !showScoreModeIntro && selectedOverlay === 'daily' && Boolean(this._dailyChallengeSummary?.available);
 
-        if (this.firstTimeMsg) this.firstTimeMsg.style.display = showTrackSelection ? 'none' : 'block';
+        if (this.firstTimeMsg) this.firstTimeMsg.style.display = showSelectionFlow ? 'none' : 'block';
         if (this.startBtn) {
-            this.startBtn.style.display = showTrackSelection ? 'none' : 'inline-flex';
+            this.startBtn.style.display = showSelectionFlow ? 'none' : 'inline-flex';
             this.startBtn.textContent = 'Got It';
+        }
+        if (this.dailyChallengePanel) {
+            this.dailyChallengePanel.hidden = !showDailyChallengePanel;
+            this.dailyChallengePanel.style.display = showDailyChallengePanel ? 'grid' : 'none';
+        }
+        if (this.modeSelectionPanel) {
+            this.modeSelectionPanel.hidden = !showModeSelection;
+            this.modeSelectionPanel.style.display = showModeSelection ? 'grid' : 'none';
         }
         if (this.returningPlayerPanel) {
             this.returningPlayerPanel.hidden = !showReturningPlayerPanel;
             this.returningPlayerPanel.style.display = showReturningPlayerPanel ? 'grid' : 'none';
         }
         this.updateScoreModeIntro(showScoreModeIntro);
-        document.body.classList.toggle('ftu-onboarding-active', !showTrackSelection);
-        this.setStartSelectionMode(showTrackSelection);
+        this.updateTrackModeControls();
+        document.body.classList.toggle('ftu-onboarding-active', !showSelectionFlow);
+        this.setStartSelectionMode(showSelectionFlow);
+
+        if (showModeSelection) {
+            requestAnimationFrame(() => {
+                const focusTarget = selectedOverlay === 'daily' && this.modeSelectDailyBtn && !this.modeSelectDailyBtn.hidden
+                    ? this.modeSelectDailyBtn
+                    : (selectedOverlay === TRACK_MODE_PRACTICE
+                        ? this.modeSelectPracticeBtn
+                        : (selectedOverlay === TRACK_MODE_STANDARD
+                            ? this.modeSelectStandardBtn
+                            : null));
+
+                if (focusTarget) {
+                    focusTarget.focus();
+                    return;
+                }
+
+                const activeElement = document.activeElement;
+                if (activeElement instanceof HTMLElement && this.modeSelectionPanel?.contains(activeElement)) {
+                    activeElement.blur();
+                }
+            });
+        }
 
         if (showReturningPlayerPanel) {
             requestAnimationFrame(() => {
@@ -1610,6 +2122,12 @@ export class GameUi {
                     this._selectedReturningTrackKey || this._currentTrackKey || this._returningTrackKeys[0],
                     { scrollIntoView: true, syncPreviewTrack: true }
                 );
+            });
+        }
+
+        if (showDailyChallengePanel) {
+            requestAnimationFrame(() => {
+                (this.dailyChallengeStartBtn?.disabled ? this.dailyChallengeBackBtn : this.dailyChallengeStartBtn)?.focus();
             });
         }
     }
@@ -1750,16 +2268,19 @@ export class GameUi {
                 lapTimesArray: lapData.listData ?? lapData.lapTimesArray ?? null,
                 bestTime: lapData.bestTime ?? lapData.lapTime ?? null,
                 currentTime: lapData.lapTime ?? null,
+                scoreboardChallengeId: lapData.scoreboardChallengeId || null,
                 scoreboardTrackKey: lapData.scoreboardTrackKey || this._currentTrackKey || null,
                 scoreboardSnapshot: lapData.scoreboardSnapshot ?? null,
                 scoreboardMode: lapData.scoreboardMode || TRACK_MODE_STANDARD,
-                showGlobalLeaderboard: lapData.showGlobalLeaderboard !== false
+                scoreboardSubhead: lapData.scoreboardSubhead || null,
+                showGlobalLeaderboard: lapData.showGlobalLeaderboard !== false,
+                allowLeaderboardOpen: lapData.allowLeaderboardOpen !== false
             }
             : null;
         this._forceSharePanelVisible = Boolean(options.forceSharePanelVisible);
         this.setModalResetButtonLabel(
             options.primaryActionLabel || 'Race Again',
-            Object.prototype.hasOwnProperty.call(options, 'primaryShortcutLabel') ? options.primaryShortcutLabel : 'R',
+            Object.prototype.hasOwnProperty.call(options, 'primaryShortcutLabel') ? options.primaryShortcutLabel : null,
             options.primaryActionIcon || null
         );
         this.setModalSecondaryButton(
@@ -1782,11 +2303,24 @@ export class GameUi {
                     );
                     delete this.modalStatsRow.dataset.hasRuns;
                     this.modalStatsRow.style.display = 'grid';
+                } else if (lapData.variant === 'daily-crash-budget-pause') {
+                    this.setModalStatLeftRight(
+                        `${Math.max(0, Math.trunc(lapData.completedLaps || 0))}`,
+                        '',
+                        `${Math.max(0, Math.trunc(lapData.crashesLeft || 0))}`,
+                        {
+                            leftLabel: 'Laps',
+                            rightLabel: 'Crashes Left'
+                        }
+                    );
+                    delete this.modalStatsRow.dataset.hasRuns;
+                    this.modalStatsRow.style.display = 'flex';
                 } else if (lapData.variant === 'standard-pause') {
                     this.setStandardPauseStats(
                         lapData.lapTime,
                         lapData.deltaToBest,
-                        lapData.bestTime
+                        lapData.bestTime,
+                        lapData.primaryStatLabel || 'Lap Time'
                     );
                     delete this.modalStatsRow.dataset.hasRuns;
                     this.modalStatsRow.style.display = 'grid';
@@ -1812,11 +2346,26 @@ export class GameUi {
                     );
                     this.modalStatsRow.dataset.hasRuns = lapData.listData ? 'true' : '';
                     this.modalStatsRow.style.display = 'flex';
+                } else if (lapData.variant === 'daily-crash-budget') {
+                    this.modalStatsRow.replaceChildren();
+                    this.modalStatsRow.appendChild(this.createModalStat(
+                        'Laps',
+                        `${Math.max(0, Math.trunc(lapData.completedLaps || 0))}`,
+                        'modal-stat-value--best'
+                    ));
+                    if (lapData.scoreboardSnapshot) {
+                        this.modalStatsRow.appendChild(this.createRankModalStat(lapData.scoreboardSnapshot));
+                        this.modalStatsRow.style.display = 'grid';
+                    } else {
+                        this.modalStatsRow.style.display = 'grid';
+                    }
+                    delete this.modalStatsRow.dataset.hasRuns;
                 } else if (lapData.isNewBest) {
                     this.setWinStats(
-                        lapData.bestTime,
+                        lapData.lapTime ?? lapData.bestTime,
                         null,
-                        lapData.scoreboardSnapshot
+                        lapData.scoreboardSnapshot,
+                        lapData.primaryStatLabel || 'Lap Time'
                     );
                     this.modalStatsRow.dataset.hasRuns = lapData.lapTimesArray?.length ? 'true' : '';
                     this.modalStatsRow.style.display = 'grid';
@@ -1824,7 +2373,9 @@ export class GameUi {
                     const delta = lapData.lapTime - lapData.bestTime;
                     this.setWinStats(
                         lapData.lapTime,
-                        delta
+                        delta,
+                        null,
+                        lapData.primaryStatLabel || 'Lap Time'
                     );
                     this.modalStatsRow.dataset.hasRuns = lapData.lapTimesArray?.length ? 'true' : '';
                     this.modalStatsRow.style.display = 'grid';
@@ -1866,8 +2417,11 @@ export class GameUi {
     showRunsModal(lapTimesArray, bestTime, currentTime = null, returnMode = 'close', {
         scoreboardSnapshot = null,
         scoreboardMode = TRACK_MODE_STANDARD,
+        scoreboardChallengeId = null,
         scoreboardTrackKey = null,
-        showGlobalLeaderboard = true
+        scoreboardSubhead = null,
+        showGlobalLeaderboard = true,
+        allowLeaderboardOpen = true
     } = {}) {
         if (!this.modal || !this.modalTitle || !this.modalLapTimes || !this.modalRunsView || !this.modalMainView) return;
 
@@ -1877,8 +2431,26 @@ export class GameUi {
         this.modalLapTimes.replaceChildren();
         this.renderLapTimesList(this.modalLapTimes, lapTimesArray, bestTime, currentTime);
         const trackKey = scoreboardTrackKey || this._currentTrackKey || null;
+        this._modalRunsPayload = {
+            lapTimesArray,
+            bestTime,
+            currentTime,
+            scoreboardChallengeId,
+            scoreboardTrackKey: trackKey,
+            scoreboardSnapshot: scoreboardSnapshot || null,
+            scoreboardMode,
+            scoreboardSubhead: scoreboardSubhead || null,
+            showGlobalLeaderboard,
+            allowLeaderboardOpen
+        };
         if (showGlobalLeaderboard) {
-            this.renderScoreboardList(this.modalLapTimes, scoreboardSnapshot, scoreboardMode, trackKey);
+            this.renderScoreboardList(
+                this.modalLapTimes,
+                scoreboardSnapshot,
+                scoreboardMode,
+                trackKey,
+                scoreboardSubhead
+            );
         }
         this._runsViewMode = returnMode === 'back' ? 'back' : 'close';
         if (this.backToMainBtn) this.backToMainBtn.textContent = this._runsViewMode === 'back' ? 'Back' : 'Close';
@@ -2050,7 +2622,7 @@ export class GameUi {
         this.modalStatsRow.appendChild(this.createModalStat('Delta', deltaText, deltaClass));
     }
 
-    setStandardPauseStats(lapTime, deltaToBest, _bestTime) {
+    setStandardPauseStats(lapTime, deltaToBest, _bestTime, primaryLabel = 'Lap Time') {
         if (!this.modalStatsRow) return;
         this.modalStatsRow.replaceChildren();
 
@@ -2071,11 +2643,11 @@ export class GameUi {
             }
         }
 
-        this.modalStatsRow.appendChild(this.createModalStat('Lap Time', lapText));
+        this.modalStatsRow.appendChild(this.createModalStat(primaryLabel, lapText));
         this.modalStatsRow.appendChild(this.createModalStat('Delta', deltaText, deltaClass));
     }
 
-    setWinStats(lapTime, deltaToBest, scoreboardSnapshot = null) {
+    setWinStats(lapTime, deltaToBest, scoreboardSnapshot = null, primaryLabel = 'Lap Time') {
         if (!this.modalStatsRow) return;
         this.modalStatsRow.replaceChildren();
 
@@ -2100,7 +2672,7 @@ export class GameUi {
             deltaClass = 'modal-stat-value--delta-negative';
         }
 
-        this.modalStatsRow.appendChild(this.createModalStat('Lap Time', lapText));
+        this.modalStatsRow.appendChild(this.createModalStat(primaryLabel, lapText));
         if (scoreboardSnapshot) {
             this.modalStatsRow.appendChild(this.createRankModalStat(scoreboardSnapshot));
             return;
@@ -2130,10 +2702,57 @@ export class GameUi {
         return stat;
     }
 
-    createRankModalStat(scoreboardSnapshot) {
+    getModalScoreboardStatusText(scoreboardSnapshot) {
+        const statusText = typeof scoreboardSnapshot?.statusText === 'string'
+            ? scoreboardSnapshot.statusText.trim()
+            : '';
+        return statusText || null;
+    }
+
+    applyRankModalStatContent(rankStat, scoreboardSnapshot) {
+        if (!rankStat) return;
+
+        const value = rankStat.querySelector?.('[data-modal-rank-value]');
+        if (!value) return;
+
         const hasRank = Boolean(scoreboardSnapshot?.playerRankLabel);
         const isLoading = Boolean(scoreboardSnapshot?.isLoading);
-        const canOpenLeaderboard = Boolean(this._modalRunsPayload?.scoreboardTrackKey);
+        const statusText = this.getModalScoreboardStatusText(scoreboardSnapshot);
+        let status = rankStat.querySelector?.('[data-modal-rank-status]');
+
+        value.replaceChildren();
+        value.toggleAttribute('aria-busy', isLoading);
+        value.textContent = hasRank ? scoreboardSnapshot.playerRankLabel : (isLoading ? '' : 'N/A');
+        if (isLoading) {
+            const spinner = document.createElement('span');
+            spinner.className = 'modal-rank-spinner';
+            spinner.setAttribute('aria-hidden', 'true');
+            value.appendChild(spinner);
+        }
+
+        if (statusText) {
+            if (!status) {
+                status = document.createElement('span');
+                status.className = 'modal-stat-status';
+                status.dataset.modalRankStatus = '';
+                rankStat.appendChild(status);
+            }
+            status.textContent = statusText;
+        } else {
+            status?.remove();
+        }
+
+        if (rankStat instanceof HTMLButtonElement) {
+            rankStat.disabled = isLoading;
+        }
+    }
+
+    createRankModalStat(scoreboardSnapshot) {
+        const hasRank = Boolean(scoreboardSnapshot?.playerRankLabel);
+        const canOpenLeaderboard = Boolean(
+            this._modalRunsPayload?.scoreboardTrackKey
+            && this._modalRunsPayload?.allowLeaderboardOpen !== false
+        );
         const stat = this.createModalStat(
             'Rank',
             hasRank ? scoreboardSnapshot.playerRankLabel : '',
@@ -2144,18 +2763,8 @@ export class GameUi {
         const value = stat.querySelector('.modal-stat-value');
         if (value) {
             value.dataset.modalRankValue = '';
-            value.toggleAttribute('aria-busy', isLoading);
-            value.textContent = hasRank ? scoreboardSnapshot.playerRankLabel : (isLoading ? '' : 'N/A');
-            if (isLoading) {
-                const spinner = document.createElement('span');
-                spinner.className = 'modal-rank-spinner';
-                spinner.setAttribute('aria-hidden', 'true');
-                value.appendChild(spinner);
-            }
         }
-        if (stat instanceof HTMLButtonElement) {
-            stat.disabled = isLoading;
-        }
+        this.applyRankModalStatContent(stat, scoreboardSnapshot);
         return stat;
     }
 
@@ -2173,19 +2782,72 @@ export class GameUi {
             return;
         }
 
-        rankValue.replaceChildren();
-        rankValue.removeAttribute('aria-busy');
-        if (scoreboardSnapshot?.playerRankLabel) {
-            rankValue.textContent = scoreboardSnapshot.playerRankLabel;
-            rankStat.disabled = false;
+        this.applyRankModalStatContent(rankStat, scoreboardSnapshot);
+    }
+
+    updateModalRunSummary({
+        bestTime = undefined,
+        currentTime = undefined,
+        lapTimesArray = undefined
+    } = {}) {
+        if (!this._modalRunsPayload) return;
+
+        if (bestTime !== undefined) {
+            this._modalRunsPayload.bestTime = bestTime;
+            const primaryValue = this.modalStatsRow?.querySelector('.modal-stat-stack:not([data-modal-rank-stat]) .modal-stat-value');
+            if (primaryValue && Number.isFinite(bestTime)) {
+                primaryValue.textContent = `${bestTime.toFixed(2)}s`;
+            }
+        }
+
+        if (currentTime !== undefined) {
+            this._modalRunsPayload.currentTime = currentTime;
+        }
+
+        if (lapTimesArray !== undefined) {
+            this._modalRunsPayload.lapTimesArray = lapTimesArray;
+        }
+
+        if (!this.modalLapTimes) return;
+
+        if (this.modalRunsView?.classList.contains('active-view')) {
+            this.showRunsModal(
+                this._modalRunsPayload.lapTimesArray,
+                this._modalRunsPayload.bestTime,
+                this._modalRunsPayload.currentTime,
+                this._runsViewMode,
+                {
+                    scoreboardChallengeId: this._modalRunsPayload.scoreboardChallengeId,
+                    scoreboardSnapshot: this._modalRunsPayload.scoreboardSnapshot,
+                    scoreboardMode: this._modalRunsPayload.scoreboardMode,
+                    scoreboardTrackKey: this._modalRunsPayload.scoreboardTrackKey,
+                    scoreboardSubhead: this._modalRunsPayload.scoreboardSubhead,
+                    showGlobalLeaderboard: this._modalRunsPayload.showGlobalLeaderboard !== false,
+                    allowLeaderboardOpen: this._modalRunsPayload.allowLeaderboardOpen !== false
+                }
+            );
             return;
         }
 
-        rankValue.textContent = 'N/A';
-        rankStat.disabled = false;
+        if (!this.modalMainView?.classList.contains('active-view')) return;
+
+        this.modalLapTimes.replaceChildren();
+        if (this._modalRunsPayload.lapTimesArray !== undefined && this._modalRunsPayload.lapTimesArray !== null) {
+            this.renderLapTimesList(
+                this.modalLapTimes,
+                this._modalRunsPayload.lapTimesArray,
+                this._modalRunsPayload.bestTime,
+                this._modalRunsPayload.currentTime
+            );
+        }
     }
 
     showModalLeaderboardPayload() {
+        if (this._modalRunsPayload?.scoreboardChallengeId) {
+            void this.openDailyChallengeLeaderboard('back');
+            return;
+        }
+
         if (!this._modalRunsPayload?.scoreboardTrackKey) return;
 
         this.showTrackLeaderboardModal(
@@ -2204,12 +2866,30 @@ export class GameUi {
             this._modalRunsPayload.currentTime,
             'back',
             {
+                scoreboardChallengeId: this._modalRunsPayload.scoreboardChallengeId,
                 scoreboardSnapshot: this._modalRunsPayload.scoreboardSnapshot,
                 scoreboardMode: this._modalRunsPayload.scoreboardMode,
                 scoreboardTrackKey: this._modalRunsPayload.scoreboardTrackKey,
-                showGlobalLeaderboard: this._modalRunsPayload.showGlobalLeaderboard !== false
+                scoreboardSubhead: this._modalRunsPayload.scoreboardSubhead,
+                showGlobalLeaderboard: this._modalRunsPayload.showGlobalLeaderboard !== false,
+                allowLeaderboardOpen: this._modalRunsPayload.allowLeaderboardOpen !== false
             }
         );
+    }
+
+    matchesModalScoreboardContext({ challengeId = null, trackKey = null, mode = null } = {}) {
+        if (!this.isModalActive() || !this._modalRunsPayload) return false;
+
+        if (challengeId) {
+            return this._modalRunsPayload.scoreboardChallengeId === challengeId;
+        }
+
+        if (!trackKey) return false;
+        if (this._modalRunsPayload.scoreboardChallengeId) return false;
+
+        const expectedMode = mode === TRACK_MODE_PRACTICE ? TRACK_MODE_PRACTICE : TRACK_MODE_STANDARD;
+        return this._modalRunsPayload.scoreboardTrackKey === trackKey
+            && this._modalRunsPayload.scoreboardMode === expectedMode;
     }
 
     createModalActionIcon(iconName) {
@@ -2349,7 +3029,7 @@ export class GameUi {
         button.appendChild(kbd);
     }
 
-    setModalResetButtonLabel(label, shortcutLabel = 'R', iconName = null) {
+    setModalResetButtonLabel(label, shortcutLabel = null, iconName = null) {
         this.setModalActionButtonContent(this.modalResetBtn, label, { shortcutLabel, iconName });
     }
 
@@ -2421,7 +3101,7 @@ export class GameUi {
         container.appendChild(list);
     }
 
-    renderScoreboardList(container, scoreboardSnapshot, scoreboardMode, trackKey = null) {
+    renderScoreboardList(container, scoreboardSnapshot, scoreboardMode, trackKey = null, scoreboardSubhead = null) {
         if (!container) return;
         const isLoading = Boolean(scoreboardSnapshot?.isLoading);
         const topRows = Array.isArray(scoreboardSnapshot?.topRows)
@@ -2431,6 +3111,9 @@ export class GameUi {
             ? scoreboardSnapshot.nearbyRows
             : [];
         const currentPlayerRow = scoreboardSnapshot?.currentPlayerRow || null;
+        const objectiveType = typeof scoreboardSnapshot?.objectiveType === 'string'
+            ? scoreboardSnapshot.objectiveType
+            : null;
         const trackMeta = trackKey && TRACKS[trackKey] ? TRACKS[trackKey] : null;
         const trackName = trackMeta?.name || null;
 
@@ -2457,7 +3140,7 @@ export class GameUi {
         const modeLabel = TRACK_MODE_LABELS[scoreboardMode] || 'Time trial';
         const subhead = document.createElement('span');
         subhead.className = 'leaderboard-subhead';
-        subhead.textContent = `Leaderboard · ${modeLabel}`;
+        subhead.textContent = scoreboardSubhead || `Leaderboard · ${modeLabel}`;
         headerStack.appendChild(subhead);
         headerRow.appendChild(headerStack);
         section.appendChild(headerRow);
@@ -2505,7 +3188,14 @@ export class GameUi {
 
             const runTime = document.createElement('span');
             runTime.className = 'run-time';
-            runTime.textContent = `${entry.bestTime.toFixed(2)}s`;
+            if (
+                objectiveType === 'finish_with_crash_budget'
+                && Number.isFinite(entry.completedLaps)
+            ) {
+                runTime.textContent = `${entry.completedLaps}L`;
+            } else {
+                runTime.textContent = `${entry.bestTime.toFixed(2)}s`;
+            }
             item.appendChild(runTime);
 
             list.appendChild(item);

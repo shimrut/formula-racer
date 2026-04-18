@@ -1,4 +1,4 @@
-import { RealTimeRacer } from './engine.js?v=1.55';
+import { RealTimeRacer } from './engine.js?v=1.74';
 
 function setupMobileViewportGuards() {
     const hasTouchInput = window.matchMedia('(pointer: coarse)').matches
@@ -43,5 +43,5 @@ function setupMobileViewportGuards() {
 }
 
 setupMobileViewportGuards();
-const game = new RealTimeRacer();
+new RealTimeRacer();
 // Local-only debug/test hooks are exposed on window.__RACER_DEBUG__.
