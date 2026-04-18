@@ -1,6 +1,6 @@
 import { CONFIG } from '../config.js?v=1.40';
 
-function drawCheckeredLine(ctx, p1, p2, width) {
+export function drawCheckeredLine(ctx, p1, p2, width) {
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
     const length = Math.hypot(dx, dy);

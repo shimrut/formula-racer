@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js?v=1.40';
+import { drawCheckeredLine } from '../core/track-canvas.js?v=1.40';
 
 const MODAL_SURFACE_COLOR = '#020617';
 const SHARE_POSTER_TOP_INSET = 236;
@@ -133,67 +134,6 @@ function traceMappedPath(ctx, points, mapPoint, closePath = false) {
     }
 }
 
-function drawCheckeredLine(ctx, p1, p2, width) {
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const length = Math.hypot(dx, dy);
-    if (length < 1) return;
-
-    const tx = dx / length;
-    const ty = dy / length;
-    const nx = -ty;
-    const ny = tx;
-    const rows = 2;
-    const columns = Math.max(2, Math.ceil(length / Math.max(6, width * 0.8)));
-    const cellLength = length / columns;
-    const rowHeight = width / rows;
-
-    ctx.save();
-    ctx.lineCap = 'butt';
-    ctx.lineJoin = 'miter';
-
-    ctx.strokeStyle = 'rgba(2, 6, 23, 0.45)';
-    ctx.lineWidth = width + 4;
-    ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.stroke();
-
-    for (let row = 0; row < rows; row++) {
-        const innerOffset = -width / 2 + row * rowHeight;
-        const outerOffset = innerOffset + rowHeight;
-
-        for (let col = 0; col < columns; col++) {
-            const startDist = col * cellLength;
-            const endDist = (col + 1) * cellLength;
-            const sx = p1.x + tx * startDist;
-            const sy = p1.y + ty * startDist;
-            const ex = p1.x + tx * endDist;
-            const ey = p1.y + ty * endDist;
-
-            ctx.fillStyle = (row + col) % 2 === 0
-                ? CONFIG.finishLineColor
-                : CONFIG.finishLineDarkColor;
-            ctx.beginPath();
-            ctx.moveTo(sx + nx * innerOffset, sy + ny * innerOffset);
-            ctx.lineTo(ex + nx * innerOffset, ey + ny * innerOffset);
-            ctx.lineTo(ex + nx * outerOffset, ey + ny * outerOffset);
-            ctx.lineTo(sx + nx * outerOffset, sy + ny * outerOffset);
-            ctx.closePath();
-            ctx.fill();
-        }
-    }
-
-    ctx.strokeStyle = CONFIG.finishLineBorderColor;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(p1.x + nx * (width / 2), p1.y + ny * (width / 2));
-    ctx.lineTo(p2.x + nx * (width / 2), p2.y + ny * (width / 2));
-    ctx.moveTo(p1.x - nx * (width / 2), p1.y - ny * (width / 2));
-    ctx.lineTo(p2.x - nx * (width / 2), p2.y - ny * (width / 2));
-    ctx.stroke();
-    ctx.restore();
-}
 
 function drawNeonRoute(ctx, points, mapPoint) {
     if (points.length < 2) return;

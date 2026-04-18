@@ -9,14 +9,53 @@ function lerpAngle(a, b, t) {
 }
 import { TRACKS } from './tracks.js?v=1.36';
 import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.36';
-import { updateSimulation } from './core/simulation.js?v=1.53';
-import { RingBuffer } from './core/ring-buffer.js?v=1.36';
-import { saveLapTime, saveBestTime, getTrackData, hasAnyTrackData } from './storage.js?v=1.36';
+import { updateSimulation } from './core/simulation.js?v=1.54';
+import { RingBuffer } from './core/ring-buffer.js?v=1.38';
+import { getTrackData, hasAnyTrackData, saveLapTime, saveBestTime, syncBestTime } from './storage.js?v=1.36';
+import { getDailyChallengeData, setDailyChallengeBestTime } from './daily-challenge-storage.js?v=1.37';
+import {
+    buildLapRecord,
+    createModalActions,
+    isNewBestResult,
+    pushRecentLap
+} from './result-flow.js?v=1.1';
+import { createRunPolicy } from './run-policy.js?v=1.1';
 import { AnalyticsService } from './services/analytics.js?v=1.36';
 import { PlayerStatusStore } from './services/player-status.js?v=1.36';
 import { SessionFlagStore } from './services/session-flags.js?v=1.36';
 import { ShareService } from './services/share.js?v=1.36';
-import { GameUi } from './ui.js?v=1.55';
+import {
+    formatDailyChallengeResultLabel,
+    getActiveDailyChallenge,
+    getDailyChallengeCopyLabels,
+    getDailyChallengeMaxCrashes,
+    getDailyChallengeModifierBadges,
+    getDailyChallengeModifierLabel,
+    getDailyChallengeObjectiveLabel,
+    getDailyChallengeRequiredLaps,
+    getDailyChallengeSnapshot,
+    getDailyChallengeTrackName,
+    isCrashBudgetDailyChallenge,
+    submitDailyChallengeBestTime
+} from './services/daily-challenge.js?v=1.39';
+import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.45';
+import {
+    clearDailyChallengeVerification,
+    clearScoreboardVerification,
+    enqueueDailyChallengeVerification,
+    enqueueScoreboardVerification,
+    getDueDailyChallengeVerifications,
+    getDueScoreboardVerifications,
+    getDailyChallengeVerificationEntry,
+    getNextVerificationAttemptAt,
+    getScoreboardVerificationEntry,
+    getVerificationRetryDelayMs,
+    markDailyChallengeVerificationPending,
+    markDailyChallengeVerificationRejected,
+    markScoreboardVerificationPending,
+    markScoreboardVerificationRejected
+} from './services/verification-queue.js';
+import { GameUi } from './ui.js?v=1.65';
 
 const SCOREBOARD_REPLAY_MAX_FRAMES = 20000;
 
@@ -28,8 +67,39 @@ const FRAME_SKIP_ENTER_MS = 22;
 const FRAME_SKIP_EXIT_MS = 18;
 /** Skid polyline: break stroke when consecutive samples are farther apart (new skid after a gap). Grid units². */
 const SKID_GAP_BREAK_DIST_SQ = 0.45 * 0.45;
+function createVerificationSnapshot({
+    statusText = '',
+    verificationState = 'pending',
+    isLoading = true
+} = {}) {
+    return {
+        isLoading,
+        verificationState,
+        statusText
+    };
+}
 
-function shouldExposeDebugHooks() {
+const VERIFICATION_REJECTED_SNAPSHOT = createVerificationSnapshot({
+    statusText: 'Rejected',
+    verificationState: 'rejected',
+    isLoading: false
+});
+
+const VERIFICATION_ACCEPTED_PENDING_SNAPSHOT = createVerificationSnapshot({
+    statusText: 'Pending verification',
+    verificationState: 'pending',
+    isLoading: false
+});
+
+function getVerificationSnapshotFromQueueEntry(entry) {
+    if (!entry) return null;
+    if (entry.verificationState === 'rejected') {
+        return VERIFICATION_REJECTED_SNAPSHOT;
+    }
+    return VERIFICATION_ACCEPTED_PENDING_SNAPSHOT;
+}
+
+function isLocalEnvironment() {
     if (typeof window === 'undefined') return false;
 
     const hostname = window.location?.hostname || '';
@@ -40,6 +110,14 @@ function shouldExposeDebugHooks() {
         || hostname === '0.0.0.0'
         || window.location?.protocol === 'file:'
     );
+}
+
+function shouldExposeDebugHooks() {
+    return isLocalEnvironment();
+}
+
+function shouldAutoRetryVerificationQueue() {
+    return !isLocalEnvironment();
 }
 
 // --- Game Engine ---
@@ -79,8 +157,14 @@ export class RealTimeRacer {
         this.currentModeKey = TRACK_MODE_STANDARD;
         this.currentIsRanked = false;
         this.practiceEndOnCrash = false;
+        this.currentRunPolicy = createRunPolicy({ modeKey: this.currentModeKey });
         this.practiceSession = null;
-        this.pendingPracticeBestSavePromise = null;
+        this.runtimeConfig = { ...CONFIG };
+        this.activeDailyChallenge = null;
+        this.currentChallengeRun = null;
+        this.dailyChallengeBestResult = null;
+        this.verificationQueueTimer = null;
+        this.isProcessingVerificationQueue = false;
         this.hasAnyData = false; // Whether any track has ever been raced
         this.isReturningPlayer = false;
         this.activeTimers = []; // Keep track of active timeouts/intervals
@@ -120,7 +204,7 @@ export class RealTimeRacer {
         this.qualityLevel = this.detectDevicePerformance();
 
         // Pre-computed friction factor (constant for fixed timestep)
-        this.frictionFactor = Math.pow(CONFIG.friction, this.FIXED_DT * 60);
+        this.frictionFactor = Math.pow(this.runtimeConfig.friction, this.FIXED_DT * 60);
 
         this.runHistory = new RingBuffer(1400, () => ({ x: 0, y: 0 }));
         this.runHistoryTimer = 0;
@@ -179,6 +263,8 @@ export class RealTimeRacer {
                 this.applyPreviewPresentation({ opacity, instant });
             },
             onStart: (trackKey, trackPreferences) => this.handleStartButton(trackKey, trackPreferences),
+            onStartDailyChallenge: () => this.handleStartDailyChallenge(),
+            onModeSelected: (mode) => this.trackModeSelection(mode),
             onShowPersonalBests: () => this.showPersonalBests(),
             onPausePractice: () => this.pausePracticeSession(),
             onSupportClick: () => this.analytics.trackSupportClick(),
@@ -233,6 +319,12 @@ export class RealTimeRacer {
                     isReturningPlayer: false
                 };
             });
+        this.dailyChallengePromise = this.loadDailyChallenge();
+        Promise.allSettled([this.playerHistoryPromise, this.dailyChallengePromise]).finally(() => {
+            this.ui.refreshAllReturningTrackPersonalBests();
+            this.ui.refreshDailyChallengeVerificationState();
+            this.scheduleVerificationQueueProcessing(0);
+        });
 
         // Listeners
         let resizeRafId = 0;
@@ -249,6 +341,9 @@ export class RealTimeRacer {
         window.addEventListener('pagehide', () => {
             this.sendRaceAnalytics();
             this.sendMapEvent();
+        });
+        window.addEventListener('online', () => {
+            this.scheduleVerificationQueueProcessing(0);
         });
         this.ui.bindSteeringControls({
             onLeftDown: () => this.setTouchSteering('left', true),
@@ -302,6 +397,35 @@ export class RealTimeRacer {
         this.analytics.trackMapEvent(this.mapStats);
     }
 
+    getModeAnalyticsPayload(mode, {
+        trackKey = this.currentTrackKey,
+        ranked = null
+    } = {}) {
+        const normalizedMode = mode === 'daily'
+            ? 'daily'
+            : (mode === TRACK_MODE_PRACTICE ? TRACK_MODE_PRACTICE : TRACK_MODE_STANDARD);
+
+        const payload = {
+            mode: normalizedMode,
+            trackKey: trackKey || null
+        };
+
+        if (normalizedMode !== 'daily') {
+            const resolvedRanked = ranked === null ? this.currentIsRanked : Boolean(ranked);
+            payload.scoreMode = resolvedRanked ? 'ranked' : 'local';
+        }
+
+        return payload;
+    }
+
+    trackModeSelection(mode) {
+        this.analytics.trackModeSelected(this.getModeAnalyticsPayload(mode));
+    }
+
+    trackModeStart(mode, options = {}) {
+        this.analytics.trackModeStarted(this.getModeAnalyticsPayload(mode, options));
+    }
+
     getCurrentScoreModeAnalyticsKey() {
         return this.currentIsRanked ? 'ranked' : 'local';
     }
@@ -317,6 +441,196 @@ export class RealTimeRacer {
 
     getNow() {
         return performance.now() + this.timeOffsetMs;
+    }
+
+    setRuntimeConfig(overrides = null) {
+        this.runtimeConfig = {
+            ...CONFIG,
+            ...(overrides && typeof overrides === 'object' ? overrides : {})
+        };
+        this.frictionFactor = Math.pow(this.runtimeConfig.friction, this.FIXED_DT * 60);
+    }
+
+    syncCurrentRunPolicy() {
+        this.currentRunPolicy = createRunPolicy({
+            modeKey: this.currentModeKey,
+            practiceEndOnCrash: this.practiceEndOnCrash,
+            challengeRun: this.currentChallengeRun
+        });
+    }
+
+    isDailyChallengeRun() {
+        return Boolean(this.currentRunPolicy?.isDaily);
+    }
+
+    getChallengeRunTitle() {
+        return this.activeDailyChallenge ? getDailyChallengeTrackName(this.activeDailyChallenge) : 'Daily';
+    }
+
+    isCrashBudgetDailyChallenge(challenge = this.activeDailyChallenge) {
+        return isCrashBudgetDailyChallenge(challenge);
+    }
+
+    syncChallengeHudPrimaryStats() {
+        const copyLabels = getDailyChallengeCopyLabels(this.activeDailyChallenge);
+        if (this.isCrashBudgetDailyChallenge()) {
+            const currentLaps = Math.max(0, Math.trunc(this.currentChallengeRun?.completedLaps || 0));
+            const bestLaps = Math.max(0, Math.trunc(this.dailyChallengeBestResult?.completedLaps || 0));
+            this.ui.setHudPrimaryMetric({
+                label: copyLabels.hudPrimaryLabel,
+                value: `${currentLaps}`,
+                useTimer: false,
+                visible: true
+            });
+            this.ui.setHudBestMetric({
+                label: 'BEST LAPS',
+                value: `${bestLaps}`,
+                visible: true
+            });
+            return;
+        }
+
+        this.ui.setHudPrimaryMetric({
+            label: copyLabels.hudPrimaryLabel,
+            useTimer: true,
+            visible: true
+        });
+        this.ui.setBestTime(this.bestLapTime, { persistToTrackCard: false });
+    }
+
+    getDailyChallengeProgressText() {
+        if (!this.currentChallengeRun) return '';
+
+        const requiredLaps = this.currentChallengeRun.requiredLaps || 1;
+        if (this.currentChallengeRun.objectiveType === 'finish_with_crash_budget') {
+            const crashesLeft = Math.max(0, this.currentChallengeRun.maxCrashes - this.currentChallengeRun.crashCount);
+            return `Crashes left ${crashesLeft}`;
+        }
+        if (requiredLaps > 1) {
+            return `Lap ${Math.min(this.currentChallengeRun.completedLaps + 1, requiredLaps)} / ${requiredLaps}`;
+        }
+        return 'Fastest lap wins';
+    }
+
+    updateDailyChallengeHud() {
+        if (!this.currentChallengeRun || this.status === 'ready') {
+            this.ui.setDailyChallengeHud(null);
+            return;
+        }
+
+        this.syncChallengeHudPrimaryStats();
+
+        this.ui.setDailyChallengeHud({
+            visible: true,
+            progressText: this.getDailyChallengeProgressText()
+        });
+    }
+
+    async loadDailyChallenge() {
+        try {
+            const challenge = await getActiveDailyChallenge();
+            this.activeDailyChallenge = challenge || null;
+            await this.refreshDailyChallengeSummary();
+            return challenge;
+        } catch (error) {
+            console.error('Error loading daily challenge:', error);
+            this.activeDailyChallenge = null;
+            this.ui.setDailyChallengeSummary(null);
+            return null;
+        }
+    }
+
+    async refreshDailyChallengeSummary() {
+        const challenge = this.activeDailyChallenge;
+        if (!challenge) {
+            this.ui.setDailyChallengeSummary(null);
+            return null;
+        }
+
+        const localData = getDailyChallengeData(challenge.id);
+        this.dailyChallengeBestResult = localData ? { ...localData } : null;
+        this.bestLapTime = Number.isFinite(localData?.bestTime) ? localData.bestTime : null;
+        let snapshot = null;
+        try {
+            snapshot = await getDailyChallengeSnapshot({ challengeId: challenge.id });
+        } catch (error) {
+            console.error('Error loading daily challenge snapshot:', error);
+        }
+
+        const bestTime = Number.isFinite(localData?.bestTime) ? localData.bestTime : null;
+        const rankLabel = snapshot?.playerRankLabel || '--';
+        const crashBudget = Math.max(0, Math.trunc(challenge.objectiveParams?.maxCrashes || 0));
+        const objectiveLabel = challenge.objectiveType === 'finish_with_crash_budget'
+            ? `${crashBudget} crash${crashBudget === 1 ? '' : 'es'}`
+            : getDailyChallengeObjectiveLabel(challenge);
+        this.ui.setDailyChallengeSummary({
+            available: true,
+            challengeId: challenge.id,
+            title: getDailyChallengeTrackName(challenge),
+            trackKey: challenge.trackKey,
+            trackName: getDailyChallengeTrackName(challenge),
+            objectiveLabel,
+            modifierBadges: getDailyChallengeModifierBadges(challenge),
+            modifierLabel: getDailyChallengeModifierLabel(challenge),
+            bestTime,
+            bestLabel: formatDailyChallengeResultLabel(challenge, localData),
+            rankLabel,
+            scoreboardSnapshot: snapshot,
+            objectiveType: challenge.objectiveType,
+            endsAt: challenge.endsAt
+        });
+        return snapshot;
+    }
+
+    createDailyChallengeRun(challenge) {
+        return {
+            challengeId: challenge.id,
+            objectiveType: challenge.objectiveType,
+            requiredLaps: getDailyChallengeRequiredLaps(challenge),
+            maxCrashes: getDailyChallengeMaxCrashes(challenge),
+            completedLaps: 0,
+            crashCount: 0,
+            elapsedTime: 0,
+            lastLapAt: 0,
+            bestLap: null,
+            recentLaps: []
+        };
+    }
+
+    applyDailyChallenge(challenge) {
+        this.currentModeKey = TRACK_MODE_STANDARD;
+        this.currentIsRanked = false;
+        this.practiceEndOnCrash = false;
+        this.practiceSession = null;
+        this.currentChallengeRun = this.createDailyChallengeRun(challenge);
+        this.syncCurrentRunPolicy();
+        this.setRuntimeConfig(challenge.physicsOverrides || null);
+
+        const storedDaily = getDailyChallengeData(challenge.id);
+        this.dailyChallengeBestResult = storedDaily ? { ...storedDaily } : null;
+        this.bestLapTime = Number.isFinite(storedDaily?.bestTime) ? storedDaily.bestTime : null;
+        this.ui.setPracticePauseVisible(false);
+        this.ui.setHudPersonalBestsOpenAllowed(false);
+        this.syncChallengeHudPrimaryStats();
+        this.updateDailyChallengeHud();
+    }
+
+    clearDailyChallengeRun() {
+        const hadChallengeRun = Boolean(this.currentChallengeRun);
+        this.currentChallengeRun = null;
+        this.dailyChallengeBestResult = null;
+        this.syncCurrentRunPolicy();
+        this.setRuntimeConfig(null);
+        this.ui.setHudPrimaryMetric({
+            label: 'LAP',
+            useTimer: true,
+            visible: true
+        });
+        this.ui.setHudBestMetric({ visible: false });
+        if (hadChallengeRun) {
+            this.refreshActiveBestTimes();
+        }
+        this.updateDailyChallengeHud();
     }
 
     async handleStartButton(trackKey = this.currentTrackKey, trackPreferences = null) {
@@ -343,6 +657,49 @@ export class RealTimeRacer {
             }
 
             this.applyRunPreferences(trackPreferences);
+            this.trackModeStart(this.currentModeKey, {
+                trackKey: this.currentTrackKey,
+                ranked: this.currentIsRanked
+            });
+            if (this.currentTrackMapSelectionPending) {
+                this.bumpMapSelectionForCurrentTrack();
+                this.currentTrackMapSelectionPending = false;
+            }
+            this.bumpRaceStartForCurrentMode();
+            this.startSequence();
+        } finally {
+            this.startButtonPending = false;
+        }
+    }
+
+    async handleStartDailyChallenge() {
+        if (this.status !== 'ready' || this.startButtonPending || !this.activeDailyChallenge) return;
+
+        this.resetCanvasPresentation();
+        this.startButtonPending = true;
+        const playerTypeAlreadySent = this.sessionFlags.get('playerTypeSent');
+        try {
+            const challenge = this.activeDailyChallenge;
+            if (challenge.trackKey && challenge.trackKey !== this.currentTrackKey) {
+                await this.loadTrack(challenge.trackKey, { trackPageview: false, countMapSelection: true });
+            }
+
+            if (this.currentTrackPageviewPending) {
+                this.analytics.trackPageview(`/track/${this.currentTrackKey}`, `${this.currentTrackKey} Daily`);
+                this.currentTrackPageviewPending = false;
+            }
+
+            if (!this.playerTypeSent && !playerTypeAlreadySent) {
+                const { isReturningPlayer } = await this.playerHistoryPromise;
+                this.playerTypeSent = true;
+                this.sessionFlags.set('playerTypeSent', '1');
+                this.analytics.trackPlayerType(isReturningPlayer);
+            }
+
+            this.applyDailyChallenge(challenge);
+            this.trackModeStart('daily', {
+                trackKey: challenge.trackKey
+            });
             if (this.currentTrackMapSelectionPending) {
                 this.bumpMapSelectionForCurrentTrack();
                 this.currentTrackMapSelectionPending = false;
@@ -355,6 +712,7 @@ export class RealTimeRacer {
     }
 
     applyRunPreferences(trackPreferences) {
+        this.clearDailyChallengeRun();
         this.currentModeKey = trackPreferences?.mode === TRACK_MODE_PRACTICE
             ? TRACK_MODE_PRACTICE
             : TRACK_MODE_STANDARD;
@@ -363,8 +721,10 @@ export class RealTimeRacer {
             ? Boolean(this.currentTrack.practice?.endOnCrash)
             : false;
         this.practiceSession = null;
+        this.syncCurrentRunPolicy();
         this.ui.setPracticePauseVisible(false);
         this.refreshActiveBestTimes();
+        this.setRuntimeConfig(null);
         this.ui.setBestTime(this.bestLapTime, {
             trackKey: this.currentTrackKey,
             mode: this.currentModeKey,
@@ -403,6 +763,332 @@ export class RealTimeRacer {
         this.bestLapTime = this.bestTimesByMode[this.currentModeKey] ?? null;
     }
 
+    scheduleVerificationQueueProcessing(delayMs = null) {
+        if (this.verificationQueueTimer !== null) {
+            clearTimeout(this.verificationQueueTimer);
+            this.verificationQueueTimer = null;
+        }
+
+        const resolvedDelay = delayMs === null
+            ? (() => {
+                const nextAttemptAt = getNextVerificationAttemptAt();
+                return nextAttemptAt === null ? null : Math.max(0, nextAttemptAt - Date.now());
+            })()
+            : Math.max(0, delayMs);
+
+        if (resolvedDelay === null) return;
+        if (resolvedDelay > 0 && !shouldAutoRetryVerificationQueue()) return;
+
+        this.verificationQueueTimer = window.setTimeout(() => {
+            this.verificationQueueTimer = null;
+            this.processVerificationQueue().catch((error) => {
+                console.error('Error processing verification queue:', error);
+                this.scheduleVerificationQueueProcessing(getVerificationRetryDelayMs());
+            });
+        }, resolvedDelay);
+    }
+
+    async processVerificationQueue() {
+        if (this.isProcessingVerificationQueue) return;
+        this.isProcessingVerificationQueue = true;
+
+        try {
+            const dueScoreboardEntries = getDueScoreboardVerifications();
+            for (const entry of dueScoreboardEntries) {
+                await this.processScoreboardVerificationEntry(entry);
+            }
+
+            const dueDailyEntries = getDueDailyChallengeVerifications();
+            for (const entry of dueDailyEntries) {
+                await this.processDailyChallengeVerificationEntry(entry);
+            }
+        } finally {
+            this.isProcessingVerificationQueue = false;
+            this.scheduleVerificationQueueProcessing(null);
+        }
+    }
+
+    async processScoreboardVerificationEntry(entry) {
+        if (!entry?.trackKey || !entry?.mode || !Number.isFinite(entry?.bestTime) || !entry?.replay) {
+            return;
+        }
+
+        if (this.ui.matchesModalScoreboardContext({ trackKey: entry.trackKey, mode: entry.mode })) {
+            this.ui.updateModalScoreboardSnapshot(createVerificationSnapshot({
+                statusText: 'Verifying...',
+                verificationState: 'pending',
+                isLoading: true
+            }));
+        }
+
+        try {
+            const result = await submitScoreboardBestTime({
+                trackKey: entry.trackKey,
+                mode: entry.mode,
+                bestTime: entry.bestTime,
+                replay: entry.replay
+            });
+            await this.handleScoreboardVerificationResult(entry, result);
+        } catch (error) {
+            console.error('Error submitting queued scoreboard time:', error);
+            markScoreboardVerificationPending(
+                entry.trackKey,
+                entry.mode,
+                Date.now() + getVerificationRetryDelayMs()
+            );
+            this.ui.refreshReturningTrackPersonalBest(entry.trackKey);
+            if (this.ui.matchesModalScoreboardContext({ trackKey: entry.trackKey, mode: entry.mode })) {
+                this.ui.updateModalScoreboardSnapshot(createVerificationSnapshot({
+                    statusText: 'Queued for retry',
+                    verificationState: 'pending',
+                    isLoading: true
+                }));
+            }
+        }
+    }
+
+    async handleScoreboardVerificationResult(entry, result) {
+        const currentEntry = getScoreboardVerificationEntry(entry.trackKey, entry.mode);
+        if (!currentEntry || currentEntry.updatedAt !== entry.updatedAt || currentEntry.bestTime !== entry.bestTime) {
+            return;
+        }
+
+        const body = result?.body || null;
+        if (result?.ok && body?.throttled) {
+            markScoreboardVerificationPending(
+                entry.trackKey,
+                entry.mode,
+                Date.now() + ((Number(body?.retryAfterSeconds) || 1) * 1000)
+            );
+            this.ui.refreshReturningTrackPersonalBest(entry.trackKey);
+            if (this.ui.matchesModalScoreboardContext({ trackKey: entry.trackKey, mode: entry.mode })) {
+                this.ui.updateModalScoreboardSnapshot(createVerificationSnapshot({
+                    statusText: 'Retrying soon',
+                    verificationState: 'pending',
+                    isLoading: true
+                }));
+            }
+            return;
+        }
+
+        if (result?.ok && body?.accepted && Number.isFinite(body?.bestTimeMs)) {
+            const canonicalBestTime = body.bestTimeMs / 1000;
+            const trackData = await syncBestTime(
+                entry.trackKey,
+                canonicalBestTime,
+                entry.mode,
+                {
+                    ranked: true,
+                    appendLapTime: entry.mode === TRACK_MODE_STANDARD && body.updated === true
+                }
+            );
+            clearScoreboardVerification(entry.trackKey, entry.mode);
+            this.applyVerifiedTrackData(entry.trackKey, entry.mode, trackData, canonicalBestTime);
+            if (this.ui.matchesModalScoreboardContext({ trackKey: entry.trackKey, mode: entry.mode })) {
+                this.ui.updateModalScoreboardSnapshot(VERIFICATION_ACCEPTED_PENDING_SNAPSHOT);
+                this.ui.updateModalRunSummary({
+                    bestTime: canonicalBestTime,
+                    currentTime: canonicalBestTime,
+                    lapTimesArray: entry.mode === TRACK_MODE_STANDARD
+                        ? (trackData?.rankedLapTimes || [])
+                        : undefined
+                });
+            }
+            await this.refreshVerifiedTrackSnapshot(entry.trackKey, entry.mode);
+            return;
+        }
+
+        if (result?.status === 422) {
+            markScoreboardVerificationRejected(entry.trackKey, entry.mode);
+            this.ui.refreshReturningTrackPersonalBest(entry.trackKey);
+            if (this.ui.matchesModalScoreboardContext({ trackKey: entry.trackKey, mode: entry.mode })) {
+                this.ui.updateModalScoreboardSnapshot(VERIFICATION_REJECTED_SNAPSHOT);
+            }
+            return;
+        }
+
+        markScoreboardVerificationPending(
+            entry.trackKey,
+            entry.mode,
+            Date.now() + getVerificationRetryDelayMs()
+        );
+        this.ui.refreshReturningTrackPersonalBest(entry.trackKey);
+        if (this.ui.matchesModalScoreboardContext({ trackKey: entry.trackKey, mode: entry.mode })) {
+            this.ui.updateModalScoreboardSnapshot(createVerificationSnapshot({
+                statusText: 'Queued for retry',
+                verificationState: 'pending',
+                isLoading: true
+            }));
+        }
+    }
+
+    applyVerifiedTrackData(trackKey, mode, trackData, canonicalBestTime) {
+        this.hasAnyData = true;
+        this.isReturningPlayer = this.playerStatus.isReturningPlayer(true);
+        this.ui.refreshStartOverlay(this.status, this.hasAnyData, this.isReturningPlayer);
+        if (this.currentTrackKey === trackKey) {
+            this.setStoredBestTimes(trackData);
+            this.ui.setBestTime(this.bestLapTime, { persistToTrackCard: false });
+        }
+
+        this.ui.updateReturningTrackPersonalBest(trackKey, canonicalBestTime, mode, true);
+        this.ui.refreshReturningTrackPersonalBest(trackKey);
+    }
+
+    async refreshVerifiedTrackSnapshot(trackKey, mode) {
+        this.ui.invalidateReturningTrackRankSnapshot(trackKey, mode, true);
+        let scoreboardSnapshot = null;
+
+        try {
+            scoreboardSnapshot = await this.ui.requestReturningTrackRankSnapshot(trackKey, mode, true);
+        } catch (error) {
+            console.error('Error refreshing verified track snapshot:', error);
+        }
+
+        this.ui.refreshReturningTrackPersonalBest(trackKey);
+        if (this.ui.matchesModalScoreboardContext({ trackKey, mode })) {
+            this.ui.updateModalScoreboardSnapshot(
+                scoreboardSnapshot?.playerRankLabel
+                    ? scoreboardSnapshot
+                    : VERIFICATION_ACCEPTED_PENDING_SNAPSHOT
+            );
+        }
+    }
+
+    async processDailyChallengeVerificationEntry(entry) {
+        if (!entry?.challengeId || !Number.isFinite(entry?.bestTime) || !entry?.replay) {
+            return;
+        }
+
+        if (this.ui.matchesModalScoreboardContext({ challengeId: entry.challengeId })) {
+            this.ui.updateModalScoreboardSnapshot(createVerificationSnapshot({
+                statusText: 'Verifying...',
+                verificationState: 'pending',
+                isLoading: true
+            }));
+        }
+
+        try {
+            const result = await submitDailyChallengeBestTime({
+                challengeId: entry.challengeId,
+                bestTime: entry.bestTime,
+                replay: entry.replay
+            });
+            await this.handleDailyChallengeVerificationResult(entry, result);
+        } catch (error) {
+            console.error('Error submitting queued daily challenge time:', error);
+            markDailyChallengeVerificationPending(
+                entry.challengeId,
+                Date.now() + getVerificationRetryDelayMs()
+            );
+            this.ui.refreshDailyChallengeVerificationState(entry.challengeId);
+            if (this.ui.matchesModalScoreboardContext({ challengeId: entry.challengeId })) {
+                this.ui.updateModalScoreboardSnapshot(createVerificationSnapshot({
+                    statusText: 'Queued for retry',
+                    verificationState: 'pending',
+                    isLoading: true
+                }));
+            }
+        }
+    }
+
+    async handleDailyChallengeVerificationResult(entry, result) {
+        const currentEntry = getDailyChallengeVerificationEntry(entry.challengeId);
+        if (!currentEntry || currentEntry.updatedAt !== entry.updatedAt || currentEntry.bestTime !== entry.bestTime) {
+            return;
+        }
+
+        const body = result?.body || null;
+        if (result?.ok && body?.throttled) {
+            markDailyChallengeVerificationPending(
+                entry.challengeId,
+                Date.now() + ((Number(body?.retryAfterSeconds) || 1) * 1000)
+            );
+            this.ui.refreshDailyChallengeVerificationState(entry.challengeId);
+            if (this.ui.matchesModalScoreboardContext({ challengeId: entry.challengeId })) {
+                this.ui.updateModalScoreboardSnapshot(createVerificationSnapshot({
+                    statusText: 'Retrying soon',
+                    verificationState: 'pending',
+                    isLoading: true
+                }));
+            }
+            return;
+        }
+
+        if (result?.ok && body?.accepted && Number.isFinite(body?.bestTimeMs)) {
+            const challenge = {
+                id: entry.challengeId,
+                challengeDate: entry.challengeDate,
+                trackKey: entry.trackKey,
+                objectiveType: entry.objectiveType
+            };
+            setDailyChallengeBestTime(
+                challenge,
+                body.bestTimeMs / 1000,
+                Number.isFinite(body?.completedLaps) ? body.completedLaps : entry.completedLaps
+            );
+            clearDailyChallengeVerification(entry.challengeId);
+
+            if (this.activeDailyChallenge?.id === entry.challengeId) {
+                const scoreboardSnapshot = await this.refreshDailyChallengeSummary();
+                if (this.ui.matchesModalScoreboardContext({ challengeId: entry.challengeId })) {
+                    this.ui.updateModalScoreboardSnapshot(scoreboardSnapshot);
+                }
+            } else {
+                this.ui.refreshDailyChallengeVerificationState(entry.challengeId);
+            }
+            return;
+        }
+
+        if (result?.status === 422) {
+            markDailyChallengeVerificationRejected(entry.challengeId);
+            this.ui.refreshDailyChallengeVerificationState(entry.challengeId);
+            if (this.ui.matchesModalScoreboardContext({ challengeId: entry.challengeId })) {
+                this.ui.updateModalScoreboardSnapshot(VERIFICATION_REJECTED_SNAPSHOT);
+            }
+            return;
+        }
+
+        markDailyChallengeVerificationPending(
+            entry.challengeId,
+            Date.now() + getVerificationRetryDelayMs()
+        );
+        this.ui.refreshDailyChallengeVerificationState(entry.challengeId);
+        if (this.ui.matchesModalScoreboardContext({ challengeId: entry.challengeId })) {
+            this.ui.updateModalScoreboardSnapshot(createVerificationSnapshot({
+                statusText: 'Queued for retry',
+                verificationState: 'pending',
+                isLoading: true
+            }));
+        }
+    }
+
+    enqueueScoreboardVerificationSubmission({ trackKey, mode, bestTime, replay } = {}) {
+        const { enqueued } = enqueueScoreboardVerification({ trackKey, mode, bestTime, replay });
+        this.ui.refreshReturningTrackPersonalBest(trackKey);
+        if (enqueued) {
+            this.scheduleVerificationQueueProcessing(0);
+        }
+        return enqueued;
+    }
+
+    enqueueDailyChallengeVerificationSubmission({ challenge, bestTime, completedLaps = null, replay } = {}) {
+        const { enqueued } = enqueueDailyChallengeVerification({
+            challengeId: challenge?.id,
+            bestTime,
+            completedLaps,
+            replay,
+            objectiveType: challenge?.objectiveType,
+            challengeDate: challenge?.challengeDate,
+            trackKey: challenge?.trackKey
+        });
+        this.ui.refreshDailyChallengeVerificationState(challenge?.id);
+        if (enqueued) {
+            this.scheduleVerificationQueueProcessing(0);
+        }
+        return enqueued;
+    }
+
     createPracticeSession() {
         return {
             trackKey: this.currentTrackKey,
@@ -416,7 +1102,7 @@ export class RealTimeRacer {
     }
 
     isPracticeMode() {
-        return this.currentModeKey === TRACK_MODE_PRACTICE;
+        return Boolean(this.currentRunPolicy?.isPractice);
     }
 
     getPracticeSummary() {
@@ -509,6 +1195,21 @@ export class RealTimeRacer {
         this.activeTimers = [];
     }
 
+    /**
+     * Practice lap boundary: clears the blue route trace, run-history line, and trail sample timer.
+     * Daily GP multi-lap uses the same path so both modes stay identical.
+     */
+    _resetLapTrailStateFromPracticeLap({ resetPracticeMicroReplay = false } = {}) {
+        this.routeTrace.clear();
+        this.runHistory.clear();
+        this.runHistoryTimer = 0;
+        this.trailTimer = 0;
+        if (resetPracticeMicroReplay) {
+            this.resetPracticeLapReplay();
+        }
+        this.recordRunPoint(this.pos);
+    }
+
     startSequence() {
         if (this.status !== 'ready') return;
 
@@ -518,7 +1219,11 @@ export class RealTimeRacer {
         this.ui.setPracticePauseVisible(false);
         this.practiceSession = this.isPracticeMode() ? this.createPracticeSession() : null;
         this.resetScoreboardReplay();
-        this.ui.setBestTime(this.bestLapTime);
+        if (this.isDailyChallengeRun()) {
+            this.syncChallengeHudPrimaryStats();
+        } else {
+            this.ui.setBestTime(this.bestLapTime);
+        }
         this.runHistory.clear();
         this.runHistoryTimer = 0;
         this.recordRunPoint(this.pos);
@@ -526,9 +1231,9 @@ export class RealTimeRacer {
         this.ui.showStartLights();
 
         // Sequence: 3 red lights, then GO.
-        this.activeTimers.push(setTimeout(() => this.ui.turnOnCountdownLight(0), 400));
-        this.activeTimers.push(setTimeout(() => this.ui.turnOnCountdownLight(1), 1100));
-        this.activeTimers.push(setTimeout(() => this.ui.turnOnCountdownLight(2), 1800));
+        this.activeTimers.push(setTimeout(() => this.ui.turnOnCountdownLight(0), 240));
+        this.activeTimers.push(setTimeout(() => this.ui.turnOnCountdownLight(1), 660));
+        this.activeTimers.push(setTimeout(() => this.ui.turnOnCountdownLight(2), 1080));
 
         this.activeTimers.push(setTimeout(() => {
             this.ui.hideStartLights();
@@ -546,6 +1251,7 @@ export class RealTimeRacer {
                 this.resetFrameTimingHistory();
                 this.frameSkip = 0;
                 this.ui.setPracticePauseVisible(true);
+                this.updateDailyChallengeHud();
                 this.requestRender();
 
                 // Cleanup visuals after start
@@ -553,7 +1259,7 @@ export class RealTimeRacer {
                     this.ui.resetCountdown();
                 }, 1500));
             });
-        }, 2500));
+        }, 1500));
     }
 
     syncSteeringKeys() {
@@ -608,38 +1314,49 @@ export class RealTimeRacer {
         this.relaunchDelayRemaining = delaySeconds;
     }
 
+    resetRunToTrackStart({
+        currentTime = 0,
+        relaunchDelay = 0,
+        resetPracticeMicroReplay = false
+    } = {}) {
+        this.pos = { ...this.currentTrack.startPos };
+        this.prevPos = { ...this.currentTrack.startPos };
+        this.velocity = { x: 0, y: 0 };
+        this.angle = this.currentTrack.startAngle;
+        this.prevAngle = this.currentTrack.startAngle;
+        this.cachedSpeed = 0;
+        this.currentTime = currentTime;
+        this.armRelaunchDelay(relaunchDelay);
+        this.nextCheckpointIndex = 0;
+        this.skidMarks.clear();
+        this._resetLapTrailStateFromPracticeLap({ resetPracticeMicroReplay });
+    }
+
     persistPracticeBestTime(bestTime, replay = null) {
         const trackKey = this.currentTrackKey;
-        const requestId = this.trackLoadRequestId;
+        if (this.currentIsRanked) {
+            this.enqueueScoreboardVerificationSubmission({
+                trackKey,
+                mode: TRACK_MODE_PRACTICE,
+                bestTime,
+                replay
+            });
+            return;
+        }
 
-        const replayPayload = this.currentIsRanked
-            ? replay
-            : null;
-        const savePromise = saveBestTime(trackKey, bestTime, TRACK_MODE_PRACTICE, {
-            ranked: this.currentIsRanked,
-            replay: replayPayload
-        })
+        saveBestTime(trackKey, bestTime, TRACK_MODE_PRACTICE)
             .then((trackData) => {
-                if (requestId !== this.trackLoadRequestId || this.currentTrackKey !== trackKey) return;
+                if (this.currentTrackKey !== trackKey) return;
                 this.setStoredBestTimes(trackData);
                 this.ui.setBestTime(this.bestLapTime, {
                     trackKey,
                     mode: this.currentModeKey,
-                    ranked: this.currentIsRanked,
-                    scoreboardSubmitPromise: trackData.scoreboardSubmitPromise || null
+                    ranked: false
                 });
-                return trackData.scoreboardSubmitPromise || null;
             })
-            .then((scoreboardSubmitPromise) => scoreboardSubmitPromise || null)
             .catch((error) => {
                 console.error('Error saving practice best time:', error);
-            })
-            .finally(() => {
-                if (this.pendingPracticeBestSavePromise === savePromise) {
-                    this.pendingPracticeBestSavePromise = null;
-                }
             });
-        this.pendingPracticeBestSavePromise = savePromise;
     }
 
     // Create F1 Car Sprite
@@ -832,6 +1549,7 @@ export class RealTimeRacer {
         const requestId = ++this.trackLoadRequestId;
         this.currentTrack = nextTrack;
         this.currentTrackKey = trackKey;
+        this.clearDailyChallengeRun();
 
         // Sync carousel highlight only — do not prefetch leaderboard (that is for the track picker).
         this.ui.setTrackSelection(trackKey, { refreshRankSnapshots: false });
@@ -858,6 +1576,10 @@ export class RealTimeRacer {
             : TRACK_MODE_STANDARD;
         this.currentModeKey = previewModeKey;
         this.currentIsRanked = Boolean(previewPreferences.ranked);
+        this.practiceEndOnCrash = this.currentModeKey === TRACK_MODE_PRACTICE
+            ? Boolean(nextTrack.practice?.endOnCrash)
+            : false;
+        this.syncCurrentRunPolicy();
 
         // Track map selection statistics by actual score mode.
         if (countMapSelection) {
@@ -920,6 +1642,10 @@ export class RealTimeRacer {
                 this.ui.closeModal();
                 return;
             }
+            if (this.isDailyChallengeRun()) {
+                this.restartDailyChallenge();
+                return;
+            }
             this.bumpRaceStartForCurrentMode();
             this.reset(true);
             return;
@@ -938,7 +1664,29 @@ export class RealTimeRacer {
         this.status = 'paused';
 
         if (!this.isPracticeMode()) {
-            const bestTime = this.bestTimesByMode[TRACK_MODE_STANDARD] ?? null;
+            if (this.isDailyChallengeRun() && this.isCrashBudgetDailyChallenge()) {
+                const completedLaps = Math.max(0, Math.trunc(this.currentChallengeRun?.completedLaps || 0));
+                const crashesLeft = Math.max(0, (this.currentChallengeRun?.maxCrashes || 0) - (this.currentChallengeRun?.crashCount || 0));
+                this.lastSharePayload = null;
+                this.ui.showModal('Paused', null, {
+                    variant: 'daily-crash-budget-pause',
+                    completedLaps,
+                    crashesLeft
+                }, false, createModalActions({
+                    modalKind: 'practice-pause',
+                    primaryActionLabel: 'Resume',
+                    primaryAction: () => this.resumePracticeSession(),
+                    primaryActionIcon: 'play',
+                    secondaryActionLabel: 'Done',
+                    secondaryActionIcon: 'done',
+                    secondaryAction: () => this.reset(false)
+                }));
+                return;
+            }
+
+            const bestTime = this.isDailyChallengeRun()
+                ? this.bestLapTime
+                : (this.bestTimesByMode[TRACK_MODE_STANDARD] ?? null);
             const deltaToBest = bestTime === null || bestTime === undefined
                 ? null
                 : this.currentTime - bestTime;
@@ -947,17 +1695,19 @@ export class RealTimeRacer {
                 variant: 'standard-pause',
                 lapTime: this.currentTime,
                 bestTime,
-                deltaToBest
-            }, false, {
+                deltaToBest,
+                primaryStatLabel: this.isDailyChallengeRun()
+                    ? getDailyChallengeCopyLabels(this.activeDailyChallenge).primaryStatLabel
+                    : 'Lap Time'
+            }, false, createModalActions({
                 modalKind: 'practice-pause',
                 primaryActionLabel: 'Resume',
-                primaryShortcutLabel: null,
                 primaryActionIcon: 'play',
                 primaryAction: () => this.resumePracticeSession(),
                 secondaryActionLabel: 'Done',
                 secondaryActionIcon: 'done',
                 secondaryAction: () => this.reset(false)
-            });
+            }));
             return;
         }
 
@@ -972,6 +1722,16 @@ export class RealTimeRacer {
         const trackKey = this.currentTrackKey;
         const requestId = this.trackLoadRequestId;
         const hasPracticePb = Boolean(this.practiceSession?.hasNewPersonalBest);
+        const practiceVerificationEntry = hasPracticePb && this.currentIsRanked
+            ? getScoreboardVerificationEntry(trackKey, TRACK_MODE_PRACTICE)
+            : null;
+        const practiceScoreboardSnapshot = hasPracticePb && this.currentIsRanked
+            ? (
+                getVerificationSnapshotFromQueueEntry(practiceVerificationEntry)
+                || this.ui.getCachedTrackCardScoreboardSnapshot(trackKey, TRACK_MODE_PRACTICE, true)
+                || VERIFICATION_ACCEPTED_PENDING_SNAPSHOT
+            )
+            : null;
         this.lastSharePayload = practiceSharePayload;
         this.ui.showModal('Paused', null, {
             variant: 'practice-pause',
@@ -982,13 +1742,12 @@ export class RealTimeRacer {
             deltaToBest,
             isNewBest: hasPracticePb,
             scoreboardTrackKey: trackKey,
-            scoreboardSnapshot: hasPracticePb && this.currentIsRanked ? { isLoading: true } : null,
+            scoreboardSnapshot: practiceScoreboardSnapshot,
             scoreboardMode: TRACK_MODE_PRACTICE
-        }, Boolean(practiceSharePayload), {
+        }, Boolean(practiceSharePayload), createModalActions({
             modalKind: 'practice-pause',
             forceSharePanelVisible: true,
             primaryActionLabel: 'Resume',
-            primaryShortcutLabel: null,
             primaryActionIcon: 'play',
             primaryAction: () => this.resumePracticeSession(),
             secondaryActionLabel: 'Done',
@@ -996,7 +1755,7 @@ export class RealTimeRacer {
             secondaryAction: () => this.stopPracticeSession(),
             shareActionLabel: 'Challenge',
             shareActionIcon: 'save'
-        });
+        }));
         if (practiceSharePayload) {
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
@@ -1008,28 +1767,17 @@ export class RealTimeRacer {
         }
 
         if (!hasPracticePb || !this.currentIsRanked) return;
-
-        Promise.resolve(this.pendingPracticeBestSavePromise || null)
-            .then(() => this.ui.requestReturningTrackRankSnapshot(trackKey, TRACK_MODE_PRACTICE, true))
-            .then((scoreboardSnapshot) => {
-                if (requestId !== this.trackLoadRequestId || this.currentTrackKey !== trackKey) return;
-                this.ui.updateModalScoreboardSnapshot(scoreboardSnapshot);
-            })
-            .catch((error) => {
-                console.error('Error loading session PB leaderboard rank:', error);
-                if (requestId !== this.trackLoadRequestId || this.currentTrackKey !== trackKey) return;
-                this.ui.updateModalScoreboardSnapshot(null);
-            });
     }
 
     resumePracticeSession() {
         if (this.status !== 'paused') return;
 
         this.status = 'playing';
-        this.armRelaunchDelay(CONFIG.resumeRelaunchDelay);
+        this.armRelaunchDelay(this.runtimeConfig.resumeRelaunchDelay);
         this.accumulator = 0;
         this.lastTime = this.getNow();
         this.ui.closeModal();
+        this.updateDailyChallengeHud();
         this.requestRender();
     }
 
@@ -1041,7 +1789,7 @@ export class RealTimeRacer {
         // Mutate-in-place: simulation writes directly to `this.*` fields.
         // Only event flags are returned (via a reused object).
         const events = updateSimulation(
-            this, dt, CONFIG, this.currentTrack, this.collisionSegments
+            this, dt, this.runtimeConfig, this.currentTrack, this.collisionSegments
         );
 
         // Lap / win before practice crash reset so the same frame can both finish a legal lap
@@ -1050,8 +1798,23 @@ export class RealTimeRacer {
         if (events.lapCompleted) {
             this.handlePracticeLapCompleted(events.completedLapTime);
         }
+        if (events.challengeLapCompleted) {
+            this.handleDailyChallengeLapCompleted(events.challengeCompletedLapTime);
+        }
         if (events.winTriggered) {
-            this.handleWin(events.winData);
+            if (this.isDailyChallengeRun()) {
+                this.handleDailyChallengeWin(events.winData);
+            } else {
+                this.handleWin(events.winData);
+            }
+        }
+        if (events.challengeCrashReset) {
+            this.restartDailyChallengeAfterCrash();
+            return;
+        }
+        if (events.challengeFailed) {
+            this.handleDailyChallengeFailure(events.challengeFailureReason, events.crashImpact);
+            return;
         }
         if (events.practiceCrashReset) {
             this.sessionRaceStats[this.getCurrentScoreModeAnalyticsKey()].crash++;
@@ -1068,15 +1831,14 @@ export class RealTimeRacer {
                 return;
             }
             this.ui.setHudPersonalBestsOpenAllowed(true);
-            this.ui.showModal('CRASHED', null, { isCrash: true, impact: events.crashImpact }, false, {
+            this.ui.showModal('CRASHED', null, { isCrash: true, impact: events.crashImpact }, false, createModalActions({
                 modalKind: 'crash',
                 primaryActionLabel: 'Retry',
-                primaryShortcutLabel: null,
                 primaryActionIcon: 'retry',
                 secondaryActionLabel: 'Done',
                 secondaryAction: () => this.reset(false),
                 secondaryActionIcon: 'done'
-            });
+            }));
         }
     }
 
@@ -1089,29 +1851,21 @@ export class RealTimeRacer {
             : null;
         this.recordRunPoint(this.pos);
         const runHistorySnapshot = this.runHistory.toArray();
-        const bestLapBeforeCurrent = this.bestTimesByMode[TRACK_MODE_PRACTICE];
-        const lapRecord = {
-            lapNumber,
-            time: lapTime,
-            deltaVsBest: bestLapBeforeCurrent === null || bestLapBeforeCurrent === undefined
-                ? null
-                : lapTime - bestLapBeforeCurrent
-        };
+        const lapRecord = buildLapRecord(lapNumber, lapTime, this.bestTimesByMode[TRACK_MODE_PRACTICE]);
 
         this.practiceSession.lapCount = lapNumber;
-        this.practiceSession.recentLaps.push(lapRecord);
-        if (this.practiceSession.recentLaps.length > 10) {
-            this.practiceSession.recentLaps = this.practiceSession.recentLaps.slice(-10);
-        }
+        pushRecentLap(this.practiceSession.recentLaps, lapRecord);
 
         const currentPersistedPracticeBest = this.bestTimesByMode[TRACK_MODE_PRACTICE];
         const isPersistedBest = currentPersistedPracticeBest === null
             || currentPersistedPracticeBest === undefined
             || lapTime < currentPersistedPracticeBest;
         if (isPersistedBest) {
-            this.bestTimesByMode[TRACK_MODE_PRACTICE] = lapTime;
-            this.bestLapTime = this.currentModeKey === TRACK_MODE_PRACTICE ? lapTime : this.bestLapTime;
             this.practiceSession.hasNewPersonalBest = true;
+            if (!this.currentIsRanked) {
+                this.bestTimesByMode[TRACK_MODE_PRACTICE] = lapTime;
+                this.bestLapTime = this.currentModeKey === TRACK_MODE_PRACTICE ? lapTime : this.bestLapTime;
+            }
             this.persistPracticeBestTime(lapTime, completedLapReplay);
         }
 
@@ -1126,17 +1880,12 @@ export class RealTimeRacer {
         }
         const isBestLap = this.practiceSession.bestLap.lapNumber === lapNumber;
 
-        this.routeTrace.clear();
-        this.runHistory.clear();
-        this.runHistoryTimer = 0;
-        this.trailTimer = 0;
-        this.resetPracticeLapReplay();
-        this.recordRunPoint(this.pos);
+        this._resetLapTrailStateFromPracticeLap({ resetPracticeMicroReplay: true });
         this.ui.setBestTime(this.bestLapTime, {
             trackKey: this.currentTrackKey,
             mode: TRACK_MODE_PRACTICE,
             ranked: this.currentIsRanked,
-            persistToTrackCard: isPersistedBest
+            persistToTrackCard: isPersistedBest && !this.currentIsRanked
         });
         this.ui.setHudPersonalBestsOpenAllowed(true);
         this.ui.showPracticeLapFlash({
@@ -1153,22 +1902,11 @@ export class RealTimeRacer {
     restartPracticeLapAfterCrash() {
         if (!this.isPracticeMode()) return;
 
-        this.pos = { ...this.currentTrack.startPos };
-        this.prevPos = { ...this.currentTrack.startPos };
-        this.velocity = { x: 0, y: 0 };
-        this.angle = this.currentTrack.startAngle;
-        this.prevAngle = this.currentTrack.startAngle;
-        this.cachedSpeed = 0;
-        this.currentTime = 0;
-        this.armRelaunchDelay(CONFIG.crashRelaunchDelay);
-        this.nextCheckpointIndex = 0;
-        this.skidMarks.clear();
-        this.routeTrace.clear();
-        this.runHistory.clear();
-        this.runHistoryTimer = 0;
-        this.trailTimer = 0;
-        this.resetPracticeLapReplay();
-        this.recordRunPoint(this.pos);
+        this.resetRunToTrackStart({
+            currentTime: 0,
+            relaunchDelay: this.runtimeConfig.crashRelaunchDelay,
+            resetPracticeMicroReplay: true
+        });
         this.ui.syncHud({ time: 0, speed: 0, force: true });
         this.requestRender();
     }
@@ -1184,6 +1922,134 @@ export class RealTimeRacer {
 
         this.ui.closeModal();
         this.reset(false);
+    }
+
+    handleDailyChallengeLapCompleted(lapTime) {
+        if (!this.currentChallengeRun || !Number.isFinite(lapTime)) {
+            this.updateDailyChallengeHud();
+            this.requestRender();
+            return;
+        }
+
+        const lapNumber = this.currentChallengeRun.completedLaps || 0;
+        const lapRecord = buildLapRecord(lapNumber, lapTime, this.currentChallengeRun.bestLap?.time ?? null);
+
+        pushRecentLap(this.currentChallengeRun.recentLaps, lapRecord);
+
+        if (!this.currentChallengeRun.bestLap || lapTime < this.currentChallengeRun.bestLap.time) {
+            this.currentChallengeRun.bestLap = {
+                lapNumber,
+                time: lapTime
+            };
+        }
+
+        this.ui.showPracticeLapFlash({
+            lapNumber,
+            lapTime,
+            deltaVsBest: lapRecord.deltaVsBest,
+            isBest: false,
+            isNewBest: false
+        });
+        this._resetLapTrailStateFromPracticeLap();
+        this.updateDailyChallengeHud();
+        this.requestRender();
+    }
+
+    restartDailyChallengeAfterCrash() {
+        if (!this.currentChallengeRun) return;
+
+        this.resetRunToTrackStart({
+            currentTime: this.currentTime,
+            relaunchDelay: this.runtimeConfig.crashRelaunchDelay
+        });
+        this.ui.syncHud({ time: this.currentTime, speed: 0, force: true });
+        this.updateDailyChallengeHud();
+        this.requestRender();
+    }
+
+    handleDailyChallengeFailure(reason, crashImpact = null) {
+        if (!this.currentChallengeRun) return;
+
+        this.ui.setPracticePauseVisible(false);
+        this.ui.setHudPersonalBestsOpenAllowed(true);
+        this.lastSharePayload = null;
+        this.ui.showModal('CRASHED', null, {
+            isCrash: true,
+            impact: crashImpact
+        }, false, createModalActions({
+            modalKind: 'crash',
+            primaryActionLabel: 'Retry',
+            primaryAction: () => this.restartDailyChallenge(),
+            primaryActionIcon: 'retry',
+            secondaryActionLabel: 'Done',
+            secondaryActionIcon: 'done',
+            secondaryAction: () => this.reset(false)
+        }));
+    }
+
+    handleDailyChallengeWin(winData) {
+        if (!this.isValidatedWinData(winData) || !this.currentChallengeRun || !this.activeDailyChallenge) {
+            return;
+        }
+
+        this.status = 'won';
+        const finalTime = winData.lapTime;
+        const challenge = this.activeDailyChallenge;
+        const completedLaps = Math.max(0, Math.trunc(winData.completedLaps || 0));
+        const previousBest = this.dailyChallengeBestResult;
+        const isCrashBudget = this.isCrashBudgetDailyChallenge(challenge);
+        const isNewBest = isNewBestResult(
+            this.currentRunPolicy,
+            { bestTime: finalTime, completedLaps },
+            previousBest
+        );
+        this.ui.syncHud({ time: finalTime, speed: this.cachedSpeed, force: true });
+        this.ui.setBestTime(isCrashBudget ? null : this.bestLapTime, { persistToTrackCard: false });
+        this.ui.setHudPersonalBestsOpenAllowed(false);
+
+        this.lastSharePayload = null;
+        const existingScoreboardSnapshot = this.ui.getDailyChallengeScoreboardSnapshot();
+        this.ui.showModal('Daily GP Complete', null, {
+            lapTime: finalTime,
+            bestTime: this.bestLapTime,
+            completedLaps,
+            isNewBest,
+            primaryStatLabel: getDailyChallengeCopyLabels(challenge).primaryStatLabel,
+            variant: isCrashBudget ? 'daily-crash-budget' : null,
+            scoreboardSnapshot: isNewBest
+                ? createVerificationSnapshot({
+                    statusText: 'Submitting...',
+                    verificationState: 'pending',
+                    isLoading: true
+                })
+                : existingScoreboardSnapshot,
+            scoreboardChallengeId: challenge.id,
+            showGlobalLeaderboard: false,
+            allowLeaderboardOpen: true
+        }, false, createModalActions({
+            modalKind: 'standard-win',
+            primaryActionLabel: 'Retry',
+            primaryAction: () => this.restartDailyChallenge(),
+            primaryActionIcon: 'retry',
+            secondaryActionLabel: 'Done',
+            secondaryActionIcon: 'done',
+            secondaryAction: () => this.reset(false)
+        }));
+        if (this.ui.modalMsg) {
+            this.ui.modalMsg.style.display = '';
+            this.ui.modalMsg.textContent = isCrashBudget
+                ? `${completedLaps} lap${completedLaps === 1 ? '' : 's'} before the final crash`
+                : `${getDailyChallengeTrackName(challenge)} • ${getDailyChallengeObjectiveLabel(challenge)}`;
+        }
+
+        if (isNewBest) {
+            this.enqueueDailyChallengeVerificationSubmission({
+                challenge,
+                bestTime: finalTime,
+                completedLaps,
+                replay: this.getScoreboardReplayPayload(1)
+            });
+        }
     }
 
     getPracticeSharePayload() {
@@ -1221,7 +2087,8 @@ export class RealTimeRacer {
 
         const checkpointCount = this.currentTrack.checkpoints?.length || 0;
         if (winData.checkpointCount !== checkpointCount) return false;
-        if (winData.completedCheckpointCount < checkpointCount) return false;
+        const endedOnCrash = Boolean(winData.challengeEndedOnCrash && this.isCrashBudgetDailyChallenge());
+        if (!endedOnCrash && winData.completedCheckpointCount < checkpointCount) return false;
         if (!Number.isFinite(winData.lapTime) || winData.lapTime < 2.0) return false;
 
         return true;
@@ -1255,14 +2122,11 @@ export class RealTimeRacer {
         let trackData;
         const previousBest = this.bestTimesByMode[TRACK_MODE_STANDARD];
         try {
-            trackData = await saveLapTime(
-                trackKey,
-                finalTime,
-                {
-                    ranked: this.currentIsRanked,
-                    replay: this.currentIsRanked ? this.getScoreboardReplayPayload(1) : null
-                }
-            );
+            if (this.currentIsRanked) {
+                trackData = await getTrackData(trackKey);
+            } else {
+                trackData = await saveLapTime(trackKey, finalTime);
+            }
         } catch (error) {
             console.error('Error saving lap time:', error);
             // Fallback display
@@ -1273,21 +2137,16 @@ export class RealTimeRacer {
                     ...this.localBestTimesByMode,
                     [TRACK_MODE_STANDARD]: this.localBestTimesByMode[TRACK_MODE_STANDARD] ?? finalTime
                 },
-                rankedLapTimes: [finalTime],
-                rankedBestTime: this.rankedBestTimesByMode[TRACK_MODE_STANDARD] ?? finalTime,
+                rankedLapTimes: [],
+                rankedBestTime: this.rankedBestTimesByMode[TRACK_MODE_STANDARD] ?? null,
                 rankedBestTimes: {
                     ...this.rankedBestTimesByMode,
-                    [TRACK_MODE_STANDARD]: this.rankedBestTimesByMode[TRACK_MODE_STANDARD] ?? finalTime
+                    [TRACK_MODE_STANDARD]: this.rankedBestTimesByMode[TRACK_MODE_STANDARD] ?? null
                 }
             };
-            if (finalTime < (previousBest ?? Infinity)) {
-                if (this.currentIsRanked) {
-                    trackData.rankedBestTime = finalTime;
-                    trackData.rankedBestTimes[TRACK_MODE_STANDARD] = finalTime;
-                } else {
-                    trackData.bestTime = finalTime;
-                    trackData.bestTimes[TRACK_MODE_STANDARD] = finalTime;
-                }
+            if (!this.currentIsRanked && finalTime < (previousBest ?? Infinity)) {
+                trackData.bestTime = finalTime;
+                trackData.bestTimes[TRACK_MODE_STANDARD] = finalTime;
             }
         }
 
@@ -1303,8 +2162,7 @@ export class RealTimeRacer {
             trackKey,
             mode: TRACK_MODE_STANDARD,
             ranked: this.currentIsRanked,
-            scoreboardSubmitPromise: trackData.scoreboardSubmitPromise || null,
-            persistToTrackCard: Boolean(trackData.scoreboardSubmitPromise)
+            persistToTrackCard: !this.currentIsRanked
         });
         this.ui.setHudPersonalBestsOpenAllowed(true);
 
@@ -1316,7 +2174,11 @@ export class RealTimeRacer {
             : trackData.bestTime;
 
         // Check if this is a new best
-        const isNewBest = activeBestTime === finalTime && (previousBest === null || previousBest === undefined || finalTime < previousBest);
+        const isNewBest = isNewBestResult(
+            this.currentRunPolicy,
+            { bestTime: finalTime },
+            { bestTime: previousBest }
+        );
         const title = isNewBest ? 'New PB!' : trackSnapshot.name;
 
         this.lastSharePayload = {
@@ -1338,19 +2200,24 @@ export class RealTimeRacer {
             lapTimesArray: activeLapTimes || [],
             isNewBest,
             scoreboardTrackKey: trackKey,
-            scoreboardSnapshot: isNewBest && this.currentIsRanked ? { isLoading: true } : null,
+            scoreboardSnapshot: isNewBest && this.currentIsRanked
+                ? createVerificationSnapshot({
+                    statusText: 'Submitting...',
+                    verificationState: 'pending',
+                    isLoading: true
+                })
+                : null,
             scoreboardMode: TRACK_MODE_STANDARD
-        }, Boolean(this.lastSharePayload), {
+        }, Boolean(this.lastSharePayload), createModalActions({
             modalKind: 'standard-win',
             primaryActionLabel: 'Retry',
-            primaryShortcutLabel: null,
             primaryActionIcon: 'retry',
             secondaryActionLabel: 'Done',
             secondaryActionIcon: 'done',
             secondaryAction: () => this.reset(false),
             shareActionLabel: 'Challenge',
             shareActionIcon: 'save'
-        });
+        }));
         // Keep the first modal frame cheap, then build the share preview after
         // the entrance transition has started. The UI reserves the win-modal
         // preview/share layout in advance so this async work no longer causes
@@ -1365,17 +2232,12 @@ export class RealTimeRacer {
 
         if (!isNewBest || !this.currentIsRanked) return;
 
-        Promise.resolve(trackData.scoreboardSubmitPromise || null)
-            .then(() => this.ui.requestReturningTrackRankSnapshot(trackKey, TRACK_MODE_STANDARD, true))
-            .then((scoreboardSnapshot) => {
-                if (trackLoadRequestId !== this.trackLoadRequestId || this.currentTrackKey !== trackKey) return;
-                this.ui.updateModalScoreboardSnapshot(scoreboardSnapshot);
-            })
-            .catch((error) => {
-                console.error('Error loading new PB leaderboard rank:', error);
-                if (trackLoadRequestId !== this.trackLoadRequestId || this.currentTrackKey !== trackKey) return;
-                this.ui.updateModalScoreboardSnapshot(null);
-            });
+        this.enqueueScoreboardVerificationSubmission({
+            trackKey,
+            mode: TRACK_MODE_STANDARD,
+            bestTime: finalTime,
+            replay: this.getScoreboardReplayPayload(1)
+        });
     }
 
     async showPersonalBests() {
@@ -1448,6 +2310,7 @@ export class RealTimeRacer {
         this.particles = [];
         this.lastSharePayload = null;
         this.practiceSession = null;
+        this.clearDailyChallengeRun();
         this.ui.closeModal();
         this.shareService.reset({ visible: false, preservePreview: wasModalActive, preserveVisibility: wasModalActive });
         this.ui.setHudPersonalBestsOpenAllowed(!autoStart);
@@ -1476,6 +2339,15 @@ export class RealTimeRacer {
             this.ui.showStartOverlay(this.hasAnyData, this.isReturningPlayer);
             this.resetCanvasPresentation();
         }
+    }
+
+    restartDailyChallenge() {
+        if (!this.activeDailyChallenge) return;
+
+        this.reset(false);
+        requestAnimationFrame(() => {
+            this.handleStartDailyChallenge();
+        });
     }
 
     resetCanvasPresentation() {

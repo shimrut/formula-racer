@@ -1,7 +1,13 @@
 import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.36';
 import { TRACKS } from '../tracks.js?v=1.36';
+import {
+    buildServiceHeaders,
+    clampRequestLimit,
+    getBaseSupabaseConfig,
+    getOrCreatePlayerId,
+    unwrapRpcPayload
+} from './shared-client.js?v=1.0';
 
-const PLAYER_ID_STORAGE_KEY = 'VectorGpScoreboardPlayerId';
 const DEFAULT_SUBMIT_FUNCTION_NAME = 'scoreboard-submit';
 const MIN_SCOREBOARD_TIME = 2.0;
 const MAX_SCOREBOARD_TIME = 60 * 60;
@@ -14,27 +20,15 @@ const SCOREBOARD_PLAYER_WINDOW_RADIUS = 2;
 const inflightScoreboardSnapshots = new Map();
 
 function getScoreboardConfig() {
-    const rawConfig = typeof window !== 'undefined' && window.VECTORGP_SCOREBOARD_CONFIG
-        ? window.VECTORGP_SCOREBOARD_CONFIG
-        : null;
-
-    if (!rawConfig || typeof rawConfig !== 'object') {
+    const baseConfig = getBaseSupabaseConfig();
+    if (!baseConfig) {
         return null;
     }
 
-    const supabaseUrl = typeof rawConfig.supabaseUrl === 'string'
-        ? rawConfig.supabaseUrl.trim().replace(/\/+$/, '')
-        : '';
-    const supabaseAnonKey = typeof rawConfig.supabaseAnonKey === 'string'
-        ? rawConfig.supabaseAnonKey.trim()
-        : '';
-    const submitFunctionName = typeof rawConfig.submitFunctionName === 'string' && rawConfig.submitFunctionName.trim()
+    const rawConfig = baseConfig.rawConfig || null;
+    const submitFunctionName = typeof rawConfig?.submitFunctionName === 'string' && rawConfig.submitFunctionName.trim()
         ? rawConfig.submitFunctionName.trim()
         : DEFAULT_SUBMIT_FUNCTION_NAME;
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-        return null;
-    }
 
     const useSnapshotRpc = rawConfig.useScoreboardSnapshotRpc !== false;
     const snapshotRpcName = typeof rawConfig.snapshotRpcName === 'string' && rawConfig.snapshotRpcName.trim()
@@ -42,40 +36,12 @@ function getScoreboardConfig() {
         : 'get_scoreboard_snapshot';
 
     return {
-        submitUrl: `${supabaseUrl}/functions/v1/${submitFunctionName}`,
-        scoresUrl: `${supabaseUrl}/rest/v1/scoreboard_best_times`,
-        restV1Url: `${supabaseUrl}/rest/v1`,
-        supabaseAnonKey,
+        ...baseConfig,
+        submitUrl: `${baseConfig.supabaseUrl}/functions/v1/${submitFunctionName}`,
+        scoresUrl: `${baseConfig.restV1Url}/scoreboard_best_times`,
         useScoreboardSnapshotRpc: useSnapshotRpc,
         snapshotRpcName
     };
-}
-
-function createPlayerId() {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-        return crypto.randomUUID();
-    }
-
-    const randomHex = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).slice(1);
-    return `${randomHex()}${randomHex()}-${randomHex()}-4${randomHex().slice(1)}-a${randomHex().slice(1)}-${randomHex()}${randomHex()}${randomHex()}`;
-}
-
-function getOrCreatePlayerId() {
-    if (typeof window === 'undefined' || !window.localStorage) {
-        return createPlayerId();
-    }
-
-    try {
-        const storedId = window.localStorage.getItem(PLAYER_ID_STORAGE_KEY);
-        if (storedId) return storedId;
-
-        const nextId = createPlayerId();
-        window.localStorage.setItem(PLAYER_ID_STORAGE_KEY, nextId);
-        return nextId;
-    } catch (error) {
-        console.error('Error accessing scoreboard player id:', error);
-        return createPlayerId();
-    }
 }
 
 function isValidScoreboardMode(mode) {
@@ -88,13 +54,6 @@ function isValidScoreboardBestTime(bestTime) {
         && bestTime <= MAX_SCOREBOARD_TIME;
 }
 
-function getScoreboardHeaders(config, extraHeaders = {}) {
-    return {
-        'apikey': config.supabaseAnonKey,
-        ...extraHeaders
-    };
-}
-
 function parseTotalCount(contentRange) {
     if (typeof contentRange !== 'string') return 0;
     const totalPart = contentRange.split('/')[1];
@@ -103,7 +62,7 @@ function parseTotalCount(contentRange) {
 }
 
 async function fetchScoreboardRows(config, queryParams, { count = false } = {}) {
-    const headers = getScoreboardHeaders(
+    const headers = buildServiceHeaders(
         config,
         count ? { 'Prefer': 'count=exact' } : {}
     );
@@ -279,7 +238,7 @@ async function fetchScoreboardSnapshotRpc(config, trackKey, mode, playerId, safe
     const response = await fetch(`${config.restV1Url}/rpc/${encodeURIComponent(name)}`, {
         method: 'POST',
         headers: {
-            ...getScoreboardHeaders(config),
+            ...buildServiceHeaders(config),
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
         },
@@ -295,10 +254,7 @@ async function fetchScoreboardSnapshotRpc(config, trackKey, mode, playerId, safe
         err.status = response.status;
         throw err;
     }
-    const data = await response.json();
-    const row = Array.isArray(data) ? data[0] : data;
-    if (!row || typeof row !== 'object') return null;
-    return row[name] !== undefined ? row[name] : row;
+    return unwrapRpcPayload(await response.json(), name);
 }
 
 async function loadScoreboardSnapshotViaRest(config, trackKey, mode, safeLimit, currentPlayerId) {
@@ -407,11 +363,11 @@ export async function submitScoreboardBestTime({ trackKey, mode, bestTime, repla
     const response = await fetch(config.submitUrl, {
         method: 'POST',
         headers: {
-            ...getScoreboardHeaders(config),
+            ...buildServiceHeaders(config),
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            playerId: getOrCreatePlayerId(),
+            playerId: getOrCreatePlayerId('scoreboard'),
             trackKey,
             mode,
             bestTime,
@@ -419,33 +375,11 @@ export async function submitScoreboardBestTime({ trackKey, mode, bestTime, repla
         })
     });
 
-    if (!response.ok) {
-        throw new Error(`Scoreboard submission failed: ${response.status}`);
-    }
-
-    return response.json().catch(() => null);
-}
-
-export async function getScoreboardBestTimes({ trackKey, mode, limit = DEFAULT_SCOREBOARD_LIMIT } = {}) {
-    const config = getScoreboardConfig();
-    if (!config || typeof fetch !== 'function') return [];
-    if (!TRACKS[trackKey] || !isValidScoreboardMode(mode)) return [];
-
-    const safeLimit = Number.isFinite(limit)
-        ? Math.min(Math.max(Math.trunc(limit), 1), MAX_SCOREBOARD_LIMIT)
-        : DEFAULT_SCOREBOARD_LIMIT;
-    const query = createScoreboardRowsQuery(trackKey, mode, { limit: safeLimit });
-    const currentPlayerId = getOrCreatePlayerId();
-    const { rows } = await fetchScoreboardRows(config, query);
-
-    return rows
-        .map((row, index) => {
-            const mappedRow = mapScoreboardRow(row, index + 1);
-            if (!mappedRow) return null;
-            mappedRow.isCurrentPlayer = mappedRow.playerId === currentPlayerId;
-            return mappedRow;
-        })
-        .filter(Boolean);
+    return {
+        ok: response.ok,
+        status: response.status,
+        body: await response.json().catch(() => null)
+    };
 }
 
 export async function getScoreboardSnapshot({ trackKey, mode, limit = DEFAULT_SCOREBOARD_PREVIEW_LIMIT } = {}) {
@@ -466,15 +400,16 @@ export async function getScoreboardSnapshot({ trackKey, mode, limit = DEFAULT_SC
         return emptySnapshot();
     }
 
-    const safeLimit = Number.isFinite(limit)
-        ? Math.min(Math.max(Math.trunc(limit), 1), MAX_SCOREBOARD_LIMIT)
-        : DEFAULT_SCOREBOARD_PREVIEW_LIMIT;
+    const safeLimit = clampRequestLimit(limit, {
+        defaultLimit: DEFAULT_SCOREBOARD_PREVIEW_LIMIT,
+        maxLimit: MAX_SCOREBOARD_LIMIT
+    });
     const dedupeKey = `${trackKey}\u0000${mode}\u0000${safeLimit}`;
     const inflight = inflightScoreboardSnapshots.get(dedupeKey);
     if (inflight) return inflight;
 
     const promise = (async () => {
-        const currentPlayerId = getOrCreatePlayerId();
+        const currentPlayerId = getOrCreatePlayerId('scoreboard');
 
         if (config.useScoreboardSnapshotRpc !== false && config.restV1Url) {
             try {

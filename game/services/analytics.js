@@ -30,6 +30,14 @@ export class AnalyticsService {
         this.track('how-to-play-open');
     }
 
+    trackModeSelected(payload) {
+        this.track('mode-selected', payload);
+    }
+
+    trackModeStarted(payload) {
+        this.track('mode-started', payload);
+    }
+
     trackTrialRace(stats) {
         this.track('trial-race', stats);
     }

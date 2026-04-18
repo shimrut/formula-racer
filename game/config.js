@@ -7,7 +7,7 @@ export const CONFIG = {
     offTrackColor: '#0f172a', // Deep Blue/Grey for runoff areas
     trackColor: '#334155',    // Lighter Slate for Asphalt
     
-    // F1 Style Colors
+    // Style Colors
     curbRed: '#ef4444',
     curbWhite: '#f8fafc',
     carColor: '#dc2626',
@@ -24,7 +24,7 @@ export const CONFIG = {
     
     // Physics Constants
     accel: 28.0, // Tuned for ~220 kph top speed
-    turnSpeed: 5.0,  // Balanced steering response
+    turnSpeed: 5,  // Balanced steering response
     friction: 0.96, // Lower drag for higher top speed
     crashSpeed: 2.0, // Higher impact tolerance
     resumeRelaunchDelay: 0.5, // Brief buffer before throttle resumes after unpausing

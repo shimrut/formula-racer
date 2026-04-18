@@ -1,4 +1,9 @@
 import { segmentsIntersect } from '../math.js?v=1.53';
+import {
+    handleFinishCrossing,
+    handleHardCrash,
+    resolveRunPolicy
+} from '../run-policy.js?v=1.1';
 
 /**
  * Mutate-in-place simulation. The `state` object (the engine instance) is
@@ -18,6 +23,13 @@ const _events = {
     winData: null,
     lapCompleted: false,
     completedLapTime: null,
+    challengeLapCompleted: false,
+    challengeCompletedLapTime: null,
+    challengeProgressLaps: 0,
+    challengeCrashReset: false,
+    challengeCrashCount: 0,
+    challengeFailed: false,
+    challengeFailureReason: null,
     crashImpact: null,
     crashEndedRun: false,
     practiceCrashReset: false
@@ -28,12 +40,19 @@ function resetEvents() {
     _events.winData = null;
     _events.lapCompleted = false;
     _events.completedLapTime = null;
+    _events.challengeLapCompleted = false;
+    _events.challengeCompletedLapTime = null;
+    _events.challengeProgressLaps = 0;
+    _events.challengeCrashReset = false;
+    _events.challengeCrashCount = 0;
+    _events.challengeFailed = false;
+    _events.challengeFailureReason = null;
     _events.crashImpact = null;
     _events.crashEndedRun = false;
     _events.practiceCrashReset = false;
 }
 
-export function createSparkParticles(pos, count, sparkColor) {
+function createSparkParticles(pos, count, sparkColor) {
     const particles = [];
 
     for (let i = 0; i < count; i++) {
@@ -62,7 +81,7 @@ export function createSparkParticles(pos, count, sparkColor) {
     return particles;
 }
 
-export function checkWallCollision(p1, p2, wallSegments, carRadius) {
+function checkWallCollision(p1, p2, wallSegments, carRadius) {
     if (!wallSegments || wallSegments.length === 0) return false;
 
     const carRadiusSq = carRadius * carRadius;
@@ -105,7 +124,7 @@ export function checkWallCollision(p1, p2, wallSegments, carRadius) {
     return false;
 }
 
-export function checkFinishLine(p1, p2, startLine) {
+function checkFinishLine(p1, p2, startLine) {
     return segmentsIntersect(p1, p2, startLine.p1, startLine.p2);
 }
 
@@ -117,6 +136,7 @@ export function updateSimulation(
     state, dt, config, currentTrack, collisionSegments
 ) {
     resetEvents();
+    const runPolicy = resolveRunPolicy(state);
 
     if (state.status === 'playing') {
         if (state.relaunchDelayRemaining > 0) {
@@ -157,21 +177,7 @@ export function updateSimulation(
             const allPassed = checkpoints.length === 0 || state.nextCheckpointIndex >= checkpoints.length;
             if (crossedFinish) {
                 if (allPassed && state.currentTime >= 2.0) {
-                    if (state.currentModeKey === 'practice') {
-                        _events.lapCompleted = true;
-                        _events.completedLapTime = state.currentTime;
-                        state.currentTime = 0;
-                    } else {
-                        state.status = 'won';
-                        _events.winData = Object.freeze({
-                            lapTime: state.currentTime,
-                            trackKey: state.currentTrackKey,
-                            runId: state.activeRunId,
-                            checkpointCount: checkpoints.length,
-                            completedCheckpointCount: state.nextCheckpointIndex
-                        });
-                        _events.winTriggered = true;
-                    }
+                    Object.assign(_events, handleFinishCrossing(state, runPolicy, checkpoints.length));
                 }
                 state.nextCheckpointIndex = 0;
             }
@@ -183,17 +189,11 @@ export function updateSimulation(
                     const particleCount = state.frameSkip > 0 ? 10 : 20;
                     const crashSparks = createSparkParticles(state.pos, particleCount * 5, config.sparkColor);
                     for (let j = 0; j < crashSparks.length; j++) state.particles.push(crashSparks[j]);
-                    if (state.currentModeKey === 'practice' && !state.practiceEndOnCrash) {
-                        _events.practiceCrashReset = true;
-                    } else {
-                        state.status = 'crashed';
-                        _events.crashEndedRun = true;
-                    }
+                    Object.assign(_events, handleHardCrash(state, runPolicy, checkpoints.length));
                 } else {
                     state.velocity.x *= -0.5;
                     state.velocity.y *= -0.5;
-                    state.pos.x -= state.velocity.x * dt * 2;
-                    state.pos.y -= state.velocity.y * dt * 2;
+                    state.cachedSpeed = Math.sqrt(state.velocity.x ** 2 + state.velocity.y ** 2);
                     const particleCount = state.frameSkip > 0 ? 3 : 5;
                     const bounceSparks = createSparkParticles(state.pos, particleCount * 5, config.sparkColor);
                     for (let j = 0; j < bounceSparks.length; j++) state.particles.push(bounceSparks[j]);
