@@ -1,4 +1,4 @@
-export function smoothPoly(points, radius, qualityLevel, frameSkip) {
+function smoothPoly(points, radius) {
     const uniquePoints = points.filter((p, i) => {
         const next = points[(i + 1) % points.length];
         return !(Math.abs(p.x - next.x) < 0.01 && Math.abs(p.y - next.y) < 0.01);
@@ -49,11 +49,11 @@ export function smoothPoly(points, radius, qualityLevel, frameSkip) {
     return newPoints;
 }
 
-export function buildTrackGeometry(track, { qualityLevel, frameSkip }) {
+export function buildTrackGeometry(track) {
     const cornerRadius = track.cornerRadius ?? 3;
     return {
-        outer: smoothPoly(track.outer, cornerRadius, qualityLevel, frameSkip),
-        inner: smoothPoly(track.inner, cornerRadius, qualityLevel, frameSkip)
+        outer: smoothPoly(track.outer, cornerRadius),
+        inner: smoothPoly(track.inner, cornerRadius)
     };
 }
 
@@ -92,12 +92,3 @@ export function buildCollisionRuntime(geometry) {
     };
 }
 
-export function buildTrackRuntime(track, { qualityLevel, frameSkip }) {
-    const geometry = buildTrackGeometry(track, { qualityLevel, frameSkip });
-    const collisionRuntime = buildCollisionRuntime(geometry);
-
-    return {
-        ...geometry,
-        ...collisionRuntime
-    };
-}
