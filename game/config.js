@@ -1,7 +1,7 @@
 // --- Game Config ---
 export const CONFIG = {
     gridSize: 40, 
-    visibleTrackKeys: ['circuit', 'blueSector', 'harborParkLoop', 'jadeSpiralCircuit', 'cedarRidgeCircuit', 'sakuraWeave', 'royalPlateau', 'twinRise'],
+    visibleTrackKeys: ['circuit', 'moebiusStrip', 'blueSector', 'harborParkLoop', 'jadeSpiralCircuit', 'cedarRidgeCircuit', 'sakuraWeave', 'royalPlateau', 'twinRise'],
     
     // Environment Colors
     offTrackColor: '#0f172a', // Deep Blue/Grey for runoff areas
