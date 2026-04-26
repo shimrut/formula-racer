@@ -81,6 +81,42 @@ function buildCollisionSegmentsForPoly(poly) {
     return segments;
 }
 
+function getCollisionCellKey(cellX, cellY) {
+    return `${cellX},${cellY}`;
+}
+
+function buildCollisionHash(segments, cellSize = 6) {
+    const cells = new Map();
+
+    for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        const startCellX = Math.floor(segment.minX / cellSize);
+        const endCellX = Math.floor(segment.maxX / cellSize);
+        const startCellY = Math.floor(segment.minY / cellSize);
+        const endCellY = Math.floor(segment.maxY / cellSize);
+
+        for (let cellY = startCellY; cellY <= endCellY; cellY++) {
+            for (let cellX = startCellX; cellX <= endCellX; cellX++) {
+                const key = getCollisionCellKey(cellX, cellY);
+                let bucket = cells.get(key);
+                if (!bucket) {
+                    bucket = [];
+                    cells.set(key, bucket);
+                }
+                bucket.push(segment);
+            }
+        }
+    }
+
+    return {
+        cellSize,
+        cells,
+        segments,
+        candidateSegments: [],
+        queryStamp: 0
+    };
+}
+
 export function buildCollisionRuntime(geometry) {
     const segments = [
         ...buildCollisionSegmentsForPoly(geometry.outer),
@@ -88,7 +124,7 @@ export function buildCollisionRuntime(geometry) {
     ];
 
     return {
-        collisionSegments: segments
+        collisionSegments: segments,
+        collisionHash: buildCollisionHash(segments)
     };
 }
-
