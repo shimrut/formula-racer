@@ -1,5 +1,5 @@
-import { CONFIG } from '../config.js?v=1.40';
-import { drawCheckeredLine } from '../core/track-canvas.js?v=1.40';
+import { CONFIG } from '../config.js?v=1.81';
+import { drawCheckeredLine } from '../core/track-canvas.js?v=1.81';
 
 const MODAL_SURFACE_COLOR = '#020617';
 const SHARE_POSTER_TOP_INSET = 236;

@@ -23,7 +23,6 @@ body {
     min-height: 100vh;
     background: var(--bg-color);
     background-image: var(--hero-gradient);
-    background-attachment: fixed;
     color: var(--text-color);
     user-select: text;
     -webkit-user-select: text;
@@ -246,6 +245,101 @@ header {
     color: #94a3b8;
     max-width: 32rem;
     margin: 0;
+}
+
+.changelog-archive {
+    margin-top: 1rem;
+}
+
+.changelog-archive__list {
+    display: grid;
+    gap: 0.9rem;
+    margin-top: 1rem;
+}
+
+.changelog-archive[open] {
+    padding-top: 0.5rem;
+}
+
+.changelog-archive__summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.8rem 1rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.45);
+    color: #f8fafc;
+    cursor: pointer;
+    font-family: var(--mono-font);
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    list-style: none;
+}
+
+.changelog-archive__summary::-webkit-details-marker {
+    display: none;
+}
+
+.changelog-archive__summary::before {
+    content: '+';
+    color: var(--accent-color);
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.changelog-archive[open] .changelog-archive__summary::before {
+    content: '-';
+}
+
+.changelog-release {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1rem;
+    background: rgba(15, 23, 42, 0.32);
+}
+
+.changelog-release__summary {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.95rem 1rem;
+    color: #f8fafc;
+    cursor: pointer;
+    font-family: var(--mono-font);
+    font-size: 0.84rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    list-style: none;
+}
+
+.changelog-release__summary::-webkit-details-marker {
+    display: none;
+}
+
+.changelog-release__summary::before {
+    content: '+';
+    color: var(--accent-color);
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.changelog-release[open] .changelog-release__summary::before {
+    content: '-';
+}
+
+.about-section--nested {
+    margin-bottom: 0;
+    padding: 0 1rem 1.2rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.about-section--nested .about-section__label {
+    margin-bottom: 1.25rem;
+    padding-top: 1.2rem;
 }
 
 .about-specs--glance {

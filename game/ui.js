@@ -1,19 +1,19 @@
-import { CONFIG } from './config.js?v=1.36';
-import { TRACKS } from './tracks.js?v=1.36';
-import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.36';
+import { CONFIG } from './config.js?v=1.81';
+import { TRACKS } from './tracks.js?v=1.81';
+import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.81';
 import {
     getDailyChallengeCopyLabels,
     getDailyChallengeModeSelectObjectiveLine,
     getDailyChallengeSnapshot
-} from './services/daily-challenge.js?v=1.39';
+} from './services/daily-challenge.js?v=1.81';
 import {
     getDailyChallengeVerificationEntry,
     getDailyChallengeVerificationState
 } from './services/verification-queue.js';
-import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.45';
-import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=1.36';
-import { getTrackPreviewGeometry } from './core/track-assets.js?v=1.36';
-import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=1.36';
+import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.81';
+import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=1.81';
+import { getTrackPreviewGeometry } from './core/track-assets.js?v=1.81';
+import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=1.81';
 
 /** Horizontal swipe distance (px) to change track on mobile carousel. */
 const MOBILE_CAROUSEL_SWIPE_PX = 42;
@@ -266,6 +266,8 @@ export class GameUi {
         this._touchCarouselStartTranslate = 0;
         this._carouselTouchDragging = false;
         this._suppressCarouselCardClick = false;
+        this._pendingCarouselDragRaf = null;
+        this._pendingCarouselDragTranslateX = null;
         this._selectorKeydownHandler = null;
         this._dailyChallengeSummary = null;
         this._dailyChallengeCountdownInterval = null;
@@ -337,6 +339,26 @@ export class GameUi {
         if (this.trackCarousel) {
             this.trackCarousel.style.transform = `translate3d(${this._trackCarouselTranslateX}px, 0, 0)`;
         }
+    }
+
+    scheduleTrackCarouselDragTranslateX(translateX) {
+        this._pendingCarouselDragTranslateX = translateX;
+        if (this._pendingCarouselDragRaf !== null) return;
+
+        this._pendingCarouselDragRaf = requestAnimationFrame(() => {
+            this._pendingCarouselDragRaf = null;
+            const nextTranslateX = this._pendingCarouselDragTranslateX;
+            this._pendingCarouselDragTranslateX = null;
+            this.setTrackCarouselTranslateX(nextTranslateX);
+        });
+    }
+
+    cancelPendingTrackCarouselDrag() {
+        if (this._pendingCarouselDragRaf !== null) {
+            cancelAnimationFrame(this._pendingCarouselDragRaf);
+        }
+        this._pendingCarouselDragRaf = null;
+        this._pendingCarouselDragTranslateX = null;
     }
 
     bindModalViewToggles() {
@@ -852,6 +874,10 @@ export class GameUi {
         this.updateStartOverlayMode(hasAnyData, isReturningPlayer);
     }
 
+    isStartOverlayVisible() {
+        return Boolean(this.startOverlay && this.startOverlay.style.display !== 'none');
+    }
+
     showStartOverlay(hasAnyData, isReturningPlayer = false) {
         if (this.startOverlay) this.startOverlay.style.display = 'flex';
         if (this.startGroup) this.startGroup.style.display = 'flex';
@@ -912,7 +938,7 @@ export class GameUi {
                             </div>
                         </div>
                         <div class="track-card-preview-wrap">
-                            <canvas class="track-card-preview-canvas" width="640" height="420" aria-hidden="true"></canvas>
+                            <canvas class="track-card-preview-canvas" width="448" height="294" aria-hidden="true"></canvas>
                         </div>
                     </div>
                 </div>
@@ -1327,7 +1353,7 @@ export class GameUi {
             if (idx <= 0 && d > 0) d *= rubber;
             else if (idx >= last && d < 0) d *= rubber;
 
-            this.setTrackCarouselTranslateX(this._touchCarouselStartTranslate + d);
+            this.scheduleTrackCarouselDragTranslateX(this._touchCarouselStartTranslate + d);
         };
 
         this.trackCarouselShell.addEventListener('touchstart', (event) => {
@@ -1340,6 +1366,7 @@ export class GameUi {
 
             this._carouselTouchDragging = true;
             this._touchCarouselStartTranslate = this._trackCarouselTranslateX;
+            this.cancelPendingTrackCarouselDrag();
             this.trackCarousel.style.transition = 'none';
         }, { passive: true });
 
@@ -1360,6 +1387,7 @@ export class GameUi {
                 this._touchStartX = null;
                 this._touchDeltaX = 0;
                 this._carouselTouchDragging = false;
+                this.cancelPendingTrackCarouselDrag();
                 this.trackCarousel.style.removeProperty('transition');
                 return;
             }
@@ -1367,6 +1395,7 @@ export class GameUi {
             const delta = this._touchDeltaX;
 
             if (this._carouselTouchDragging) {
+                this.cancelPendingTrackCarouselDrag();
                 this.trackCarousel.style.removeProperty('transition');
             }
             this._carouselTouchDragging = false;
@@ -1497,10 +1526,13 @@ export class GameUi {
         const currentIndex = this._returningTrackKeys.indexOf(trackKey);
         this._returningTrackCards.forEach((card, key) => {
             const isActive = key === trackKey;
+            const isAdjacent = key === this._returningTrackKeys[currentIndex - 1]
+                || key === this._returningTrackKeys[currentIndex + 1];
             card.classList.toggle('is-active', isActive);
             card.classList.toggle('is-before', key === this._returningTrackKeys[currentIndex - 1]);
             card.classList.toggle('is-after', key === this._returningTrackKeys[currentIndex + 1]);
             card.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            card.tabIndex = isActive || isAdjacent ? 0 : -1;
         });
 
         this.updateVisibleTrackPreviews(trackKey);
@@ -2066,6 +2098,7 @@ export class GameUi {
         const showSelectionFlow = hasAnyData || this._introAcknowledged;
         const showScoreModeIntro = this.shouldShowScoreModeIntro(showSelectionFlow);
         const selectedOverlay = this._startOverlaySelection;
+        const isOverlayVisible = this.isStartOverlayVisible();
         const showModeSelection = showSelectionFlow && !showScoreModeIntro && !selectedOverlay;
         const showReturningPlayerPanel = showSelectionFlow && !showScoreModeIntro && (
             selectedOverlay === TRACK_MODE_STANDARD || selectedOverlay === TRACK_MODE_PRACTICE
@@ -2091,10 +2124,10 @@ export class GameUi {
         }
         this.updateScoreModeIntro(showScoreModeIntro);
         this.updateTrackModeControls();
-        document.body.classList.toggle('ftu-onboarding-active', !showSelectionFlow);
-        this.setStartSelectionMode(showSelectionFlow);
+        document.body.classList.toggle('ftu-onboarding-active', isOverlayVisible && !showSelectionFlow);
+        this.setStartSelectionMode(isOverlayVisible && showSelectionFlow);
 
-        if (showModeSelection) {
+        if (isOverlayVisible && showModeSelection) {
             requestAnimationFrame(() => {
                 const focusTarget = selectedOverlay === 'daily' && this.modeSelectDailyBtn && !this.modeSelectDailyBtn.hidden
                     ? this.modeSelectDailyBtn
@@ -2116,7 +2149,7 @@ export class GameUi {
             });
         }
 
-        if (showReturningPlayerPanel) {
+        if (isOverlayVisible && showReturningPlayerPanel) {
             requestAnimationFrame(() => {
                 this.setReturningTrackSelection(
                     this._selectedReturningTrackKey || this._currentTrackKey || this._returningTrackKeys[0],
@@ -2125,7 +2158,7 @@ export class GameUi {
             });
         }
 
-        if (showDailyChallengePanel) {
+        if (isOverlayVisible && showDailyChallengePanel) {
             requestAnimationFrame(() => {
                 (this.dailyChallengeStartBtn?.disabled ? this.dailyChallengeBackBtn : this.dailyChallengeStartBtn)?.focus();
             });
@@ -3406,7 +3439,21 @@ export class GameUi {
         document.removeEventListener('keydown', this._modalTrapKeydown);
         this._activeTrapModal = null;
         this._modalTrapKeydown = null;
-        if (this._focusBeforeModal && this._focusBeforeModal !== document.body && document.contains(this._focusBeforeModal)) {
+        const activeElement = document.activeElement;
+        const focusAlreadyMoved = Boolean(
+            activeElement
+            && activeElement !== document.body
+            && activeElement !== this._focusBeforeModal
+            && document.contains(activeElement)
+            && activeElement.offsetParent !== null
+            && !modalEl?.contains?.(activeElement)
+        );
+        if (
+            !focusAlreadyMoved
+            && this._focusBeforeModal
+            && this._focusBeforeModal !== document.body
+            && document.contains(this._focusBeforeModal)
+        ) {
             this._focusBeforeModal.focus();
         }
         this._focusBeforeModal = null;

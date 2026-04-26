@@ -38,9 +38,9 @@
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="preload" href="fonts/outfit.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="fonts/jetbrainsmono.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="fonts.css?v=1.40">
-    <link rel="stylesheet" href="pages.css?v=1.40">
-    <script src="site/support-dropdown.js?v=1.40" defer></script>
+    <link rel="stylesheet" href="fonts.css?v=1.81">
+    <link rel="stylesheet" href="pages.css?v=1.81">
+    <script src="site/support-dropdown.js?v=1.81" defer></script>
 
     <!-- Structured data (SEO + GEO: machine-readable, quotable summary for search and generative engines) -->
     <script type="application/ld+json">
@@ -113,7 +113,42 @@
             <p class="about-hero__subtitle">Evolution of VectorGP. Daily GP, fixes, new systems, and circuit releases.</p>
         </section>
 
-        <section class="about-section">
+        <section id="release-0-7" class="about-section">
+            <span class="about-section__label">v 0.7 / April 2026</span>
+            <div class="about-content">
+                <h2>Visual refresh &amp; polish</h2>
+                <p><strong>This release focused on how the game looks and how reliably it flows from run to run.</strong>
+                    Car art moved to a flatter presentation, track and canvas rendering were tightened up, and several
+                    frustrating edge-case bugs were cleaned up.</p>
+
+                <p><strong>What changed:</strong></p>
+                <ul
+                    style="list-style: none; padding: 0; margin: 0; color: #cbd5e1; font-size: 1.0625rem; line-height: 1.75;">
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span
+                            style="color: var(--accent-color);">/</span><span style="flex: 1; min-width: 0;">Car visuals
+                            now use a <strong>cleaner flat-graphic style</strong>, and the game now has a wider set of
+                            <strong>car assets</strong> to support more visual variety across presets and presentations.</span></li>
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span
+                            style="color: var(--accent-color);">/</span><span style="flex: 1; min-width: 0;">Track and
+                            canvas handling were refined so <strong>previews and live runs render more cleanly</strong>,
+                            keep their layout more reliably, and stay more consistent across screens and resolutions.</span></li>
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span
+                            style="color: var(--accent-color);">/</span><span style="flex: 1; min-width: 0;"><strong>Bug
+                            fixes:</strong> Improved daily challenge ranking, caching, and restart flow.</span></li>
+                    <li style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;"><span
+                            style="color: var(--accent-color);">/</span><span style="flex: 1; min-width: 0;"><strong>Bug
+                            fixes:</strong> Improved wall collisions, mode-select copy, and result-screen behavior when
+                            returning to the next run.</span></li>
+                </ul>
+            </div>
+        </section>
+
+        <details class="changelog-archive">
+            <summary class="changelog-archive__summary">Older releases</summary>
+            <div class="changelog-archive__list">
+        <details class="changelog-release" id="release-0-6">
+            <summary class="changelog-release__summary">v 0.6</summary>
+        <section class="about-section about-section--nested">
             <span class="about-section__label">v 0.6 / April 2026</span>
             <div class="about-content">
                 <h2>Daily GP arrives</h2>
@@ -145,8 +180,11 @@
                 </ul>
             </div>
         </section>
+        </details>
 
-        <section class="about-section">
+        <details class="changelog-release" id="release-0-51">
+            <summary class="changelog-release__summary">v 0.51</summary>
+        <section class="about-section about-section--nested">
             <span class="about-section__label">v 0.51 / April 2026</span>
             <div class="about-content">
                 <h2>Smoother runs &amp; clearer PBs</h2>
@@ -173,8 +211,11 @@
                 </ul>
             </div>
         </section>
+        </details>
 
-        <section class="about-section">
+        <details class="changelog-release" id="release-0-5">
+            <summary class="changelog-release__summary">v 0.5</summary>
+        <section class="about-section about-section--nested">
             <span class="about-section__label">v 0.5 / April 2026</span>
             <div class="about-content">
                 <h2>Global leaderboards</h2>
@@ -196,8 +237,11 @@
                 </ul>
             </div>
         </section>
+        </details>
 
-        <section class="about-section">
+        <details class="changelog-release" id="release-0-47">
+            <summary class="changelog-release__summary">v 0.47</summary>
+        <section class="about-section about-section--nested">
             <span class="about-section__label">v 0.47 / March 2026</span>
             <div class="about-content">
                 <h2>Track Visibility & UX Refresh</h2>
@@ -224,8 +268,11 @@
                 </ul>
             </div>
         </section>
+        </details>
 
-        <section class="about-section">
+        <details class="changelog-release" id="release-0-46">
+            <summary class="changelog-release__summary">v 0.46</summary>
+        <section class="about-section about-section--nested">
             <span class="about-section__label">v 0.46 / March 2026</span>
             <div class="about-content">
                 <h2>Session Mode + Flow Update</h2>
@@ -253,8 +300,11 @@
                 </ul>
             </div>
         </section>
+        </details>
 
-        <section class="about-section">
+        <details class="changelog-release" id="release-0-45">
+            <summary class="changelog-release__summary">v 0.45</summary>
+        <section class="about-section about-section--nested">
             <span class="about-section__label">v 0.45 / March 2026</span>
             <div class="about-content">
                 <h2>Sakura Weave & Performance Update</h2>
@@ -279,8 +329,11 @@
                 </ul>
             </div>
         </section>
+        </details>
 
-        <section class="about-section">
+        <details class="changelog-release" id="release-0-44">
+            <summary class="changelog-release__summary">v 0.44</summary>
+        <section class="about-section about-section--nested">
             <span class="about-section__label">v 0.44 / March 2026</span>
             <div class="about-content">
                 <h2>Track Select Polish</h2>
@@ -302,8 +355,11 @@
                 </ul>
             </div>
         </section>
+        </details>
 
-        <section class="about-section">
+        <details class="changelog-release" id="release-0-43">
+            <summary class="changelog-release__summary">v 0.43</summary>
+        <section class="about-section about-section--nested">
             <span class="about-section__label">v 0.43 / March 2026</span>
             <div class="about-content">
                 <h2>Flow & Presentation Update</h2>
@@ -325,8 +381,11 @@
                 </ul>
             </div>
         </section>
+        </details>
 
-        <section class="about-section">
+        <details class="changelog-release" id="release-0-42">
+            <summary class="changelog-release__summary">v 0.42</summary>
+        <section class="about-section about-section--nested">
             <span class="about-section__label">v 0.42 / March 2026</span>
             <div class="about-content">
                 <h2>Pre-Race Update</h2>
@@ -354,8 +413,11 @@
                 </ul>
             </div>
         </section>
+        </details>
 
-        <section class="about-section">
+        <details class="changelog-release" id="release-0-41">
+            <summary class="changelog-release__summary">v 0.41</summary>
+        <section class="about-section about-section--nested">
             <span class="about-section__label">v 0.41 / March 2026</span>
             <div class="about-content">
                 <h2>Cedar Ridge + PB Update</h2>
@@ -377,8 +439,11 @@
                 </ul>
             </div>
         </section>
+        </details>
 
-        <section class="about-section">
+        <details class="changelog-release" id="release-0-4">
+            <summary class="changelog-release__summary">v 0.4</summary>
+        <section class="about-section about-section--nested">
             <span class="about-section__label">v 0.4 / March 2026</span>
             <div class="about-content">
                 <h2>Race Presentation Upgrade</h2>
@@ -412,8 +477,11 @@
                 </ul>
             </div>
         </section>
+        </details>
 
-        <section class="about-section">
+        <details class="changelog-release" id="release-0-344">
+            <summary class="changelog-release__summary">v 0.344</summary>
+        <section class="about-section about-section--nested">
             <span class="about-section__label">v 0.344 / March 2026</span>
             <div class="about-content">
                 <h2>Jade Spiral Release</h2>
@@ -455,6 +523,9 @@
                 </ul>
             </div>
         </section>
+        </details>
+            </div>
+        </details>
     </main>
 
     <footer class="about-footer">

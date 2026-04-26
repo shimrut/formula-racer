@@ -1,9 +1,9 @@
-import { segmentsIntersect } from '../math.js?v=1.53';
+import { segmentsIntersect } from '../math.js?v=1.81';
 import {
     handleFinishCrossing,
     handleHardCrash,
     resolveRunPolicy
-} from '../run-policy.js?v=1.1';
+} from '../run-policy.js?v=1.81';
 
 /**
  * Mutate-in-place simulation. The `state` object (the engine instance) is
@@ -124,6 +124,41 @@ function checkWallCollision(p1, p2, wallSegments, carRadius) {
     return false;
 }
 
+function getCollisionCandidates(p1, p2, collisionData, carRadius) {
+    if (!collisionData) return [];
+    if (!collisionData.cells || !collisionData.segments) {
+        return collisionData._segments ? collisionData._segments : collisionData;
+    }
+
+    const expandedMinX = Math.min(p1.x, p2.x) - carRadius;
+    const expandedMaxX = Math.max(p1.x, p2.x) + carRadius;
+    const expandedMinY = Math.min(p1.y, p2.y) - carRadius;
+    const expandedMaxY = Math.max(p1.y, p2.y) + carRadius;
+    const startCellX = Math.floor(expandedMinX / collisionData.cellSize);
+    const endCellX = Math.floor(expandedMaxX / collisionData.cellSize);
+    const startCellY = Math.floor(expandedMinY / collisionData.cellSize);
+    const endCellY = Math.floor(expandedMaxY / collisionData.cellSize);
+    const stamp = ++collisionData.queryStamp;
+    const candidates = collisionData.candidateSegments;
+    candidates.length = 0;
+
+    for (let cellY = startCellY; cellY <= endCellY; cellY++) {
+        for (let cellX = startCellX; cellX <= endCellX; cellX++) {
+            const bucket = collisionData.cells.get(`${cellX},${cellY}`);
+            if (!bucket) continue;
+
+            for (let i = 0; i < bucket.length; i++) {
+                const segment = bucket[i];
+                if (segment.queryStamp === stamp) continue;
+                segment.queryStamp = stamp;
+                candidates.push(segment);
+            }
+        }
+    }
+
+    return candidates.length > 0 ? candidates : collisionData.segments;
+}
+
 function checkFinishLine(p1, p2, startLine) {
     return segmentsIntersect(p1, p2, startLine.p1, startLine.p2);
 }
@@ -161,7 +196,12 @@ export function updateSimulation(
             _nextPos.x = state.pos.x + state.velocity.x * dt;
             _nextPos.y = state.pos.y + state.velocity.y * dt;
 
-            const hitWall = checkWallCollision(state.pos, _nextPos, state.collisionHash || collisionSegments, config.carRadius);
+            const hitWall = checkWallCollision(
+                state.pos,
+                _nextPos,
+                getCollisionCandidates(state.pos, _nextPos, state.collisionHash || collisionSegments, config.carRadius),
+                config.carRadius
+            );
 
             // Checkpoint detection
             const checkpoints = currentTrack.checkpoints || [];

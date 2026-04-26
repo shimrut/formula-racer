@@ -1,4 +1,4 @@
-import { CONFIG } from '../config.js?v=1.40';
+import { CONFIG } from '../config.js?v=1.81';
 
 export function drawCheckeredLine(ctx, p1, p2, width) {
     const dx = p2.x - p1.x;
@@ -18,13 +18,6 @@ export function drawCheckeredLine(ctx, p1, p2, width) {
     ctx.save();
     ctx.lineCap = 'butt';
     ctx.lineJoin = 'miter';
-
-    ctx.strokeStyle = 'rgba(2, 6, 23, 0.45)';
-    ctx.lineWidth = width + 4;
-    ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.stroke();
 
     for (let row = 0; row < rows; row++) {
         const innerOffset = -width / 2 + row * rowHeight;
@@ -51,14 +44,6 @@ export function drawCheckeredLine(ctx, p1, p2, width) {
         }
     }
 
-    ctx.strokeStyle = CONFIG.finishLineBorderColor;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(p1.x + nx * (width / 2), p1.y + ny * (width / 2));
-    ctx.lineTo(p2.x + nx * (width / 2), p2.y + ny * (width / 2));
-    ctx.moveTo(p1.x - nx * (width / 2), p1.y - ny * (width / 2));
-    ctx.lineTo(p2.x - nx * (width / 2), p2.y - ny * (width / 2));
-    ctx.stroke();
     ctx.restore();
 }
 
@@ -72,22 +57,12 @@ function drawTireBarrier(ctx, x, y, angle) {
         const offset = tireOffsets[i];
         const yOffset = i === 1 ? 0 : 2;
 
-        ctx.fillStyle = 'rgba(2, 6, 23, 0.28)';
-        ctx.beginPath();
-        ctx.ellipse(offset + 1.5, yOffset + 2, 8, 6.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        const sidewall = ctx.createRadialGradient(offset - 2, yOffset - 2, 1, offset, yOffset, 8);
-        sidewall.addColorStop(0, '#4b5563');
-        sidewall.addColorStop(0.3, '#1f2937');
-        sidewall.addColorStop(0.75, '#0f172a');
-        sidewall.addColorStop(1, '#020617');
-        ctx.fillStyle = sidewall;
+        ctx.fillStyle = '#111827';
         ctx.beginPath();
         ctx.ellipse(offset, yOffset, 7.5, 6, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
+        ctx.strokeStyle = 'rgba(248, 250, 252, 0.14)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.ellipse(offset, yOffset, 5.5, 4.4, 0, 0, Math.PI * 2);
@@ -98,7 +73,7 @@ function drawTireBarrier(ctx, x, y, angle) {
         ctx.ellipse(offset, yOffset, 2.2, 1.8, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.strokeStyle = 'rgba(226, 232, 240, 0.12)';
+        ctx.strokeStyle = 'rgba(248, 250, 252, 0.1)';
         ctx.lineWidth = 1;
         for (let tread = -3; tread <= 3; tread += 3) {
             ctx.beginPath();
@@ -193,7 +168,7 @@ export function buildTrackCanvas(track, geometry) {
     const drawCurb = (path) => {
         ctx.lineWidth = 6;
         ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
+        ctx.lineCap = 'butt';
         ctx.setLineDash([20, 20]);
         ctx.strokeStyle = CONFIG.curbRed;
         ctx.stroke(path);
@@ -202,9 +177,6 @@ export function buildTrackCanvas(track, geometry) {
         ctx.stroke(path);
         ctx.setLineDash([]);
         ctx.lineDashOffset = 0;
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.stroke(path);
     };
 
     drawCurb(outerPath);
