@@ -1,12 +1,12 @@
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.36';
-import { TRACKS } from '../tracks.js?v=1.36';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.81';
+import { TRACKS } from '../tracks.js?v=1.81';
 import {
     buildServiceHeaders,
     clampRequestLimit,
     getBaseSupabaseConfig,
     getOrCreatePlayerId,
     unwrapRpcPayload
-} from './shared-client.js?v=1.0';
+} from './shared-client.js?v=1.81';
 
 const DEFAULT_SUBMIT_FUNCTION_NAME = 'scoreboard-submit';
 const MIN_SCOREBOARD_TIME = 2.0;
