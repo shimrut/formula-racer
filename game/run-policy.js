@@ -1,4 +1,4 @@
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.36';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.81';
 
 function createWinData(state, checkpointCount, extra = {}) {
     return Object.freeze({

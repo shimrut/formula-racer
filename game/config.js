@@ -8,7 +8,7 @@ export const CONFIG = {
     trackColor: '#334155',    // Lighter Slate for Asphalt
     
     // Style Colors
-    curbRed: '#ef4444',
+    curbRed: '#dc5a5a',
     curbWhite: '#f8fafc',
     carColor: '#dc2626',
     carAccent: '#facc15',

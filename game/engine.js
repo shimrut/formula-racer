@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=1.36';
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.36';
+import { CONFIG } from './config.js?v=1.81';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.81';
 
 function lerpAngle(a, b, t) {
     let d = b - a;
@@ -7,23 +7,25 @@ function lerpAngle(a, b, t) {
     while (d < -Math.PI) d += 2 * Math.PI;
     return a + d * t;
 }
-import { TRACKS } from './tracks.js?v=1.36';
-import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.36';
-import { updateSimulation } from './core/simulation.js?v=1.54';
-import { RingBuffer } from './core/ring-buffer.js?v=1.38';
-import { getTrackData, hasAnyTrackData, saveLapTime, saveBestTime, syncBestTime } from './storage.js?v=1.36';
-import { getDailyChallengeData, setDailyChallengeBestTime } from './daily-challenge-storage.js?v=1.37';
+import { TRACKS } from './tracks.js?v=1.81';
+import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.81';
+import { configureCanvasViewport } from './core/canvas-resolution.js?v=1.81';
+import { updateSimulation } from './core/simulation.js?v=1.81';
+import { RingBuffer } from './core/ring-buffer.js?v=1.81';
+import { getTrackData, hasAnyTrackData, saveLapTime, saveBestTime, syncBestTime } from './storage.js?v=1.81';
+import { getDailyChallengeData, setDailyChallengeBestTime } from './daily-challenge-storage.js?v=1.81';
 import {
     buildLapRecord,
     createModalActions,
     isNewBestResult,
     pushRecentLap
-} from './result-flow.js?v=1.1';
-import { createRunPolicy } from './run-policy.js?v=1.1';
-import { AnalyticsService } from './services/analytics.js?v=1.36';
-import { PlayerStatusStore } from './services/player-status.js?v=1.36';
-import { SessionFlagStore } from './services/session-flags.js?v=1.36';
-import { ShareService } from './services/share.js?v=1.36';
+} from './result-flow.js?v=1.81';
+import { createRunPolicy } from './run-policy.js?v=1.81';
+import { getPhysicsPresetForConfig } from './physics-presets.js';
+import { AnalyticsService } from './services/analytics.js?v=1.81';
+import { PlayerStatusStore } from './services/player-status.js?v=1.81';
+import { SessionFlagStore } from './services/session-flags.js?v=1.81';
+import { ShareService } from './services/share.js?v=1.81';
 import {
     formatDailyChallengeResultLabel,
     getActiveDailyChallenge,
@@ -37,8 +39,8 @@ import {
     getDailyChallengeTrackName,
     isCrashBudgetDailyChallenge,
     submitDailyChallengeBestTime
-} from './services/daily-challenge.js?v=1.39';
-import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.45';
+} from './services/daily-challenge.js?v=1.81';
+import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.81';
 import {
     clearDailyChallengeVerification,
     clearScoreboardVerification,
@@ -55,7 +57,7 @@ import {
     markScoreboardVerificationPending,
     markScoreboardVerificationRejected
 } from './services/verification-queue.js';
-import { GameUi } from './ui.js?v=1.65';
+import { GameUi } from './ui.js?v=1.81';
 
 const SCOREBOARD_REPLAY_MAX_FRAMES = 20000;
 
@@ -65,6 +67,8 @@ const CAMERA_DT_MAX_S = 1 / 45;
 /** Adaptive quality: hysteresis on rolling avg frame time (ms) to avoid frameSkip flicker. */
 const FRAME_SKIP_ENTER_MS = 22;
 const FRAME_SKIP_EXIT_MS = 18;
+/** Wait briefly before committing canvas backing-store resizes so live window drags keep the old track visible. */
+const CANVAS_RESIZE_SETTLE_MS = 120;
 /** Skid polyline: break stroke when consecutive samples are farther apart (new skid after a gap). Grid units². */
 const SKID_GAP_BREAK_DIST_SQ = 0.45 * 0.45;
 function createVerificationSnapshot({
@@ -120,18 +124,38 @@ function shouldAutoRetryVerificationQueue() {
     return !isLocalEnvironment();
 }
 
+function readCanvasDevicePixelRatio() {
+    if (typeof window === 'undefined') return 1;
+    return window.devicePixelRatio || 1;
+}
+
 // --- Game Engine ---
 export class RealTimeRacer {
     constructor() {
+        this.trackLayerCanvas = document.getElementById('trackLayerCanvas');
         this.canvas = document.getElementById('gameCanvas');
-        this.ctx = this.canvas.getContext('2d', { alpha: false, desynchronized: true }) || this.canvas.getContext('2d');
+        this.ctx = this.canvas.getContext('2d', { alpha: true, desynchronized: true }) || this.canvas.getContext('2d');
         this.container = document.getElementById('game-container');
         this.isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+        this.trackLayerWorker = null;
+        this.trackLayerWorkerReady = false;
+        this.trackLayerBitmapVersion = 0;
+        this.trackLayerBitmapPromise = null;
+        this.trackLayerCtx = null;
+        this.viewportWidth = 0;
+        this.viewportHeight = 0;
+        this.viewportDevicePixelRatio = 1;
+        this.setupTrackLayerRenderer();
 
         // Settings Controls (trace route is always enabled)
 
         // Generate Internal Car Sprite
         this.carSprite = this.createCarSprite();
+        this.carSpriteDrawWidth = 64;
+        this.carSpriteDrawHeight = 32;
+        this.carSpriteAssetKey = null;
+        this.carSpriteLoadToken = 0;
+        this.syncCarSpriteAsset();
 
         // Physics State
         this.currentTrack = TRACKS.circuit;
@@ -168,6 +192,7 @@ export class RealTimeRacer {
         this.hasAnyData = false; // Whether any track has ever been raced
         this.isReturningPlayer = false;
         this.activeTimers = []; // Keep track of active timeouts/intervals
+        this.resizeCommitTimer = null;
 
         // Visuals — ring buffers with pre-allocated slots (zero alloc during gameplay)
         this.skidMarks = new RingBuffer(160, () => ({ x: 0, y: 0, cos: 0, sin: 0 }));
@@ -327,11 +352,7 @@ export class RealTimeRacer {
         });
 
         // Listeners
-        let resizeRafId = 0;
-        new ResizeObserver(() => {
-            cancelAnimationFrame(resizeRafId);
-            resizeRafId = requestAnimationFrame(() => this.resize());
-        }).observe(this.container);
+        new ResizeObserver(() => this.scheduleResizeCommit()).observe(this.container);
         window.addEventListener('keydown', (e) => this.handleKey(e, true));
         window.addEventListener('keyup', (e) => this.handleKey(e, false));
         window.addEventListener('blur', () => this.clearSteeringInput());
@@ -362,6 +383,42 @@ export class RealTimeRacer {
 
         this.lastTime = this.getNow();
         this.requestFrame();
+    }
+
+    setupTrackLayerRenderer() {
+        const canUseOffscreenWorker = Boolean(
+            !this.isCoarsePointer
+            && this.trackLayerCanvas
+            && typeof Worker !== 'undefined'
+            && typeof this.trackLayerCanvas.transferControlToOffscreen === 'function'
+            && typeof createImageBitmap === 'function'
+        );
+
+        if (!canUseOffscreenWorker) {
+            this.trackLayerCtx = this.trackLayerCanvas?.getContext('2d', { alpha: false, desynchronized: true })
+                || this.trackLayerCanvas?.getContext('2d')
+                || null;
+            return;
+        }
+
+        try {
+            const offscreenCanvas = this.trackLayerCanvas.transferControlToOffscreen();
+            this.trackLayerWorker = new Worker(new URL('./workers/track-layer-worker.js', import.meta.url), {
+                type: 'module'
+            });
+            this.trackLayerWorker.postMessage({
+                type: 'init',
+                canvas: offscreenCanvas
+            }, [offscreenCanvas]);
+            this.trackLayerWorkerReady = true;
+        } catch (error) {
+            console.error('Error initializing track-layer worker:', error);
+            this.trackLayerWorker = null;
+            this.trackLayerWorkerReady = false;
+            this.trackLayerCtx = this.trackLayerCanvas?.getContext('2d', { alpha: false, desynchronized: true })
+                || this.trackLayerCanvas?.getContext('2d')
+                || null;
+        }
     }
 
     bumpRaceStartForCurrentMode() {
@@ -443,12 +500,17 @@ export class RealTimeRacer {
         return performance.now() + this.timeOffsetMs;
     }
 
+    getCanvasDevicePixelRatio() {
+        return readCanvasDevicePixelRatio();
+    }
+
     setRuntimeConfig(overrides = null) {
         this.runtimeConfig = {
             ...CONFIG,
             ...(overrides && typeof overrides === 'object' ? overrides : {})
         };
         this.frictionFactor = Math.pow(this.runtimeConfig.friction, this.FIXED_DT * 60);
+        this.syncCarSpriteAsset();
     }
 
     syncCurrentRunPolicy() {
@@ -1195,6 +1257,12 @@ export class RealTimeRacer {
         this.activeTimers = [];
     }
 
+    snapRenderPoseToCurrentPose() {
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+        this.prevAngle = this.angle;
+    }
+
     /**
      * Practice lap boundary: clears the blue route trace, run-history line, and trail sample timer.
      * Daily GP multi-lap uses the same path so both modes stay identical.
@@ -1244,6 +1312,8 @@ export class RealTimeRacer {
             // clean baseline with no stale frameTimeHistory from the countdown.
             this.pendingStartFrame = requestAnimationFrame((t) => {
                 this.pendingStartFrame = null;
+                this.snapRenderPoseToCurrentPose();
+                this.accumulator = 0;
                 this.status = 'playing';
                 this.activeRunId += 1;
                 this.currentTime = 0;
@@ -1400,6 +1470,48 @@ export class RealTimeRacer {
         return c;
     }
 
+    getSelectedCarAssetName() {
+        if (!this.currentChallengeRun) return 'cars/webp/vgp_stock.webp';
+
+        const preset = getPhysicsPresetForConfig(this.runtimeConfig);
+        switch (preset?.key) {
+        case 'muscle':
+            return 'cars/webp/vgp_muscle.webp';
+        case 'hyper':
+            return 'cars/webp/vgp_hyper.webp';
+        case 'tuner':
+            return 'cars/webp/vgp_tuner.webp';
+        default:
+            return 'cars/webp/vgp_stock.webp';
+        }
+    }
+
+    syncCarSpriteAsset() {
+        this.loadCarSpriteAsset(this.getSelectedCarAssetName());
+    }
+
+    loadCarSpriteAsset(assetName) {
+        if (!assetName || this.carSpriteAssetKey === assetName) return;
+
+        const loadToken = ++this.carSpriteLoadToken;
+        const image = new Image();
+        image.decoding = 'async';
+        image.addEventListener('load', () => {
+            if (loadToken !== this.carSpriteLoadToken) return;
+            this.carSprite = image;
+            this.carSpriteDrawWidth = 52;
+            this.carSpriteDrawHeight = 52;
+            this.carSpriteAssetKey = assetName;
+            this.requestRender();
+        }, { once: true });
+        image.addEventListener('error', () => {
+            if (loadToken !== this.carSpriteLoadToken) return;
+            console.warn(`Unable to load ${assetName}; using fallback car sprite.`);
+            this.carSpriteAssetKey = null;
+        }, { once: true });
+        image.src = new URL(`../${assetName}`, import.meta.url).href;
+    }
+
     resetFrameTimingHistory() {
         this.frameTimeHistory = [];
         this.frameTimeHistoryIndex = 0;
@@ -1514,11 +1626,63 @@ export class RealTimeRacer {
         };
     }
 
-    resize() {
-        this.canvas.width = this.container.clientWidth;
-        this.canvas.height = this.container.clientHeight;
+    updateTrackLayerViewportSize(devicePixelRatio = null) {
+        const width = this.container.clientWidth;
+        const height = this.container.clientHeight;
+        const resolvedDevicePixelRatio = devicePixelRatio || readCanvasDevicePixelRatio();
+
+        if (this.trackLayerWorkerReady && this.trackLayerWorker) {
+            // Worker-backed track layers are resized inside the render message so
+            // the clear and repaint happen as one visible update.
+            return;
+        }
+
+        if (this.trackLayerCanvas && this.trackLayerCtx) {
+            configureCanvasViewport(
+                this.trackLayerCanvas,
+                this.trackLayerCtx,
+                width,
+                height,
+                resolvedDevicePixelRatio
+            );
+        }
+    }
+
+    scheduleResizeCommit() {
         this.isNarrowViewport = window.innerWidth <= 768;
-        this.requestRender();
+        if (this.resizeCommitTimer !== null) {
+            clearTimeout(this.resizeCommitTimer);
+        }
+        this.resizeCommitTimer = setTimeout(() => {
+            this.resizeCommitTimer = null;
+            this.resize();
+        }, CANVAS_RESIZE_SETTLE_MS);
+    }
+
+    resize({ render = true } = {}) {
+        const width = this.container.clientWidth;
+        const height = this.container.clientHeight;
+        if (width <= 0 || height <= 0) return;
+
+        const devicePixelRatio = typeof this.getCanvasDevicePixelRatio === 'function'
+            ? this.getCanvasDevicePixelRatio()
+            : readCanvasDevicePixelRatio();
+        this.updateTrackLayerViewportSize(devicePixelRatio);
+        const viewport = configureCanvasViewport(
+            this.canvas,
+            this.ctx,
+            width,
+            height,
+            devicePixelRatio
+        );
+        this.viewportWidth = viewport.cssWidth;
+        this.viewportHeight = viewport.cssHeight;
+        this.viewportDevicePixelRatio = viewport.devicePixelRatio;
+        this.isNarrowViewport = window.innerWidth <= 768;
+        if (render) {
+            this.render(0, 1);
+            this._needsRender = false;
+        }
     }
 
     shouldAnimateFrame() {
@@ -1562,10 +1726,11 @@ export class RealTimeRacer {
         this.activeGeometry.outer = runtime.outer;
         this.activeGeometry.inner = runtime.inner;
         this.collisionSegments = runtime.collisionSegments;
-        this.collisionHash = null;
+        this.collisionHash = runtime.collisionHash;
         const trackCanvasRuntime = getTrackCanvasAsset(trackKey, this.currentTrack, trackAssetOptions);
         this.trackCanvas = trackCanvasRuntime.canvas;
         this.trackCanvasOrigin = trackCanvasRuntime.origin;
+        await this.syncTrackLayerBitmap(requestId);
 
         // Stop the current run immediately so physics and collision checks
         // cannot continue against the new track geometry while storage loads.
@@ -2281,7 +2446,7 @@ export class RealTimeRacer {
         }
     }
 
-    reset(autoStart = false) {
+    reset(autoStart = false, { preserveDailyChallenge = false } = {}) {
         // Clear any running start sequences
         this.clearTimers();
         if (this.pendingStartFrame !== null) {
@@ -2290,12 +2455,14 @@ export class RealTimeRacer {
         }
 
         const wasModalActive = this.ui.isModalActive();
+        const dailyChallengeToRestore = preserveDailyChallenge ? this.activeDailyChallenge : null;
 
         this.pos = { ...this.currentTrack.startPos };
         this.prevPos = { ...this.currentTrack.startPos };
         this.velocity = { x: 0, y: 0 };
         this.angle = this.currentTrack.startAngle;
         this.prevAngle = this.currentTrack.startAngle;
+        this.cachedSpeed = 0;
         this.clearSteeringInput();
         this.relaunchDelayRemaining = 0;
         this.status = 'ready'; // Reset to ready state
@@ -2310,7 +2477,13 @@ export class RealTimeRacer {
         this.particles = [];
         this.lastSharePayload = null;
         this.practiceSession = null;
-        this.clearDailyChallengeRun();
+        if (dailyChallengeToRestore) {
+            this.currentChallengeRun = null;
+            this.dailyChallengeBestResult = null;
+            this.syncCurrentRunPolicy();
+        } else {
+            this.clearDailyChallengeRun();
+        }
         this.ui.closeModal();
         this.shareService.reset({ visible: false, preservePreview: wasModalActive, preserveVisibility: wasModalActive });
         this.ui.setHudPersonalBestsOpenAllowed(!autoStart);
@@ -2319,80 +2492,98 @@ export class RealTimeRacer {
         // Reset Visuals
         this.ui.resetCountdown();
         this.ui.resetHud();
-        this.ui.setBestTime(this.bestLapTime, {
-            persistToTrackCard: false
-        });
+        if (dailyChallengeToRestore) {
+            this.applyDailyChallenge(dailyChallengeToRestore);
+        } else {
+            this.ui.setBestTime(this.bestLapTime, {
+                persistToTrackCard: false
+            });
+        }
 
-        const cw = this.canvas.width;
-        const ch = this.canvas.height;
-        const gs = CONFIG.gridSize;
-        this.camera.x = (this.pos.x * gs) - cw / 2 / this.zoom;
-        this.camera.y = (this.pos.y * gs) - ch / 2 / this.zoom;
         this._lookAheadX = 0;
         this._lookAheadY = 0;
-        this.requestRender();
 
         if (autoStart) {
             this.ui.hideStartOverlay();
-            this.startSequence();
         } else {
             this.ui.showStartOverlay(this.hasAnyData, this.isReturningPlayer);
             this.resetCanvasPresentation();
+        }
+
+        this.resize({ render: false });
+        const cw = this.viewportWidth || this.container.clientWidth || this.canvas.width;
+        const ch = this.viewportHeight || this.container.clientHeight || this.canvas.height;
+        const gs = CONFIG.gridSize;
+        this.camera.x = (this.pos.x * gs) - cw / 2 / this.zoom;
+        this.camera.y = (this.pos.y * gs) - ch / 2 / this.zoom;
+        this.requestRender();
+
+        if (autoStart) {
+            this.startSequence();
         }
     }
 
     restartDailyChallenge() {
         if (!this.activeDailyChallenge) return;
 
-        this.reset(false);
-        requestAnimationFrame(() => {
-            this.handleStartDailyChallenge();
+        this.trackModeStart('daily', {
+            trackKey: this.activeDailyChallenge.trackKey
         });
+        this.bumpRaceStartForCurrentMode();
+        this.reset(true, { preserveDailyChallenge: true });
     }
 
     resetCanvasPresentation() {
-        if (!this.canvas) return;
-        this.canvas.classList.remove('canvas-opacity-instant');
-        this.canvas.style.transition = '';
-        this.canvas.style.opacity = '1';
+        [this.trackLayerCanvas, this.canvas].forEach((canvas) => {
+            if (!canvas) return;
+            canvas.classList.remove('canvas-opacity-instant');
+            canvas.style.transition = '';
+            canvas.style.opacity = '1';
+        });
     }
 
     applyPreviewPresentation({ opacity, instant }) {
-        if (this.status !== 'ready' || !this.canvas) return;
-        const c = this.canvas;
-        if (instant) {
-            c.classList.add('canvas-opacity-instant');
-            c.style.opacity = String(opacity);
-        } else {
-            c.classList.remove('canvas-opacity-instant');
-            c.style.opacity = String(opacity);
-        }
+        if (this.status !== 'ready') return;
+        [this.trackLayerCanvas, this.canvas].forEach((canvas) => {
+            if (!canvas) return;
+            if (instant) {
+                canvas.classList.add('canvas-opacity-instant');
+                canvas.style.opacity = String(opacity);
+            } else {
+                canvas.classList.remove('canvas-opacity-instant');
+                canvas.style.opacity = String(opacity);
+            }
+        });
     }
 
     _animateCanvasOpacity(target, durationMs) {
         return new Promise((resolve) => {
-            const c = this.canvas;
-            if (!c) {
+            const canvases = [this.trackLayerCanvas, this.canvas].filter(Boolean);
+            if (!canvases.length) {
                 resolve();
                 return;
             }
-            c.classList.remove('canvas-opacity-instant');
             const ms = Math.max(0, durationMs);
-            c.style.transition = `opacity ${ms}ms cubic-bezier(0.25, 0.82, 0.2, 1)`;
             let done = false;
             const finish = () => {
                 if (done) return;
                 done = true;
-                c.removeEventListener('transitionend', onEnd);
+                canvases.forEach((canvas) => canvas.removeEventListener('transitionend', onEnd));
                 resolve();
             };
             const onEnd = (e) => {
-                if (e.target !== c || e.propertyName !== 'opacity') return;
+                if (e.target !== canvases[0] || e.propertyName !== 'opacity') return;
                 finish();
             };
-            c.addEventListener('transitionend', onEnd);
+            canvases.forEach((canvas) => {
+                canvas.classList.remove('canvas-opacity-instant');
+                canvas.style.transition = `opacity ${ms}ms cubic-bezier(0.25, 0.82, 0.2, 1)`;
+                canvas.addEventListener('transitionend', onEnd);
+            });
             requestAnimationFrame(() => {
-                c.style.opacity = String(target);
+                canvases.forEach((canvas) => {
+                    canvas.style.opacity = String(target);
+                });
             });
             setTimeout(finish, ms + 70);
         });
@@ -2448,10 +2639,112 @@ export class RealTimeRacer {
         return out;
     }
 
+    async syncTrackLayerBitmap(trackLoadRequestId = this.trackLoadRequestId) {
+        if (!this.trackCanvas) return;
+
+        if (!this.trackLayerWorkerReady || !this.trackLayerWorker || typeof createImageBitmap !== 'function') {
+            return;
+        }
+
+        const bitmapVersion = ++this.trackLayerBitmapVersion;
+        const bitmapPromise = createImageBitmap(this.trackCanvas);
+        this.trackLayerBitmapPromise = bitmapPromise;
+
+        try {
+            const bitmap = await bitmapPromise;
+            if (
+                trackLoadRequestId !== this.trackLoadRequestId
+                || bitmapVersion !== this.trackLayerBitmapVersion
+                || !this.trackLayerWorker
+            ) {
+                bitmap.close?.();
+                return;
+            }
+
+            this.trackLayerWorker.postMessage({
+                type: 'track',
+                bitmap,
+                origin: this.trackCanvasOrigin,
+                offTrackColor: CONFIG.offTrackColor
+            }, [bitmap]);
+        } catch (error) {
+            console.error('Error syncing track-layer bitmap:', error);
+        } finally {
+            if (this.trackLayerBitmapPromise === bitmapPromise) {
+                this.trackLayerBitmapPromise = null;
+            }
+        }
+    }
+
+    drawVisibleTrackCanvas() {
+        const worldLeft = this.camera.x;
+        const worldTop = this.camera.y;
+        const canvasWidth = this.trackLayerWorkerReady
+            ? this.viewportWidth || this.container.clientWidth
+            : (this.viewportWidth || this.trackLayerCanvas?.width || this.canvas.width);
+        const canvasHeight = this.trackLayerWorkerReady
+            ? this.viewportHeight || this.container.clientHeight
+            : (this.viewportHeight || this.trackLayerCanvas?.height || this.canvas.height);
+
+        if (this.trackLayerWorkerReady && this.trackLayerWorker) {
+            this.trackLayerWorker.postMessage({
+                type: 'render',
+                camera: {
+                    x: worldLeft,
+                    y: worldTop
+                },
+                zoom: this.zoom,
+                viewport: {
+                    width: canvasWidth,
+                    height: canvasHeight,
+                    devicePixelRatio: this.viewportDevicePixelRatio
+                }
+            });
+            return;
+        }
+
+        const ctx = this.trackLayerCtx;
+        if (!ctx || !this.trackCanvas) return;
+
+        const worldWidth = canvasWidth / this.zoom;
+        const worldHeight = canvasHeight / this.zoom;
+        const sourceLeft = Math.max(0, worldLeft - this.trackCanvasOrigin.x);
+        const sourceTop = Math.max(0, worldTop - this.trackCanvasOrigin.y);
+        const sourceRight = Math.min(
+            this.trackCanvas.width,
+            (worldLeft + worldWidth) - this.trackCanvasOrigin.x
+        );
+        const sourceBottom = Math.min(
+            this.trackCanvas.height,
+            (worldTop + worldHeight) - this.trackCanvasOrigin.y
+        );
+        const sourceWidth = sourceRight - sourceLeft;
+        const sourceHeight = sourceBottom - sourceTop;
+
+        ctx.fillStyle = CONFIG.offTrackColor;
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        if (sourceWidth <= 0 || sourceHeight <= 0) return;
+
+        const destX = (this.trackCanvasOrigin.x + sourceLeft - worldLeft) * this.zoom;
+        const destY = (this.trackCanvasOrigin.y + sourceTop - worldTop) * this.zoom;
+
+        ctx.drawImage(
+            this.trackCanvas,
+            sourceLeft,
+            sourceTop,
+            sourceWidth,
+            sourceHeight,
+            destX,
+            destY,
+            sourceWidth * this.zoom,
+            sourceHeight * this.zoom
+        );
+    }
+
     render(dt, alpha = 1) {
         const ctx = this.ctx;
-        const cw = this.canvas.width;
-        const ch = this.canvas.height;
+        const cw = this.viewportWidth || this.container.clientWidth || this.canvas.width;
+        const ch = this.viewportHeight || this.container.clientHeight || this.canvas.height;
         const gs = CONFIG.gridSize;
 
         // Interpolated display position (reuse pre-allocated object)
@@ -2465,9 +2758,8 @@ export class RealTimeRacer {
         }
         const displayAngle = (this.status === 'playing') ? lerpAngle(this.prevAngle, this.angle, alpha) : this.angle;
 
-        // 1. Fill Off-Track
-        ctx.fillStyle = CONFIG.offTrackColor;
-        ctx.fillRect(0, 0, cw, ch);
+        // 1. Clear dynamic layer; static layer is painted separately.
+        ctx.clearRect(0, 0, cw, ch);
 
         // 2. Camera: dynamic look-ahead based on velocity to prevent whipping
         const speed = this.cachedSpeed;
@@ -2490,15 +2782,13 @@ export class RealTimeRacer {
 
 
 
+        // 3. Draw static track elements via offscreen canvas
+        this.drawVisibleTrackCanvas();
+
         ctx.save();
         // Apply Zoom and Camera Transform
         ctx.scale(this.zoom, this.zoom);
         ctx.translate(-this.camera.x, -this.camera.y);
-
-        // 3. Draw static track elements via offscreen canvas
-        if (this.trackCanvas) {
-            ctx.drawImage(this.trackCanvas, this.trackCanvasOrigin.x, this.trackCanvasOrigin.y);
-        }
 
         // 4. Skid marks — two stroked polylines (perp offset from stored heading); cheap vs hundreds of setTransform+fillRect.
         if (this.skidMarks.length > 0) {
@@ -2605,7 +2895,9 @@ export class RealTimeRacer {
         ctx.rotate(displayAngle);
 
         const scale = 1.0;
-        ctx.drawImage(this.carSprite, -32 * scale, -16 * scale, 64 * scale, 32 * scale);
+        const drawWidth = this.carSpriteDrawWidth * scale;
+        const drawHeight = this.carSpriteDrawHeight * scale;
+        ctx.drawImage(this.carSprite, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
 
         ctx.restore();
 
