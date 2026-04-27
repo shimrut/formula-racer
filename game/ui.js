@@ -1,19 +1,19 @@
-import { CONFIG } from './config.js?v=1.81';
-import { TRACKS } from './tracks.js?v=1.81';
-import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.81';
+import { CONFIG } from './config.js?v=1.82';
+import { TRACKS } from './tracks.js?v=1.82';
+import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.82';
 import {
     getDailyChallengeCopyLabels,
     getDailyChallengeModeSelectObjectiveLine,
     getDailyChallengeSnapshot
-} from './services/daily-challenge.js?v=1.81';
+} from './services/daily-challenge.js?v=1.82';
 import {
     getDailyChallengeVerificationEntry,
     getDailyChallengeVerificationState
 } from './services/verification-queue.js';
-import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.81';
-import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=1.81';
-import { getTrackPreviewGeometry } from './core/track-assets.js?v=1.81';
-import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=1.81';
+import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.82';
+import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=1.82';
+import { getTrackPreviewGeometry } from './core/track-assets.js?v=1.82';
+import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=1.82';
 
 /** Horizontal swipe distance (px) to change track on mobile carousel. */
 const MOBILE_CAROUSEL_SWIPE_PX = 42;
@@ -3440,19 +3440,32 @@ export class GameUi {
         this._activeTrapModal = null;
         this._modalTrapKeydown = null;
         const activeElement = document.activeElement;
-        const focusAlreadyMoved = Boolean(
+        if (
             activeElement
             && activeElement !== document.body
-            && activeElement !== this._focusBeforeModal
-            && document.contains(activeElement)
-            && activeElement.offsetParent !== null
-            && !modalEl?.contains?.(activeElement)
+            && (
+                modalEl?.contains?.(activeElement)
+                || activeElement.offsetParent === null
+            )
+            && typeof activeElement.blur === 'function'
+        ) {
+            activeElement.blur();
+        }
+        const restoredActiveElement = document.activeElement;
+        const focusAlreadyMoved = Boolean(
+            restoredActiveElement
+            && restoredActiveElement !== document.body
+            && restoredActiveElement !== this._focusBeforeModal
+            && document.contains(restoredActiveElement)
+            && restoredActiveElement.offsetParent !== null
+            && !modalEl?.contains?.(restoredActiveElement)
         );
         if (
             !focusAlreadyMoved
             && this._focusBeforeModal
             && this._focusBeforeModal !== document.body
             && document.contains(this._focusBeforeModal)
+            && this._focusBeforeModal.offsetParent !== null
         ) {
             this._focusBeforeModal.focus();
         }
