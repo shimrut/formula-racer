@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=1.81';
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.81';
+import { CONFIG } from './config.js?v=1.82';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.82';
 
 function lerpAngle(a, b, t) {
     let d = b - a;
@@ -7,25 +7,25 @@ function lerpAngle(a, b, t) {
     while (d < -Math.PI) d += 2 * Math.PI;
     return a + d * t;
 }
-import { TRACKS } from './tracks.js?v=1.81';
-import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.81';
-import { configureCanvasViewport } from './core/canvas-resolution.js?v=1.81';
-import { updateSimulation } from './core/simulation.js?v=1.81';
-import { RingBuffer } from './core/ring-buffer.js?v=1.81';
-import { getTrackData, hasAnyTrackData, saveLapTime, saveBestTime, syncBestTime } from './storage.js?v=1.81';
-import { getDailyChallengeData, setDailyChallengeBestTime } from './daily-challenge-storage.js?v=1.81';
+import { TRACKS } from './tracks.js?v=1.82';
+import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.82';
+import { configureCanvasViewport } from './core/canvas-resolution.js?v=1.82';
+import { updateSimulation } from './core/simulation.js?v=1.82';
+import { RingBuffer } from './core/ring-buffer.js?v=1.82';
+import { getTrackData, hasAnyTrackData, saveLapTime, saveBestTime, syncBestTime } from './storage.js?v=1.82';
+import { getDailyChallengeData, setDailyChallengeBestTime } from './daily-challenge-storage.js?v=1.82';
 import {
     buildLapRecord,
     createModalActions,
     isNewBestResult,
     pushRecentLap
-} from './result-flow.js?v=1.81';
-import { createRunPolicy } from './run-policy.js?v=1.81';
+} from './result-flow.js?v=1.82';
+import { createRunPolicy } from './run-policy.js?v=1.82';
 import { getPhysicsPresetForConfig } from './physics-presets.js';
-import { AnalyticsService } from './services/analytics.js?v=1.81';
-import { PlayerStatusStore } from './services/player-status.js?v=1.81';
-import { SessionFlagStore } from './services/session-flags.js?v=1.81';
-import { ShareService } from './services/share.js?v=1.81';
+import { AnalyticsService } from './services/analytics.js?v=1.82';
+import { PlayerStatusStore } from './services/player-status.js?v=1.82';
+import { SessionFlagStore } from './services/session-flags.js?v=1.82';
+import { ShareService } from './services/share.js?v=1.82';
 import {
     formatDailyChallengeResultLabel,
     getActiveDailyChallenge,
@@ -39,8 +39,8 @@ import {
     getDailyChallengeTrackName,
     isCrashBudgetDailyChallenge,
     submitDailyChallengeBestTime
-} from './services/daily-challenge.js?v=1.81';
-import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.81';
+} from './services/daily-challenge.js?v=1.82';
+import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.82';
 import {
     clearDailyChallengeVerification,
     clearScoreboardVerification,
@@ -57,7 +57,7 @@ import {
     markScoreboardVerificationPending,
     markScoreboardVerificationRejected
 } from './services/verification-queue.js';
-import { GameUi } from './ui.js?v=1.81';
+import { GameUi } from './ui.js?v=1.82';
 
 const SCOREBOARD_REPLAY_MAX_FRAMES = 20000;
 
@@ -155,6 +155,7 @@ export class RealTimeRacer {
         this.carSpriteDrawHeight = 32;
         this.carSpriteAssetKey = null;
         this.carSpriteLoadToken = 0;
+        this.carSpriteAssetCache = new Map();
         this.syncCarSpriteAsset();
 
         // Physics State
@@ -477,6 +478,9 @@ export class RealTimeRacer {
 
     trackModeSelection(mode) {
         this.analytics.trackModeSelected(this.getModeAnalyticsPayload(mode));
+        if (mode === 'daily') {
+            this.prefetchCarSpriteAsset(this.getDailyChallengeCarAssetName());
+        }
     }
 
     trackModeStart(mode, options = {}) {
@@ -1470,10 +1474,8 @@ export class RealTimeRacer {
         return c;
     }
 
-    getSelectedCarAssetName() {
-        if (!this.currentChallengeRun) return 'cars/webp/vgp_stock.webp';
-
-        const preset = getPhysicsPresetForConfig(this.runtimeConfig);
+    getCarAssetNameForPresetConfig(runtimeConfig) {
+        const preset = getPhysicsPresetForConfig(runtimeConfig);
         switch (preset?.key) {
         case 'muscle':
             return 'cars/webp/vgp_muscle.webp';
@@ -1486,30 +1488,76 @@ export class RealTimeRacer {
         }
     }
 
+    getSelectedCarAssetName() {
+        if (!this.currentChallengeRun) return 'cars/webp/vgp_stock.webp';
+        return this.getCarAssetNameForPresetConfig(this.runtimeConfig);
+    }
+
+    getDailyChallengeCarAssetName() {
+        if (!this.activeDailyChallenge) return null;
+        return this.getCarAssetNameForPresetConfig(this.activeDailyChallenge.physicsOverrides);
+    }
+
     syncCarSpriteAsset() {
         this.loadCarSpriteAsset(this.getSelectedCarAssetName());
+    }
+
+    prefetchCarSpriteAsset(assetName) {
+        if (!assetName) return null;
+
+        const cachedAsset = this.carSpriteAssetCache.get(assetName);
+        if (cachedAsset) return cachedAsset;
+
+        const image = new Image();
+        image.decoding = 'async';
+        const cachedRecord = {
+            image,
+            status: 'pending',
+            promise: null
+        };
+        cachedRecord.promise = new Promise((resolve, reject) => {
+            image.addEventListener('load', () => {
+                cachedRecord.status = 'loaded';
+                resolve(image);
+            }, { once: true });
+            image.addEventListener('error', () => {
+                this.carSpriteAssetCache.delete(assetName);
+                reject(new Error(`Unable to load ${assetName}`));
+            }, { once: true });
+        });
+        this.carSpriteAssetCache.set(assetName, cachedRecord);
+        image.src = new URL(`../${assetName}`, import.meta.url).href;
+        return cachedRecord;
     }
 
     loadCarSpriteAsset(assetName) {
         if (!assetName || this.carSpriteAssetKey === assetName) return;
 
         const loadToken = ++this.carSpriteLoadToken;
-        const image = new Image();
-        image.decoding = 'async';
-        image.addEventListener('load', () => {
+        const cachedAsset = this.prefetchCarSpriteAsset(assetName);
+        if (!cachedAsset) return;
+
+        const applyLoadedAsset = (image) => {
             if (loadToken !== this.carSpriteLoadToken) return;
             this.carSprite = image;
             this.carSpriteDrawWidth = 52;
             this.carSpriteDrawHeight = 52;
             this.carSpriteAssetKey = assetName;
             this.requestRender();
-        }, { once: true });
-        image.addEventListener('error', () => {
+        };
+
+        if (cachedAsset.status === 'loaded') {
+            applyLoadedAsset(cachedAsset.image);
+            return;
+        }
+
+        cachedAsset.promise.then((image) => {
+            applyLoadedAsset(image);
+        }).catch(() => {
             if (loadToken !== this.carSpriteLoadToken) return;
             console.warn(`Unable to load ${assetName}; using fallback car sprite.`);
             this.carSpriteAssetKey = null;
-        }, { once: true });
-        image.src = new URL(`../${assetName}`, import.meta.url).href;
+        });
     }
 
     resetFrameTimingHistory() {
