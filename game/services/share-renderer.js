@@ -1,5 +1,13 @@
-import { CONFIG } from '../config.js?v=1.81';
-import { drawCheckeredLine } from '../core/track-canvas.js?v=1.81';
+import { CONFIG } from '../config.js?v=1.89';
+import {
+    drawCheckeredLine,
+    drawInnerDebris,
+    drawOuterDebris,
+    drawPresentationBackground,
+    drawTrackBoundaries,
+    drawTrackFinishLine,
+    fillTrackPresentation
+} from '../core/track-canvas.js?v=1.89';
 
 const MODAL_SURFACE_COLOR = '#020617';
 const SHARE_POSTER_TOP_INSET = 236;
@@ -132,6 +140,20 @@ function traceMappedPath(ctx, points, mapPoint, closePath = false) {
     if (closePath) {
         ctx.closePath();
     }
+}
+
+function buildMappedPath(points, mapPoint) {
+    const path = new Path2D();
+    if (!points.length) return path;
+
+    const first = mapPoint(points[0]);
+    path.moveTo(first.x, first.y);
+    for (let i = 1; i < points.length; i += 1) {
+        const point = mapPoint(points[i]);
+        path.lineTo(point.x, point.y);
+    }
+    path.closePath();
+    return path;
 }
 
 
@@ -518,11 +540,13 @@ function renderReplayFrame(ctx, payload, layout, width, height, progress, option
     const showMarker = options.showMarker ?? true;
     const showRoute = options.showRoute ?? true;
     const showDirectionMarker = options.showDirectionMarker ?? false;
+    const transparentBackground = options.transparentBackground ?? false;
     const trackOuter = payload.trackGeometry?.outer ?? [];
     const trackInner = payload.trackGeometry?.inner ?? [];
     const startLine = payload.startLine ?? { p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 } };
     const startPos = payload.startPos ?? trackOuter[0] ?? { x: 0, y: 0 };
     const startAngle = payload.startAngle ?? 0;
+    const presentation = payload.presentation ?? {};
     const currentPoint = getReplayProgressPoint(run, progress);
     const drawCount = Math.max(1, Math.floor(progress * (run.length - 1)));
     const revealedPoints = run.slice(0, drawCount + 1);
@@ -532,35 +556,30 @@ function renderReplayFrame(ctx, payload, layout, width, height, progress, option
 
     ctx.clearRect(0, 0, width, height);
 
-    ctx.fillStyle = MODAL_SURFACE_COLOR;
-    ctx.fillRect(0, 0, width, height);
+    if (!transparentBackground) {
+        drawPresentationBackground(ctx, width, height, presentation, `${payload.trackName || payload.trackKey || 'track'}:share:${width}x${height}`);
+    }
 
-    if (showHud && bottomInset > 0) {
-        ctx.fillStyle = MODAL_SURFACE_COLOR;
+    if (!transparentBackground && showHud && bottomInset > 0) {
+        ctx.fillStyle = presentation.offTrackColor || MODAL_SURFACE_COLOR;
         ctx.fillRect(0, height - bottomInset, width, bottomInset);
     }
 
-    traceMappedPath(ctx, trackOuter, mapPoint, true);
-    ctx.fillStyle = '#334155';
-    ctx.fill();
+    const surfacePath = new Path2D();
+    surfacePath.addPath(buildMappedPath(trackOuter, mapPoint));
+    surfacePath.addPath(buildMappedPath(trackInner, mapPoint));
 
-    traceMappedPath(ctx, trackInner, mapPoint, true);
-    ctx.fillStyle = '#020617';
-    ctx.fill();
+    const outerPath = buildMappedPath(trackOuter, mapPoint);
+    const innerPath = buildMappedPath(trackInner, mapPoint);
 
-    traceMappedPath(ctx, trackOuter, mapPoint, true);
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = '#f8fafc';
-    ctx.lineJoin = 'round';
-    ctx.stroke();
-
-    traceMappedPath(ctx, trackInner, mapPoint, true);
-    ctx.strokeStyle = '#cbd5e1';
-    ctx.stroke();
+    fillTrackPresentation(ctx, surfacePath, innerPath, outerPath, width, height, presentation);
+    drawTrackBoundaries(ctx, outerPath, innerPath, presentation);
+    drawOuterDebris(ctx, trackOuter, mapPoint, presentation);
+    drawInnerDebris(ctx, trackInner, mapPoint, presentation);
 
     const lineStart = mapPoint(startLine.p1);
     const lineEnd = mapPoint(startLine.p2);
-    drawCheckeredLine(ctx, lineStart, lineEnd, 8);
+    drawTrackFinishLine(ctx, lineStart, lineEnd, 8, presentation);
     if (showDirectionMarker) {
         drawDirectionMarker(ctx, mapPoint(startPos), startAngle);
     }
@@ -590,7 +609,10 @@ function renderReplayFrame(ctx, payload, layout, width, height, progress, option
     }
 }
 
-function canvasToBlob(canvas) {
+function canvasToBlob(canvas, {
+    type = 'image/jpeg',
+    quality = SHARE_IMAGE_JPEG_QUALITY
+} = {}) {
     return new Promise((resolve, reject) => {
         if (canvas.toBlob) {
             canvas.toBlob((blob) => {
@@ -599,12 +621,12 @@ function canvasToBlob(canvas) {
                     return;
                 }
                 reject(new Error('Canvas export returned an empty blob.'));
-            }, 'image/jpeg', SHARE_IMAGE_JPEG_QUALITY);
+            }, type, type === 'image/jpeg' ? quality : undefined);
             return;
         }
 
         try {
-            const dataUrl = canvas.toDataURL('image/jpeg', SHARE_IMAGE_JPEG_QUALITY);
+            const dataUrl = canvas.toDataURL(type, type === 'image/jpeg' ? quality : undefined);
             fetch(dataUrl)
                 .then((response) => response.blob())
                 .then(resolve)
@@ -640,17 +662,18 @@ function buildShareImageBlob(payload, options = {}) {
     if (shouldRenderPoster) {
         renderSharePosterFrame(renderCtx, payload, width, height);
         ctx.drawImage(renderCanvas, 0, 0, width, height);
-        return canvasToBlob(canvas);
+        return canvasToBlob(canvas, { type: 'image/jpeg' });
     }
 
     const layout = getReplayLayout(payload, width, height, 0, 0, 0);
     renderReplayFrame(renderCtx, payload, layout, width, height, 1, {
         showHud: false,
-        showMarker: false
+        showMarker: false,
+        transparentBackground: true
     });
     ctx.drawImage(renderCanvas, 0, 0, width, height);
 
-    return canvasToBlob(canvas);
+    return canvasToBlob(canvas, { type: 'image/png' });
 }
 
 function renderTrackPreviewCanvas(canvas, payload) {
@@ -666,7 +689,8 @@ function renderTrackPreviewCanvas(canvas, payload) {
         showHud: false,
         showMarker: false,
         showRoute: false,
-        showDirectionMarker: true
+        showDirectionMarker: true,
+        transparentBackground: payload.transparentBackground ?? true
     });
 }
 
