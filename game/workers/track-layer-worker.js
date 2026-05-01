@@ -1,10 +1,12 @@
-import { configureCanvasViewport } from '../core/canvas-resolution.js?v=1.81';
+import { configureCanvasViewport } from '../core/canvas-resolution.js?v=1.89';
+import { drawViewportPresentationBackground } from '../core/track-canvas.js?v=1.89';
 
 let canvas = null;
 let ctx = null;
 let trackBitmap = null;
 let trackOrigin = { x: 0, y: 0 };
 let offTrackColor = '#0f172a';
+let presentation = {};
 let viewportWidth = 0;
 let viewportHeight = 0;
 let viewportDevicePixelRatio = 1;
@@ -33,8 +35,7 @@ function render(camera, zoom, viewport) {
         resize(width, height, devicePixelRatio);
     }
 
-    ctx.fillStyle = offTrackColor;
-    ctx.fillRect(0, 0, viewportWidth, viewportHeight);
+    drawViewportPresentationBackground(ctx, viewportWidth, viewportHeight, camera, zoom, presentation);
     if (!trackBitmap || !camera || !zoom) return;
 
     const worldLeft = camera.x;
@@ -87,6 +88,7 @@ self.onmessage = (event) => {
         trackBitmap = data.bitmap || null;
         trackOrigin = data.origin || { x: 0, y: 0 };
         offTrackColor = data.offTrackColor || offTrackColor;
+        presentation = data.presentation || presentation;
         break;
     case 'render':
         render(data.camera, data.zoom, data.viewport);
