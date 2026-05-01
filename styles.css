@@ -1625,7 +1625,7 @@ ol.ftu-sheet-body.ftu-crash-rules {
     display: block;
     width: 100%;
     height: auto;
-    background: var(--modal-surface-color);
+    background: transparent;
 }
 
 #modal-preview-wrap.pending-share {
