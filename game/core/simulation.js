@@ -1,9 +1,9 @@
-import { segmentsIntersect } from '../math.js?v=1.81';
+import { segmentsIntersect } from '../math.js?v=1.85';
 import {
     handleFinishCrossing,
     handleHardCrash,
     resolveRunPolicy
-} from '../run-policy.js?v=1.81';
+} from '../run-policy.js?v=1.85';
 
 /**
  * Mutate-in-place simulation. The `state` object (the engine instance) is
