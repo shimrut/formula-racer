@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=1.82';
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.82';
+import { CONFIG } from './config.js?v=1.89';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.89';
 
 function lerpAngle(a, b, t) {
     let d = b - a;
@@ -7,25 +7,31 @@ function lerpAngle(a, b, t) {
     while (d < -Math.PI) d += 2 * Math.PI;
     return a + d * t;
 }
-import { TRACKS } from './tracks.js?v=1.82';
-import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.82';
-import { configureCanvasViewport } from './core/canvas-resolution.js?v=1.82';
-import { updateSimulation } from './core/simulation.js?v=1.82';
-import { RingBuffer } from './core/ring-buffer.js?v=1.82';
-import { getTrackData, hasAnyTrackData, saveLapTime, saveBestTime, syncBestTime } from './storage.js?v=1.82';
-import { getDailyChallengeData, setDailyChallengeBestTime } from './daily-challenge-storage.js?v=1.82';
+import { TRACKS } from './tracks.js?v=1.89';
+import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.89';
+import { drawViewportPresentationBackground } from './core/track-canvas.js?v=1.89';
+import {
+    createDailyChallengePresentationEvent,
+    resolveTrackPresentation,
+    TRACK_PRESENTATION_SURFACES
+} from './track-presentation.js?v=1.89';
+import { configureCanvasViewport } from './core/canvas-resolution.js?v=1.89';
+import { updateSimulation } from './core/simulation.js?v=1.89';
+import { RingBuffer } from './core/ring-buffer.js?v=1.89';
+import { getTrackData, hasAnyTrackData, saveLapTime, saveBestTime, syncBestTime } from './storage.js?v=1.89';
+import { getDailyChallengeData, setDailyChallengeBestTime } from './daily-challenge-storage.js?v=1.89';
 import {
     buildLapRecord,
     createModalActions,
     isNewBestResult,
     pushRecentLap
-} from './result-flow.js?v=1.82';
-import { createRunPolicy } from './run-policy.js?v=1.82';
+} from './result-flow.js?v=1.89';
+import { createRunPolicy } from './run-policy.js?v=1.89';
 import { getPhysicsPresetForConfig } from './physics-presets.js';
-import { AnalyticsService } from './services/analytics.js?v=1.82';
-import { PlayerStatusStore } from './services/player-status.js?v=1.82';
-import { SessionFlagStore } from './services/session-flags.js?v=1.82';
-import { ShareService } from './services/share.js?v=1.82';
+import { AnalyticsService } from './services/analytics.js?v=1.89';
+import { PlayerStatusStore } from './services/player-status.js?v=1.89';
+import { SessionFlagStore } from './services/session-flags.js?v=1.89';
+import { ShareService } from './services/share.js?v=1.89';
 import {
     formatDailyChallengeResultLabel,
     getActiveDailyChallenge,
@@ -39,8 +45,8 @@ import {
     getDailyChallengeTrackName,
     isCrashBudgetDailyChallenge,
     submitDailyChallengeBestTime
-} from './services/daily-challenge.js?v=1.82';
-import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.82';
+} from './services/daily-challenge.js?v=1.89';
+import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.89';
 import {
     clearDailyChallengeVerification,
     clearScoreboardVerification,
@@ -57,7 +63,7 @@ import {
     markScoreboardVerificationPending,
     markScoreboardVerificationRejected
 } from './services/verification-queue.js';
-import { GameUi } from './ui.js?v=1.82';
+import { GameUi } from './ui.js?v=1.89';
 
 const SCOREBOARD_REPLAY_MAX_FRAMES = 20000;
 
@@ -71,6 +77,250 @@ const FRAME_SKIP_EXIT_MS = 18;
 const CANVAS_RESIZE_SETTLE_MS = 120;
 /** Skid polyline: break stroke when consecutive samples are farther apart (new skid after a gap). Grid units². */
 const SKID_GAP_BREAK_DIST_SQ = 0.45 * 0.45;
+const SPACE_WARP_MIN_SPEED = 8.25;
+const SPACE_WARP_MAX_SPEED = 11.2;
+const SPACE_EXHAUST_MAX_SPEED = 11.5;
+const SHIP_ASSET_EFFECT_PATTERN = /(^|\/)vgp_ship(?:_\d+)?\.(?:png|webp)$/i;
+
+function clamp01(value) {
+    return Math.max(0, Math.min(1, value));
+}
+
+function getSpaceSkinStrength(presentation, speed) {
+    if (presentation?.backgroundStyle !== 'space') return 0;
+    if (!Number.isFinite(speed) || speed <= SPACE_WARP_MIN_SPEED) return 0;
+    return clamp01((speed - SPACE_WARP_MIN_SPEED) / (SPACE_WARP_MAX_SPEED - SPACE_WARP_MIN_SPEED));
+}
+
+function resolveCarSpriteEffects(assetName) {
+    const hasShipFx = typeof assetName === 'string' && SHIP_ASSET_EFFECT_PATTERN.test(assetName);
+    return {
+        hasMainExhaust: hasShipFx,
+        hasRcsThrusters: hasShipFx
+    };
+}
+
+export function drawSpaceMainExhaust(ctx, {
+    shipEffects = null,
+    speed = 0,
+    drawWidth = 52,
+    drawHeight = 52,
+    time = 0,
+    steering = 0,
+    steeringBurst = 0
+} = {}) {
+    if (!ctx || !shipEffects?.hasMainExhaust) return false;
+
+    const numericSpeed = Number(speed) || 0;
+    const speedStrength = clamp01(numericSpeed / SPACE_EXHAUST_MAX_SPEED);
+    if (speedStrength <= 0.02) return false;
+
+    // --- Turbulence: multi-frequency sine noise for organic motion ---
+    const t = time;
+    const turb1 = Math.sin(t * 14.3) * 0.6 + Math.sin(t * 23.7) * 0.4;          // fast shimmer
+    const turb2 = Math.sin(t * 8.1 + 1.3) * 0.5 + Math.cos(t * 17.9) * 0.5;     // mid flicker
+    const turb3 = Math.sin(t * 4.7 + 2.6) * 0.7 + Math.sin(t * 11.2 + 0.8) * 0.3; // slow sway
+    const pulseBase = 0.92 + turb1 * 0.06 + turb2 * 0.04;
+
+    // --- Speed-reactive plume sizing (full range, not just warp speeds) ---
+    const plumeLength = drawWidth * (0.18 + speedStrength * 1.22) * pulseBase;
+    const nozzleX = -drawWidth * 0.18;
+    const halfWidth = drawHeight * (0.048 + speedStrength * 0.048);
+    const tailWidth = halfWidth * (1.35 + turb2 * 0.15);
+
+    // --- Steering bend: plume drifts opposite to turn direction ---
+    const steerDir = Math.sign(Number(steering) || 0);
+    const burstMag = clamp01(Number(steeringBurst) || 0);
+    const steerInfluence = steerDir * (0.3 + burstMag * 0.7);
+    // Vertical deflection increases along the plume length
+    const bendMid = plumeLength * steerInfluence * 0.12 + turb3 * halfWidth * 0.45;
+    const bendTip = plumeLength * steerInfluence * 0.22 + turb3 * halfWidth * 0.7;
+
+    // --- Twist: asymmetric widening on one side during swerves ---
+    const twistFactor = steerInfluence * 0.18 + turb1 * 0.08;
+    const topWiden = 1 + twistFactor;
+    const botWiden = 1 - twistFactor;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // --- Outer glow plume (bezier curves for organic shape) ---
+    const outerGradient = ctx.createLinearGradient(nozzleX, 0, nozzleX - plumeLength, 0);
+    const outerAlpha0 = 0.14 + speedStrength * 0.14;
+    const outerAlphaMid = 0.10 + speedStrength * 0.12;
+    outerGradient.addColorStop(0, `rgba(125, 211, 252, ${outerAlpha0})`);
+    outerGradient.addColorStop(0.4, `rgba(147, 197, 253, ${outerAlphaMid})`);
+    outerGradient.addColorStop(1, 'rgba(147, 197, 253, 0)');
+    ctx.fillStyle = outerGradient;
+    ctx.beginPath();
+    ctx.moveTo(nozzleX, -halfWidth * topWiden);
+    ctx.quadraticCurveTo(
+        nozzleX - plumeLength * 0.3, -tailWidth * topWiden + bendMid,
+        nozzleX - plumeLength, bendTip
+    );
+    ctx.quadraticCurveTo(
+        nozzleX - plumeLength * 0.3, tailWidth * botWiden + bendMid,
+        nozzleX, halfWidth * botWiden
+    );
+    ctx.closePath();
+    ctx.fill();
+
+    // --- Inner core plume (brighter, shorter, also curved) ---
+    const coreLength = plumeLength * (0.62 + turb2 * 0.08);
+    const coreWidth = halfWidth * 0.52;
+    const coreBendMid = bendMid * 0.55;
+    const coreBendTip = bendTip * 0.5;
+    const coreGradient = ctx.createLinearGradient(nozzleX, 0, nozzleX - coreLength, 0);
+    coreGradient.addColorStop(0, `rgba(224, 242, 254, ${0.18 + speedStrength * 0.18})`);
+    coreGradient.addColorStop(0.5, `rgba(191, 219, 254, ${0.12 + speedStrength * 0.12})`);
+    coreGradient.addColorStop(1, 'rgba(224, 242, 254, 0)');
+    ctx.fillStyle = coreGradient;
+    ctx.beginPath();
+    ctx.moveTo(nozzleX + drawWidth * 0.02, -coreWidth * topWiden);
+    ctx.quadraticCurveTo(
+        nozzleX - coreLength * 0.28, -coreWidth * 1.18 * topWiden + coreBendMid,
+        nozzleX - coreLength, coreBendTip
+    );
+    ctx.quadraticCurveTo(
+        nozzleX - coreLength * 0.28, coreWidth * 1.18 * botWiden + coreBendMid,
+        nozzleX + drawWidth * 0.02, coreWidth * botWiden
+    );
+    ctx.closePath();
+    ctx.fill();
+
+    // --- Hot-spot flicker: a small bright dot near the nozzle that shimmers ---
+    const flickerAlpha = 0.12 + speedStrength * 0.14 + turb1 * 0.06;
+    const flickerRadius = halfWidth * (0.4 + turb2 * 0.15);
+    const flickerGrad = ctx.createRadialGradient(
+        nozzleX, bendMid * 0.1, 0,
+        nozzleX, bendMid * 0.1, flickerRadius
+    );
+    flickerGrad.addColorStop(0, `rgba(240, 249, 255, ${flickerAlpha})`);
+    flickerGrad.addColorStop(1, 'rgba(186, 230, 253, 0)');
+    ctx.fillStyle = flickerGrad;
+    ctx.beginPath();
+    ctx.arc(nozzleX, bendMid * 0.1, flickerRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    return true;
+}
+
+export function drawSpaceRcsThrusters(ctx, {
+    shipEffects = null,
+    steeringCommand = 0,
+    steeringBurst = 0,
+    drawWidth = 52,
+    drawHeight = 52,
+    time = 0
+} = {}) {
+    if (!ctx || !shipEffects?.hasRcsThrusters) return false;
+    const direction = Math.sign(Number(steeringCommand) || 0);
+    const burst = clamp01(Number(steeringBurst) || 0);
+    if (!direction || burst <= 0.03) return false;
+
+    const pulse = 0.95 + Math.sin(time * 30) * 0.05;
+    const length = drawWidth * (0.1 + burst * 0.28) * pulse;
+    const sideY = direction > 0 ? -drawHeight * 0.1 : drawHeight * 0.1;
+    const nozzleX = drawWidth * 0.2;
+    const nozzleHalfWidth = drawWidth * 0.035;
+    const tipY = direction > 0 ? sideY - length : sideY + length;
+    const sideTipOffset = drawWidth * (0.038 + burst * 0.028);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    const outerGradient = ctx.createLinearGradient(nozzleX, sideY, nozzleX, tipY);
+    outerGradient.addColorStop(0, `rgba(125, 211, 252, ${0.16 + burst * 0.18})`);
+    outerGradient.addColorStop(0.45, `rgba(191, 219, 254, ${0.14 + burst * 0.12})`);
+    outerGradient.addColorStop(1, 'rgba(125, 211, 252, 0)');
+    ctx.fillStyle = outerGradient;
+    ctx.beginPath();
+    ctx.moveTo(nozzleX - nozzleHalfWidth, sideY);
+    ctx.lineTo(nozzleX - sideTipOffset, tipY);
+    ctx.lineTo(nozzleX + sideTipOffset, tipY);
+    ctx.lineTo(nozzleX + nozzleHalfWidth, sideY);
+    ctx.closePath();
+    ctx.fill();
+
+    const coreGradient = ctx.createLinearGradient(nozzleX, sideY, nozzleX, tipY);
+    coreGradient.addColorStop(0, `rgba(224, 242, 254, ${0.22 + burst * 0.18})`);
+    coreGradient.addColorStop(1, 'rgba(224, 242, 254, 0)');
+    ctx.fillStyle = coreGradient;
+    ctx.beginPath();
+    ctx.moveTo(nozzleX - nozzleHalfWidth * 0.48, sideY);
+    ctx.lineTo(nozzleX - sideTipOffset * 0.42, sideY + (tipY - sideY) * 0.82);
+    ctx.lineTo(nozzleX + sideTipOffset * 0.42, sideY + (tipY - sideY) * 0.82);
+    ctx.lineTo(nozzleX + nozzleHalfWidth * 0.48, sideY);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+    return true;
+}
+
+function updateSpaceRcsState(engine, dt) {
+    const currentSteeringCommand = (engine.keys.right ? 1 : 0) - (engine.keys.left ? 1 : 0);
+    const previousSteeringCommand = Number.isFinite(engine._prevSteeringCommand) ? engine._prevSteeringCommand : 0;
+    const steeringDelta = Math.abs(currentSteeringCommand - previousSteeringCommand);
+    const safeDt = Math.max(0, Number(dt) || 0);
+    const previousHoldTime = Number(engine._spaceRcsHoldTime) || 0;
+    const holdTime = currentSteeringCommand !== 0
+        ? previousHoldTime + safeDt
+        : Math.max(0, previousHoldTime - safeDt * 4);
+    const holdStrength = clamp01(holdTime / 0.18);
+    const decay = Math.exp(-safeDt * 8);
+    let burst = (Number(engine._spaceRcsBurst) || 0) * decay;
+
+    if (currentSteeringCommand !== 0) {
+        const snapStrength = currentSteeringCommand !== previousSteeringCommand
+            ? Math.min(1, 0.42 + steeringDelta * 0.28)
+            : 0;
+        burst = Math.max(burst, holdStrength, snapStrength);
+    } else {
+        burst *= 0.25;
+    }
+
+    engine._spaceRcsHoldTime = holdTime;
+    engine._prevSteeringCommand = currentSteeringCommand;
+    engine._spaceRcsBurst = clamp01(burst);
+    return {
+        steeringCommand: currentSteeringCommand,
+        steeringBurst: engine._spaceRcsBurst
+    };
+}
+
+export function drawSpaceWarpEffect(ctx, {
+    shipEffects = null,
+    speed = 0,
+    drawWidth = 52,
+    drawHeight = 52,
+    steering = 0,
+    steeringBurst = 0,
+    time = 0
+} = {}) {
+    if (!ctx) return false;
+    // Main exhaust renders at any speed (its own threshold is speedStrength > 0.02)
+    const drewMainExhaust = drawSpaceMainExhaust(ctx, {
+        shipEffects,
+        speed,
+        drawWidth,
+        drawHeight,
+        time,
+        steering,
+        steeringBurst
+    });
+    const drewRcs = drawSpaceRcsThrusters(ctx, {
+        shipEffects,
+        steeringCommand: steering,
+        steeringBurst,
+        drawWidth,
+        drawHeight,
+        time
+    });
+    return drewMainExhaust || drewRcs;
+}
+
 function createVerificationSnapshot({
     statusText = '',
     verificationState = 'pending',
@@ -161,6 +411,9 @@ export class RealTimeRacer {
         // Physics State
         this.currentTrack = TRACKS.circuit;
         this.currentTrackKey = 'circuit';
+        this.currentTrackPresentation = resolveTrackPresentation('circuit', {
+            surface: TRACK_PRESENTATION_SURFACES.RACE
+        });
         this.pos = { ...this.currentTrack.startPos };
         this.velocity = { x: 0, y: 0 };
         this.angle = this.currentTrack.startAngle;
@@ -211,6 +464,9 @@ export class RealTimeRacer {
         this.isNarrowViewport = false;
         this._lookAheadX = 0;
         this._lookAheadY = 0;
+        this._prevSteeringCommand = 0;
+        this._spaceRcsHoldTime = 0;
+        this._spaceRcsBurst = 0;
 
         // Performance optimization: Cache values
         this.cachedSpeed = 0;
@@ -529,6 +785,33 @@ export class RealTimeRacer {
         return Boolean(this.currentRunPolicy?.isDaily);
     }
 
+    getTrackPresentation(trackKey = this.currentTrackKey, {
+        surface = TRACK_PRESENTATION_SURFACES.RACE
+    } = {}) {
+        return resolveTrackPresentation(trackKey, {
+            surface,
+            event: createDailyChallengePresentationEvent(this.activeDailyChallenge)
+        });
+    }
+
+    async refreshTrackPresentation(trackLoadRequestId = this.trackLoadRequestId) {
+        if (!this.currentTrackKey || !this.currentTrack) return;
+
+        const presentation = this.getTrackPresentation(this.currentTrackKey, {
+            surface: TRACK_PRESENTATION_SURFACES.RACE
+        });
+        this.currentTrackPresentation = presentation;
+        const trackCanvasRuntime = getTrackCanvasAsset(this.currentTrackKey, this.currentTrack, {
+            qualityLevel: this.qualityLevel,
+            frameSkip: this.frameSkip,
+            presentation
+        });
+        this.trackCanvas = trackCanvasRuntime.canvas;
+        this.trackCanvasOrigin = trackCanvasRuntime.origin;
+        await this.syncTrackLayerBitmap(trackLoadRequestId);
+        this.requestRender();
+    }
+
     getChallengeRunTitle() {
         return this.activeDailyChallenge ? getDailyChallengeTrackName(this.activeDailyChallenge) : 'Daily';
     }
@@ -597,11 +880,13 @@ export class RealTimeRacer {
             const challenge = await getActiveDailyChallenge();
             this.activeDailyChallenge = challenge || null;
             await this.refreshDailyChallengeSummary();
+            await this.refreshTrackPresentation();
             return challenge;
         } catch (error) {
             console.error('Error loading daily challenge:', error);
             this.activeDailyChallenge = null;
             this.ui.setDailyChallengeSummary(null);
+            await this.refreshTrackPresentation();
             return null;
         }
     }
@@ -634,6 +919,7 @@ export class RealTimeRacer {
             challengeId: challenge.id,
             title: getDailyChallengeTrackName(challenge),
             trackKey: challenge.trackKey,
+            skin: challenge.skin,
             trackName: getDailyChallengeTrackName(challenge),
             objectiveLabel,
             modifierBadges: getDailyChallengeModifierBadges(challenge),
@@ -1481,6 +1767,8 @@ export class RealTimeRacer {
             return 'cars/webp/vgp_muscle.webp';
         case 'hyper':
             return 'cars/webp/vgp_hyper.webp';
+        case 'ship':
+            return 'cars/webp/vgp_ship.webp';
         case 'tuner':
             return 'cars/webp/vgp_tuner.webp';
         default:
@@ -1530,6 +1818,56 @@ export class RealTimeRacer {
         return cachedRecord;
     }
 
+    sanitizeCarSpriteAsset(image) {
+        const width = image?.naturalWidth || image?.width || 0;
+        const height = image?.naturalHeight || image?.height || 0;
+        if (!width || !height || typeof document === 'undefined') return image;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return image;
+
+        ctx.drawImage(image, 0, 0, width, height);
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const { data } = imageData;
+        let changed = false;
+
+        for (let i = 0; i < data.length; i += 4) {
+            const alpha = data[i + 3];
+            if (alpha === 0) continue;
+
+            if (alpha < 14) {
+                data[i + 3] = 0;
+                changed = true;
+                continue;
+            }
+
+            if (alpha >= 224) continue;
+
+            const luminance = (data[i] * 0.2126) + (data[i + 1] * 0.7152) + (data[i + 2] * 0.0722);
+            if (luminance < 168) continue;
+
+            const edgeFactor = alpha / 255;
+            data[i] = Math.round(data[i] * edgeFactor);
+            data[i + 1] = Math.round(data[i + 1] * edgeFactor);
+            data[i + 2] = Math.round(data[i + 2] * edgeFactor);
+
+            if (alpha < 104) {
+                data[i + 3] = Math.max(0, alpha - 24);
+            }
+
+            changed = true;
+        }
+
+        if (!changed) return image;
+
+        ctx.putImageData(imageData, 0, 0);
+        return canvas;
+    }
+
     loadCarSpriteAsset(assetName) {
         if (!assetName || this.carSpriteAssetKey === assetName) return;
 
@@ -1539,7 +1877,7 @@ export class RealTimeRacer {
 
         const applyLoadedAsset = (image) => {
             if (loadToken !== this.carSpriteLoadToken) return;
-            this.carSprite = image;
+            this.carSprite = this.sanitizeCarSpriteAsset(image);
             this.carSpriteDrawWidth = 52;
             this.carSpriteDrawHeight = 52;
             this.carSpriteAssetKey = assetName;
@@ -1775,10 +2113,7 @@ export class RealTimeRacer {
         this.activeGeometry.inner = runtime.inner;
         this.collisionSegments = runtime.collisionSegments;
         this.collisionHash = runtime.collisionHash;
-        const trackCanvasRuntime = getTrackCanvasAsset(trackKey, this.currentTrack, trackAssetOptions);
-        this.trackCanvas = trackCanvasRuntime.canvas;
-        this.trackCanvasOrigin = trackCanvasRuntime.origin;
-        await this.syncTrackLayerBitmap(requestId);
+        await this.refreshTrackPresentation(requestId);
 
         // Stop the current run immediately so physics and collision checks
         // cannot continue against the new track geometry while storage loads.
@@ -2288,7 +2623,10 @@ export class RealTimeRacer {
                 p2: { ...this.currentTrack.startLine.p2 }
             },
             startPos: { ...this.currentTrack.startPos },
-            startAngle: this.currentTrack.startAngle
+            startAngle: this.currentTrack.startAngle,
+            presentation: this.getTrackPresentation(this.currentTrackKey, {
+                surface: TRACK_PRESENTATION_SURFACES.SHARE
+            })
         };
     }
 
@@ -2405,7 +2743,10 @@ export class RealTimeRacer {
             runHistory: runHistorySnapshot,
             trackGeometry: geometrySnapshot,
             startLine: startLineSnapshot,
-            startPos: startPosSnapshot
+            startPos: startPosSnapshot,
+            presentation: this.getTrackPresentation(trackKey, {
+                surface: TRACK_PRESENTATION_SURFACES.SHARE
+            })
         };
         this.ui.showModal(title, null, {
             lapTime: finalTime,
@@ -2550,6 +2891,9 @@ export class RealTimeRacer {
 
         this._lookAheadX = 0;
         this._lookAheadY = 0;
+        this._prevSteeringCommand = 0;
+        this._spaceRcsHoldTime = 0;
+        this._spaceRcsBurst = 0;
 
         if (autoStart) {
             this.ui.hideStartOverlay();
@@ -2713,7 +3057,8 @@ export class RealTimeRacer {
                 type: 'track',
                 bitmap,
                 origin: this.trackCanvasOrigin,
-                offTrackColor: CONFIG.offTrackColor
+                offTrackColor: this.currentTrackPresentation?.offTrackColor || CONFIG.offTrackColor,
+                presentation: this.currentTrackPresentation || null
             }, [bitmap]);
         } catch (error) {
             console.error('Error syncing track-layer bitmap:', error);
@@ -2769,8 +3114,14 @@ export class RealTimeRacer {
         const sourceWidth = sourceRight - sourceLeft;
         const sourceHeight = sourceBottom - sourceTop;
 
-        ctx.fillStyle = CONFIG.offTrackColor;
-        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        drawViewportPresentationBackground(
+            ctx,
+            canvasWidth,
+            canvasHeight,
+            { x: worldLeft, y: worldTop },
+            this.zoom,
+            this.currentTrackPresentation || {}
+        );
         if (sourceWidth <= 0 || sourceHeight <= 0) return;
 
         const destX = (this.trackCanvasOrigin.x + sourceLeft - worldLeft) * this.zoom;
@@ -2938,6 +3289,7 @@ export class RealTimeRacer {
         // 9. Player F1 Car (use interpolated position/angle)
         const px = displayPos.x * gs;
         const py = displayPos.y * gs;
+        const rcsState = updateSpaceRcsState(this, dt);
         ctx.save();
         ctx.translate(px, py);
         ctx.rotate(displayAngle);
@@ -2945,6 +3297,18 @@ export class RealTimeRacer {
         const scale = 1.0;
         const drawWidth = this.carSpriteDrawWidth * scale;
         const drawHeight = this.carSpriteDrawHeight * scale;
+        const activeCarSpriteAssetName = this.carSpriteAssetKey
+            || (typeof this.getSelectedCarAssetName === 'function' ? this.getSelectedCarAssetName() : null);
+        const carSpriteEffects = resolveCarSpriteEffects(activeCarSpriteAssetName);
+        drawSpaceWarpEffect(ctx, {
+            shipEffects: carSpriteEffects,
+            speed: this.cachedSpeed,
+            drawWidth,
+            drawHeight,
+            steering: rcsState.steeringCommand,
+            steeringBurst: rcsState.steeringBurst,
+            time: this.currentTime
+        });
         ctx.drawImage(this.carSprite, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
 
         ctx.restore();

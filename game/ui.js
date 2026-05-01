@@ -1,19 +1,24 @@
-import { CONFIG } from './config.js?v=1.82';
-import { TRACKS } from './tracks.js?v=1.82';
-import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.82';
+import { CONFIG } from './config.js?v=1.89';
+import { TRACKS } from './tracks.js?v=1.89';
+import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.89';
 import {
     getDailyChallengeCopyLabels,
     getDailyChallengeModeSelectObjectiveLine,
     getDailyChallengeSnapshot
-} from './services/daily-challenge.js?v=1.82';
+} from './services/daily-challenge.js?v=1.89';
 import {
     getDailyChallengeVerificationEntry,
     getDailyChallengeVerificationState
 } from './services/verification-queue.js';
-import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.82';
-import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=1.82';
-import { getTrackPreviewGeometry } from './core/track-assets.js?v=1.82';
-import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=1.82';
+import { getScoreboardSnapshot } from './services/scoreboard.js?v=1.89';
+import { getTrackData, getTrackPreferences, saveTrackPreferences } from './storage.js?v=1.89';
+import { getTrackPreviewGeometry } from './core/track-assets.js?v=1.89';
+import { renderTrackPreviewCanvas } from './services/share-renderer.js?v=1.89';
+import {
+    createDailyChallengePresentationEvent,
+    resolveTrackPresentation,
+    TRACK_PRESENTATION_SURFACES
+} from './track-presentation.js?v=1.89';
 
 /** Horizontal swipe distance (px) to change track on mobile carousel. */
 const MOBILE_CAROUSEL_SWIPE_PX = 42;
@@ -1064,6 +1069,10 @@ export class GameUi {
                 outer: previewGeometry.outer,
                 inner: previewGeometry.inner
             },
+            transparentBackground: true,
+            presentation: resolveTrackPresentation(trackKey, {
+                surface: TRACK_PRESENTATION_SURFACES.TRACK_PICKER
+            }),
             startLine: track.startLine,
             startPos: track.startPos,
             startAngle: track.startAngle,
@@ -1073,11 +1082,18 @@ export class GameUi {
     }
 
     renderDailyChallengePreview(trackKey) {
-        if (!trackKey || this._dailyChallengePreviewTrackKey === trackKey) return;
+        if (!trackKey) return;
 
         const track = TRACKS[trackKey];
         const previewCanvas = this.dailyChallengePreviewCanvas;
         if (!track || !previewCanvas) return;
+
+        const presentation = resolveTrackPresentation(trackKey, {
+            surface: TRACK_PRESENTATION_SURFACES.DAILY_CHALLENGE_PREVIEW,
+            event: createDailyChallengePresentationEvent(this._dailyChallengeSummary)
+        });
+        const previewRenderKey = `${trackKey}:${presentation.key}`;
+        if (this._dailyChallengePreviewTrackKey === previewRenderKey) return;
 
         const previewGeometry = getTrackPreviewGeometry(trackKey, track, {
             qualityLevel: this._previewQualityLevel,
@@ -1088,12 +1104,14 @@ export class GameUi {
                 outer: previewGeometry.outer,
                 inner: previewGeometry.inner
             },
+            transparentBackground: false,
+            presentation,
             startLine: track.startLine,
             startPos: track.startPos,
             startAngle: track.startAngle,
             runHistory: []
         });
-        this._dailyChallengePreviewTrackKey = trackKey;
+        this._dailyChallengePreviewTrackKey = previewRenderKey;
     }
 
     queueReturningTrackPreview(trackKey) {

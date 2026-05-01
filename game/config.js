@@ -1,7 +1,7 @@
 // --- Game Config ---
 export const CONFIG = {
     gridSize: 40, 
-    visibleTrackKeys: ['circuit', 'sunlitTemple', 'moebiusStrip', 'blueSector', 'harborParkLoop', 'jadeSpiralCircuit', 'cedarRidgeCircuit', 'sakuraWeave', 'royalPlateau', 'twinRise'],
+    visibleTrackKeys: ['circuit', 'moebiusStrip', 'blueSector', 'harborParkLoop', 'kettleRun', 'jadeSpiralCircuit', 'cedarRidgeCircuit', 'sakuraWeave', 'royalPlateau', 'twinRise'],
     
     // Environment Colors
     offTrackColor: '#0f172a', // Deep Blue/Grey for runoff areas
@@ -24,7 +24,7 @@ export const CONFIG = {
     
     // Physics Constants
     accel: 28.0, // Tuned for ~220 kph top speed
-    turnSpeed: 5,  // Balanced steering response
+    turnSpeed: 5.0,  // Balanced steering response
     friction: 0.96, // Lower drag for higher top speed
     crashSpeed: 2.0, // Higher impact tolerance
     resumeRelaunchDelay: 0.5, // Brief buffer before throttle resumes after unpausing

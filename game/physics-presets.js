@@ -23,6 +23,13 @@ export const PHYSICS_PRESET_LIST = Object.freeze([
         friction: 0.95,
     }),
     Object.freeze({
+        key: 'ship',
+        label: 'Ship',
+        accel: 58,
+        turnSpeed: 5.25,
+        friction: 0.95,
+    }),
+    Object.freeze({
         key: 'stock',
         label: 'Stock',
         accel: 28,
