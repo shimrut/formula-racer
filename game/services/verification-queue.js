@@ -1,4 +1,4 @@
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.85';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.89';
 
 const VERIFICATION_QUEUE_STORAGE_KEY = 'VectorGpVerificationQueue';
 const DEFAULT_RETRY_DELAY_MS = 30_000;
