@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=1.89';
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.89';
+import { CONFIG } from './config.js?v=1.90';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.90';
 
 function lerpAngle(a, b, t) {
     let d = b - a;
@@ -7,31 +7,31 @@ function lerpAngle(a, b, t) {
     while (d < -Math.PI) d += 2 * Math.PI;
     return a + d * t;
 }
-import { TRACKS } from './tracks.js?v=1.89';
-import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.89';
-import { drawViewportPresentationBackground } from './core/track-canvas.js?v=1.89';
+import { TRACKS } from './tracks.js?v=1.90';
+import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.90';
+import { drawViewportPresentationBackground } from './core/track-canvas.js?v=1.90';
 import {
     createDailyChallengePresentationEvent,
     resolveTrackPresentation,
     TRACK_PRESENTATION_SURFACES
-} from './track-presentation.js?v=1.89';
-import { configureCanvasViewport } from './core/canvas-resolution.js?v=1.89';
-import { updateSimulation } from './core/simulation.js?v=1.89';
-import { RingBuffer } from './core/ring-buffer.js?v=1.89';
-import { getTrackData, hasAnyTrackData, saveLapTime, saveBestTime, syncBestTime } from './storage.js?v=1.89';
-import { getDailyChallengeData, setDailyChallengeBestTime } from './daily-challenge-storage.js?v=1.89';
+} from './track-presentation.js?v=1.90';
+import { configureCanvasViewport } from './core/canvas-resolution.js?v=1.90';
+import { updateSimulation } from './core/simulation.js?v=1.90';
+import { RingBuffer } from './core/ring-buffer.js?v=1.90';
+import { getTrackData, hasAnyTrackData, saveLapTime, saveBestTime, syncBestTime } from './storage.js?v=1.90';
+import { getDailyChallengeData, setDailyChallengeBestTime } from './daily-challenge-storage.js?v=1.90';
 import {
     buildLapRecord,
     createModalActions,
     isNewBestResult,
     pushRecentLap
-} from './result-flow.js?v=1.89';
-import { createRunPolicy } from './run-policy.js?v=1.89';
+} from './result-flow.js?v=1.90';
+import { createRunPolicy } from './run-policy.js?v=1.90';
 import { getPhysicsPresetForConfig } from './physics-presets.js';
-import { AnalyticsService } from './services/analytics.js?v=1.89';
-import { PlayerStatusStore } from './services/player-status.js?v=1.89';
-import { SessionFlagStore } from './services/session-flags.js?v=1.89';
-import { ShareService } from './services/share.js?v=1.89';
+import { AnalyticsService } from './services/analytics.js?v=1.90';
+import { PlayerStatusStore } from './services/player-status.js?v=1.90';
+import { SessionFlagStore } from './services/session-flags.js?v=1.90';
+import { ShareService } from './services/share.js?v=1.90';
 import {
     formatDailyChallengeResultLabel,
     getActiveDailyChallenge,
@@ -45,8 +45,8 @@ import {
     getDailyChallengeTrackName,
     isCrashBudgetDailyChallenge,
     submitDailyChallengeBestTime
-} from './services/daily-challenge.js?v=1.89';
-import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.89';
+} from './services/daily-challenge.js?v=1.90';
+import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.90';
 import {
     clearDailyChallengeVerification,
     clearScoreboardVerification,
@@ -63,7 +63,7 @@ import {
     markScoreboardVerificationPending,
     markScoreboardVerificationRejected
 } from './services/verification-queue.js';
-import { GameUi } from './ui.js?v=1.89';
+import { GameUi } from './ui.js?v=1.90';
 
 const SCOREBOARD_REPLAY_MAX_FRAMES = 20000;
 

@@ -1,11 +1,14 @@
 // IndexedDB storage for lap times
-import { DEFAULT_TRACK_PREFERENCES, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.89';
+import { DEFAULT_TRACK_PREFERENCES, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.90';
 
 const DB_NAME = 'RacerLapTimes';
 const DB_VERSION = 1;
 const STORE_NAME = 'lapTimes';
 const TRACK_PREFERENCES_KEY = 'RacerTrackPreferences';
 const TRACK_DATA_BACKUP_KEY = 'RacerLapTimesBackup';
+const TRACK_CARD_RANK_CACHE_KEY = 'VectorGpTrackCardRankCache';
+const SCORE_MODE_INTRO_STORAGE_KEY = 'VectorGpScoreModeIntroDismissed';
+const TRACK_CARD_RANK_CACHE_MS = 10 * 60 * 1000;
 
 let db = null;
 let dbPromise = null;
@@ -190,6 +193,70 @@ export function saveTrackPreferences(trackKey, nextPreferences) {
         [trackKey]: merged
     });
     return { ...merged };
+}
+
+export function readTrackCardRankSnapshots() {
+    if (typeof window === 'undefined' || !window.localStorage) return new Map();
+
+    try {
+        const raw = window.localStorage.getItem(TRACK_CARD_RANK_CACHE_KEY);
+        if (!raw) return new Map();
+
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return new Map();
+
+        const now = Date.now();
+        const snapshots = new Map();
+        Object.entries(parsed).forEach(([cacheKey, snapshot]) => {
+            const cachedAt = Number(snapshot?.cachedAt);
+            if (!Number.isFinite(cachedAt) || now - cachedAt > TRACK_CARD_RANK_CACHE_MS) return;
+            snapshots.set(cacheKey, {
+                rankLabel: typeof snapshot?.rankLabel === 'string' ? snapshot.rankLabel : null,
+                scoreboardSnapshot: snapshot?.scoreboardSnapshot && typeof snapshot.scoreboardSnapshot === 'object'
+                    ? snapshot.scoreboardSnapshot
+                    : null,
+                cachedAt
+            });
+        });
+        return snapshots;
+    } catch (error) {
+        console.error('Error reading track card rank cache:', error);
+        return new Map();
+    }
+}
+
+export function writeTrackCardRankSnapshots(rankSnapshots) {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+
+    try {
+        window.localStorage.setItem(
+            TRACK_CARD_RANK_CACHE_KEY,
+            JSON.stringify(Object.fromEntries(rankSnapshots.entries()))
+        );
+    } catch (error) {
+        console.error('Error saving track card rank cache:', error);
+    }
+}
+
+export function readScoreModeIntroDismissed() {
+    if (typeof window === 'undefined' || !window.localStorage) return false;
+
+    try {
+        return window.localStorage.getItem(SCORE_MODE_INTRO_STORAGE_KEY) === '1';
+    } catch (error) {
+        console.error('Error reading score mode intro flag:', error);
+        return false;
+    }
+}
+
+export function writeScoreModeIntroDismissed(isDismissed) {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+
+    try {
+        window.localStorage.setItem(SCORE_MODE_INTRO_STORAGE_KEY, isDismissed ? '1' : '0');
+    } catch (error) {
+        console.error('Error saving score mode intro flag:', error);
+    }
 }
 
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
