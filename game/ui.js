@@ -1104,7 +1104,7 @@ export class GameUi {
                 outer: previewGeometry.outer,
                 inner: previewGeometry.inner
             },
-            transparentBackground: false,
+            transparentBackground: true,
             presentation,
             startLine: track.startLine,
             startPos: track.startPos,
