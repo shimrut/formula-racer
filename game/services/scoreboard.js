@@ -1,12 +1,12 @@
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.89';
-import { TRACKS } from '../tracks.js?v=1.89';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.90';
+import { TRACKS } from '../tracks.js?v=1.90';
 import {
     buildServiceHeaders,
     clampRequestLimit,
     getBaseSupabaseConfig,
     getOrCreatePlayerId,
     unwrapRpcPayload
-} from './shared-client.js?v=1.89';
+} from './shared-client.js?v=1.90';
 
 const DEFAULT_SUBMIT_FUNCTION_NAME = 'scoreboard-submit';
 const MIN_SCOREBOARD_TIME = 2.0;
@@ -18,6 +18,16 @@ const SCOREBOARD_TOP_SEGMENT_LIMIT = 5;
 const SCOREBOARD_PLAYER_WINDOW_RADIUS = 2;
 /** Same-key concurrent callers share one network round-trip (defense in depth vs duplicate UI/engine paths). */
 const inflightScoreboardSnapshots = new Map();
+const LEADERBOARD_NAME_ADJECTIVES = [
+    'Arctic', 'Blazing', 'Crimson', 'Electric', 'Flying', 'Golden', 'Hidden', 'Iron',
+    'Jade', 'Lucky', 'Midnight', 'Neon', 'Phantom', 'Quantum', 'Rapid', 'Rocket',
+    'Shadow', 'Silver', 'Turbo', 'Velvet', 'Wild', 'Winter', 'Zenith', 'Zero'
+];
+const LEADERBOARD_NAME_NOUNS = [
+    'Badger', 'Cobra', 'Falcon', 'Gecko', 'Jaguar', 'Koala', 'Lynx', 'Manta',
+    'Mustang', 'Orca', 'Otter', 'Panther', 'Pigeon', 'Raven', 'Shark', 'Sparrow',
+    'Tiger', 'Viper', 'Wolf', 'Wombat', 'Yak', 'Zebra', 'Comet', 'Meteor'
+];
 
 function getScoreboardConfig() {
     const baseConfig = getBaseSupabaseConfig();
@@ -103,6 +113,26 @@ function formatPlayerRankLabel(playerRank) {
         return null;
     }
     return `#${playerRank}`;
+}
+
+function hashLeaderboardPlayerId(playerId) {
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < playerId.length; index += 1) {
+        hash ^= playerId.charCodeAt(index);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return hash >>> 0;
+}
+
+export function getLeaderboardPlayerName(playerId) {
+    if (typeof playerId !== 'string' || !playerId) return 'Anonymous Racer';
+
+    const hash = hashLeaderboardPlayerId(playerId);
+    const adjective = LEADERBOARD_NAME_ADJECTIVES[hash % LEADERBOARD_NAME_ADJECTIVES.length];
+    const noun = LEADERBOARD_NAME_NOUNS[Math.floor(hash / LEADERBOARD_NAME_ADJECTIVES.length) % LEADERBOARD_NAME_NOUNS.length];
+    const suffixSeed = hash >>> 16;
+    const suffix = suffixSeed % 4 === 0 ? '' : ` ${2 + (suffixSeed % 98)}`;
+    return `${adjective} ${noun}${suffix}`;
 }
 
 function createScoreboardRowsQuery(trackKey, mode, { limit, offset = 0, select = 'player_id,best_time_ms,updated_at' } = {}) {

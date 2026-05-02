@@ -1,13 +1,13 @@
-import { CONFIG } from '../config.js?v=1.89';
+import { CONFIG } from '../config.js?v=1.90';
 import { getPhysicsPresetForConfig } from '../physics-presets.js';
-import { TRACKS } from '../tracks.js?v=1.89';
+import { TRACKS } from '../tracks.js?v=1.90';
 import {
     buildServiceHeaders,
     clampRequestLimit,
     getBaseSupabaseConfig,
     getOrCreatePlayerId,
     unwrapRpcPayload
-} from './shared-client.js?v=1.89';
+} from './shared-client.js?v=1.90';
 
 const DEFAULT_DAILY_SUBMIT_FUNCTION_NAME = 'daily-challenge-submit';
 const DEFAULT_DAILY_ACTIVE_RPC_NAME = 'get_active_daily_challenge';
@@ -241,6 +241,15 @@ export function formatDailyChallengeResultLabel(challenge, result) {
     }
 
     return bestTime !== null ? `${bestTime.toFixed(2)}s` : '--';
+}
+
+export function formatDailyChallengeBestLabel(objectiveType, bestTime, completedLaps = null) {
+    if (objectiveType === 'finish_with_crash_budget') {
+        const laps = Math.max(0, Math.trunc(completedLaps || 0));
+        return laps > 0 ? `${laps} lap${laps === 1 ? '' : 's'}` : '--';
+    }
+
+    return Number.isFinite(bestTime) ? `${Number(bestTime).toFixed(2)}s` : '--';
 }
 
 export function getDailyChallengeModifierBadges(challenge) {
