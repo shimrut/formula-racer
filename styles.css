@@ -1013,9 +1013,7 @@ ol.ftu-sheet-body.ftu-crash-rules {
 }
 
 .daily-challenge-preview-canvas {
-    background:
-        radial-gradient(circle at 50% 22%, rgba(248, 113, 113, 0.12), transparent 46%),
-        var(--modal-surface-color);
+    background: transparent;
 }
 
 .mode-selection-panel {
