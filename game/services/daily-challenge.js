@@ -1,13 +1,13 @@
-import { CONFIG } from '../config.js?v=1.81';
+import { CONFIG } from '../config.js?v=1.89';
 import { getPhysicsPresetForConfig } from '../physics-presets.js';
-import { TRACKS } from '../tracks.js?v=1.81';
+import { TRACKS } from '../tracks.js?v=1.89';
 import {
     buildServiceHeaders,
     clampRequestLimit,
     getBaseSupabaseConfig,
     getOrCreatePlayerId,
     unwrapRpcPayload
-} from './shared-client.js?v=1.81';
+} from './shared-client.js?v=1.89';
 
 const DEFAULT_DAILY_SUBMIT_FUNCTION_NAME = 'daily-challenge-submit';
 const DEFAULT_DAILY_ACTIVE_RPC_NAME = 'get_active_daily_challenge';
@@ -28,7 +28,8 @@ function toCachedActiveChallenge(challenge) {
         id: challenge.id,
         trackKey: challenge.trackKey,
         objectiveType: typeof challenge.objectiveType === 'string' ? challenge.objectiveType : 'single_lap_fastest',
-        endsAt: typeof challenge.endsAt === 'string' ? challenge.endsAt : null
+        endsAt: typeof challenge.endsAt === 'string' ? challenge.endsAt : null,
+        skin: typeof challenge.skin === 'string' && challenge.skin.trim() ? challenge.skin.trim() : 'default'
     };
 }
 
@@ -129,7 +130,8 @@ function normalizeDailyChallenge(raw) {
             : {},
         physicsOverrides: raw.physicsOverrides && typeof raw.physicsOverrides === 'object'
             ? raw.physicsOverrides
-            : {}
+            : {},
+        skin: typeof raw.skin === 'string' && raw.skin.trim() ? raw.skin.trim() : 'default'
     };
 }
 

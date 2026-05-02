@@ -1,5 +1,5 @@
-import { buildTrackCanvas } from './track-canvas.js?v=1.81';
-import { buildCollisionRuntime, buildTrackGeometry } from './track-runtime.js?v=1.81';
+import { buildTrackCanvas } from './track-canvas.js?v=1.89';
+import { buildCollisionRuntime, buildTrackGeometry } from './track-runtime.js?v=1.89';
 
 const geometryCache = new Map();
 const runtimeCache = new Map();
@@ -8,8 +8,16 @@ const GEOMETRY_CACHE_LIMIT = 16;
 const RUNTIME_CACHE_LIMIT = 8;
 const CANVAS_CACHE_LIMIT = 3;
 
-function getAssetCacheKey(trackKey, { qualityLevel = 0, frameSkip = 0 } = {}) {
+function getGeometryCacheKey(trackKey, { qualityLevel = 0, frameSkip = 0 } = {}) {
     return `${trackKey}:${qualityLevel}:${frameSkip}`;
+}
+
+function getCanvasCacheKey(trackKey, {
+    qualityLevel = 0,
+    frameSkip = 0,
+    presentation = null
+} = {}) {
+    return `${trackKey}:${qualityLevel}:${frameSkip}:${presentation?.key || 'default'}`;
 }
 
 function getCachedValue(cache, key) {
@@ -48,7 +56,7 @@ function releaseCanvasAsset(canvasAsset) {
 }
 
 export function getTrackPreviewGeometry(trackKey, track, options = {}) {
-    const key = getAssetCacheKey(trackKey, options);
+    const key = getGeometryCacheKey(trackKey, options);
     let geometry = getCachedValue(geometryCache, key);
     if (!geometry) {
         geometry = buildTrackGeometry(track, options);
@@ -58,7 +66,7 @@ export function getTrackPreviewGeometry(trackKey, track, options = {}) {
 }
 
 export function getTrackRuntimeAsset(trackKey, track, options = {}) {
-    const key = getAssetCacheKey(trackKey, options);
+    const key = getGeometryCacheKey(trackKey, options);
     let runtime = getCachedValue(runtimeCache, key);
     if (!runtime) {
         const geometry = getTrackPreviewGeometry(trackKey, track, options);
@@ -72,11 +80,11 @@ export function getTrackRuntimeAsset(trackKey, track, options = {}) {
 }
 
 export function getTrackCanvasAsset(trackKey, track, options = {}) {
-    const key = getAssetCacheKey(trackKey, options);
+    const key = getCanvasCacheKey(trackKey, options);
     let canvasAsset = getCachedValue(canvasCache, key);
     if (!canvasAsset) {
         const geometry = getTrackPreviewGeometry(trackKey, track, options);
-        canvasAsset = buildTrackCanvas(track, geometry);
+        canvasAsset = buildTrackCanvas(track, geometry, options.presentation || null);
         cacheValue(canvasCache, key, canvasAsset, CANVAS_CACHE_LIMIT, releaseCanvasAsset);
     }
     return canvasAsset;
