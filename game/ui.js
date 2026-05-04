@@ -1,8 +1,8 @@
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.90';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.91';
 import {
     readScoreModeIntroDismissed,
     readTrackCardRankSnapshots
-} from './storage.js?v=1.90';
+} from './storage.js?v=1.91';
 import {
     applyDailyChallengeRankContent as applyDailyChallengeRankPanelContent,
     getDailyChallengeScoreboardSnapshot as getDailyScoreboardSnapshot,
@@ -10,7 +10,7 @@ import {
     setDailyChallengeHud as setDailyChallengeHudDisplay,
     setDailyChallengeSummary as setDailyChallengePanelSummary,
     updateDailyChallengeCountdown as updateDailyChallengeTimer
-} from './ui/daily-challenge.js?v=1.90';
+} from './ui/daily-challenge.js?v=1.91';
 import {
     dismissScoreModeIntro as dismissStartOverlayScoreModeIntro,
     hideStartOverlay as hideStartOverlayView,
@@ -23,7 +23,7 @@ import {
     showStartOverlay as showStartOverlayView,
     updateScoreModeIntro as updateStartOverlayScoreModeIntro,
     updateStartOverlayMode as updateStartOverlayPanels
-} from './ui/start-overlay.js?v=1.90';
+} from './ui/start-overlay.js?v=1.91';
 import {
     applyRankModalStatContent as applyModalRankStatContent,
     createRankModalStat as createModalRankStat,
@@ -33,7 +33,7 @@ import {
     showModalRunsPayload as showModalRunsPayloadView,
     updateModalRunSummary as refreshModalRunSummary,
     updateModalScoreboardSnapshot as refreshModalScoreboardSnapshot
-} from './ui/modal-runs.js?v=1.90';
+} from './ui/modal-runs.js?v=1.91';
 import {
     moveReturningTrack as advanceReturningTrackSelection,
     openTrackCardLeaderboard as openTrackSelectorLeaderboard,
@@ -43,7 +43,7 @@ import {
     updateReturningTrackControls as updateTrackSelectorControls,
     updateReturningTrackSlider as updateTrackSelectorSlider,
     updateTrackCountIndicator as updateTrackSelectorCount
-} from './ui/track-selector.js?v=1.90';
+} from './ui/track-selector.js?v=1.91';
 import {
     cancelPendingTrackCarouselDrag as cancelTrackBrowserPendingDrag,
     flushQueuedTrackPreviews as flushTrackBrowserQueuedPreviews,
@@ -56,16 +56,16 @@ import {
     scheduleTrackCarouselDragTranslateX as scheduleTrackBrowserDragTranslateX,
     setTrackCarouselTranslateX as setTrackBrowserTranslateX,
     updateVisibleTrackPreviews as updateTrackBrowserVisiblePreviews
-} from './ui/track-browser.js?v=1.90';
-import { assignGameUiDomRefs } from './ui/dom.js?v=1.90';
-import { initializeGameUiState } from './ui/state.js?v=1.90';
+} from './ui/track-browser.js?v=1.91';
+import { assignGameUiDomRefs } from './ui/dom.js?v=1.91';
+import { initializeGameUiState } from './ui/state.js?v=1.91';
 import {
     bindReturningPlayerCarousel as bindTrackPickerCarousel,
     bindReturningPlayerKeyboardNavigation as bindTrackPickerKeyboardNavigation,
     bindReturningPlayerSwipe as bindTrackPickerSwipe,
     isDesktopTrackSelectionActive as isDesktopTrackPickerSelectionActive,
     updateTrackModeControls as updateTrackPickerModeControls
-} from './ui/track-picker.js?v=1.90';
+} from './ui/track-picker.js?v=1.91';
 import {
     bumpTrackCardRankRequestVersion as bumpTrackRankRequestVersion,
     getCachedTrackCardRankLabel as getCachedTrackRankLabel,
@@ -85,7 +85,7 @@ import {
     setPendingReturningTrackRankSubmission as setPendingTrackRankSubmission,
     updateReturningTrackPersonalBest as updateTrackPersonalBest,
     updateVisibleTrackRanks as updateTrackRankVisibility
-} from './ui/track-ranks.js?v=1.90';
+} from './ui/track-ranks.js?v=1.91';
 import {
     activateModalFocusTrap as activateModalShellFocusTrap,
     cancelPendingModalClose as cancelModalShellClose,
@@ -104,7 +104,7 @@ import {
     showModal as showModalShell,
     showRunsModal as showModalShellRuns,
     updateShareState as updateModalShellShareState
-} from './ui/modal-shell.js?v=1.90';
+} from './ui/modal-shell.js?v=1.91';
 import {
     centerLeaderboardCurrentRow as centerModalContentLeaderboardCurrentRow,
     createModalActionIcon as createModalContentActionIcon,
@@ -121,7 +121,7 @@ import {
     setShareButtonContent as setModalContentShareButtonContent,
     setStandardPauseStats as setModalContentStandardPauseStats,
     setWinStats as setModalContentWinStats
-} from './ui/modal-content.js?v=1.90';
+} from './ui/modal-content.js?v=1.91';
 import {
     getCachedPersonalBestForTrack as getRaceHudCachedPersonalBestForTrack,
     hidePracticeLapFlash as hideRaceHudPracticeLapFlash,
@@ -140,7 +140,7 @@ import {
     syncHud as syncRaceHud,
     turnOnCountdownLight as turnOnRaceHudCountdownLight,
     updateHudStatsButtonState as updateRaceHudStatsButtonState
-} from './ui/race-hud.js?v=1.90';
+} from './ui/race-hud.js?v=1.91';
 import {
     bindHowToPlay as bindUiHowToPlay,
     bindModalActionRowPointerFocus as bindUiModalActionRowPointerFocus,
@@ -151,26 +151,26 @@ import {
     bindTapAction as bindUiTapAction,
     bindTouchButton as bindUiTouchButton,
     bindTrackModeControls as bindUiTrackModeControls
-} from './ui/interactions.js?v=1.90';
+} from './ui/interactions.js?v=1.91';
 import {
     createEmptyTrackPersonalBestState as createTrackStateEmptyPersonalBestState,
     getSelectedTrackMode as getTrackStateSelectedMode,
     getTrackPreferences as getUiTrackPreferences,
     setTrackSelection as setUiTrackSelection,
     updateSelectedTrackPreferences as updateUiSelectedTrackPreferences
-} from './ui/track-state.js?v=1.90';
+} from './ui/track-state.js?v=1.91';
 import {
     openDailyChallengeLeaderboard as openUiDailyChallengeLeaderboard,
     requestDailyChallengeLeaderboardSnapshot as requestUiDailyChallengeLeaderboardSnapshot,
     showTrackLeaderboardModal as showUiTrackLeaderboardModal
-} from './ui/leaderboards.js?v=1.90';
+} from './ui/leaderboards.js?v=1.91';
 import {
     anchorHudBar as anchorUiHudBar,
     isModalActive as isUiModalActive,
     resetTouchControls as resetUiTouchControls,
     setStartOverlayActive as setUiStartOverlayActive,
     setStartSelectionMode as setUiStartSelectionMode
-} from './ui/core.js?v=1.90';
+} from './ui/core.js?v=1.91';
 export class GameUi {
     constructor({ onPreviewTrack, onPreviewPresentation, onStart, onStartDailyChallenge, onModeSelected, onReset, onShare, onShowPersonalBests, onPausePractice, onSupportClick, onHeaderMenuOpen, onHowToPlayOpen, previewQualityLevel = 0, previewFrameSkip = 0 }) {
         assignGameUiDomRefs(this);
@@ -629,6 +629,7 @@ export class GameUi {
         scoreboardMode = TRACK_MODE_STANDARD,
         scoreboardChallengeId = null,
         scoreboardTrackKey = null,
+        scoreboardDailyChallengeSkin = null,
         scoreboardSubhead = null,
         showGlobalLeaderboard = true,
         allowLeaderboardOpen = true
@@ -638,6 +639,7 @@ export class GameUi {
             scoreboardMode,
             scoreboardChallengeId,
             scoreboardTrackKey,
+            scoreboardDailyChallengeSkin,
             scoreboardSubhead,
             showGlobalLeaderboard,
             allowLeaderboardOpen
@@ -744,8 +746,8 @@ export class GameUi {
         return renderModalContentLapTimesList.call(this, container, lapTimesArray, bestTime, currentTime);
     }
 
-    renderScoreboardList(container, scoreboardSnapshot, scoreboardMode, trackKey = null, scoreboardSubhead = null) {
-        return renderModalContentScoreboardList.call(this, container, scoreboardSnapshot, scoreboardMode, trackKey, scoreboardSubhead);
+    renderScoreboardList(container, scoreboardSnapshot, scoreboardMode, trackKey = null, scoreboardSubhead = null, scoreboardChallengeId = null, scoreboardDailyChallengeSkin = null) {
+        return renderModalContentScoreboardList.call(this, container, scoreboardSnapshot, scoreboardMode, trackKey, scoreboardSubhead, scoreboardChallengeId, scoreboardDailyChallengeSkin);
     }
 
     centerLeaderboardCurrentRow() {
