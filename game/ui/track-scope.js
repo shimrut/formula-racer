@@ -1,4 +1,4 @@
-import { normalizeTrackMode } from './track-mode.js?v=1.90';
+import { normalizeTrackMode } from './track-mode.js?v=1.91';
 
 export function getTrackResultNamespace(ranked) {
     return ranked ? 'ranked' : 'local';

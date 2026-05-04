@@ -2,8 +2,8 @@ import {
     buildModalRunsPayload,
     buildModalRunsViewOptions,
     buildScoreboardRankDisplay
-} from '../result-flow.js?v=1.90';
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.90';
+} from '../result-flow.js?v=1.91';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.91';
 
 function isButtonElement(node) {
     return typeof HTMLButtonElement !== 'undefined' && node instanceof HTMLButtonElement;

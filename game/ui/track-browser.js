@@ -1,12 +1,12 @@
-import { CONFIG } from '../config.js?v=1.90';
-import { TRACKS } from '../tracks.js?v=1.90';
-import { getTrackPreviewGeometry } from '../core/track-assets.js?v=1.90';
-import { renderTrackPreviewCanvas } from '../services/share-renderer.js?v=1.90';
+import { CONFIG } from '../config.js?v=1.91';
+import { TRACKS } from '../tracks.js?v=1.91';
+import { getTrackPreviewGeometry } from '../core/track-assets.js?v=1.91';
+import { renderTrackPreviewCanvas } from '../services/share-renderer.js?v=1.91';
 import {
     createDailyChallengePresentationEvent,
     resolveTrackPresentation,
     TRACK_PRESENTATION_SURFACES
-} from '../track-presentation.js?v=1.90';
+} from '../track-presentation.js?v=1.91';
 
 export function setTrackCarouselTranslateX(translateX) {
     this._trackCarouselTranslateX = Number.isFinite(translateX)

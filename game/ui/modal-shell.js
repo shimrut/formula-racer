@@ -1,5 +1,5 @@
-import { TRACK_MODE_STANDARD } from '../modes.js?v=1.90';
-import { buildModalRunsPayload, buildModalStatsPlan } from '../result-flow.js?v=1.90';
+import { TRACK_MODE_STANDARD } from '../modes.js?v=1.91';
+import { buildModalRunsPayload, buildModalStatsPlan } from '../result-flow.js?v=1.91';
 
 export function cancelPendingModalClose() {
     if (!this.modal) return;
@@ -120,6 +120,7 @@ export function showRunsModal(lapTimesArray, bestTime, currentTime = null, retur
     scoreboardMode = TRACK_MODE_STANDARD,
     scoreboardChallengeId = null,
     scoreboardTrackKey = null,
+    scoreboardDailyChallengeSkin = null,
     scoreboardSubhead = null,
     showGlobalLeaderboard = true,
     allowLeaderboardOpen = true
@@ -137,6 +138,7 @@ export function showRunsModal(lapTimesArray, bestTime, currentTime = null, retur
         currentTime,
         scoreboardChallengeId,
         scoreboardTrackKey,
+        scoreboardDailyChallengeSkin,
         scoreboardSnapshot,
         scoreboardMode,
         scoreboardSubhead,
@@ -151,7 +153,9 @@ export function showRunsModal(lapTimesArray, bestTime, currentTime = null, retur
             this._modalRunsPayload.scoreboardSnapshot,
             this._modalRunsPayload.scoreboardMode,
             this._modalRunsPayload.scoreboardTrackKey,
-            this._modalRunsPayload.scoreboardSubhead
+            this._modalRunsPayload.scoreboardSubhead,
+            this._modalRunsPayload.scoreboardChallengeId,
+            this._modalRunsPayload.scoreboardDailyChallengeSkin
         );
     }
     this._runsViewMode = returnMode === 'back' ? 'back' : 'close';

@@ -1,7 +1,15 @@
-import { TRACKS } from '../tracks.js?v=1.90';
-import { TRACK_MODE_LABELS } from '../modes.js?v=1.90';
-import { getLeaderboardPlayerName } from '../services/scoreboard.js?v=1.90';
-import { buildModalDeltaDisplay } from '../result-flow.js?v=1.90';
+import { TRACKS } from '../tracks.js?v=1.91';
+import { TRACK_MODE_LABELS } from '../modes.js?v=1.91';
+import { getLeaderboardPlayerName } from '../services/scoreboard.js?v=1.91';
+import { buildModalDeltaDisplay } from '../result-flow.js?v=1.91';
+
+const KETTLE_RUN_SPACE_DAILY_FIRST_PLACE_DISPLAY_NAME = 'San Holo';
+
+function shouldUseKettleRunSpaceDailyFirstPlaceName(trackKey, challengeId, dailyChallengeSkin) {
+    return Boolean(challengeId)
+        && trackKey === 'kettleRun'
+        && dailyChallengeSkin === 'space';
+}
 
 export function setModalStatCenter(labelText, valueText, valueClass) {
     if (!this.modalStatsRow) return;
@@ -347,7 +355,15 @@ export function renderLapTimesList(container, lapTimesArray, bestTime, currentTi
     container.appendChild(list);
 }
 
-export function renderScoreboardList(container, scoreboardSnapshot, scoreboardMode, trackKey = null, scoreboardSubhead = null) {
+export function renderScoreboardList(
+    container,
+    scoreboardSnapshot,
+    scoreboardMode,
+    trackKey = null,
+    scoreboardSubhead = null,
+    scoreboardChallengeId = null,
+    scoreboardDailyChallengeSkin = null
+) {
     if (!container) return;
     const isLoading = Boolean(scoreboardSnapshot?.isLoading);
     const topRows = Array.isArray(scoreboardSnapshot?.topRows)
@@ -412,6 +428,12 @@ export function renderScoreboardList(container, scoreboardSnapshot, scoreboardMo
     const list = document.createElement('div');
     list.className = 'lap-times-list leaderboard-list';
 
+    const useSanHoloFirst = shouldUseKettleRunSpaceDailyFirstPlaceName(
+        trackKey,
+        scoreboardChallengeId,
+        scoreboardDailyChallengeSkin
+    );
+
     const appendScoreboardRow = (entry) => {
         const item = document.createElement('div');
         item.className = `lap-time-item leaderboard-row${entry.rank === 1 ? ' best' : ''}${entry.isCurrentPlayer ? ' current' : ''}`;
@@ -425,7 +447,9 @@ export function renderScoreboardList(container, scoreboardSnapshot, scoreboardMo
 
         const rowLabel = document.createElement('span');
         rowLabel.className = 'leaderboard-row-label';
-        if (entry.isCurrentPlayer) {
+        if (useSanHoloFirst && entry.rank === 1) {
+            rowLabel.textContent = KETTLE_RUN_SPACE_DAILY_FIRST_PLACE_DISPLAY_NAME;
+        } else if (entry.isCurrentPlayer) {
             rowLabel.textContent = 'You';
         } else {
             rowLabel.textContent = getLeaderboardPlayerName(entry.playerId);

@@ -1,6 +1,6 @@
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.90';
-import { saveTrackPreferences, writeScoreModeIntroDismissed } from '../storage.js?v=1.90';
-import { normalizeTrackMode } from './track-mode.js?v=1.90';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.91';
+import { saveTrackPreferences, writeScoreModeIntroDismissed } from '../storage.js?v=1.91';
+import { normalizeTrackMode } from './track-mode.js?v=1.91';
 
 export function selectTrackMode(mode) {
     const nextMode = normalizeTrackMode(mode);

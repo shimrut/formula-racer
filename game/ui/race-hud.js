@@ -1,4 +1,4 @@
-import { resolveTrackPreferenceScope } from './track-scope.js?v=1.90';
+import { resolveTrackPreferenceScope } from './track-scope.js?v=1.91';
 
 /** Speed readout: cap DOM writes (lap timer updates every frame when centiseconds change). */
 const HUD_SPEED_MIN_MS = 1000 / 15;

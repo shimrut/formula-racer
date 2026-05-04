@@ -1,6 +1,6 @@
-import { TRACKS } from '../tracks.js?v=1.90';
-import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.90';
-import { resolveTrackPreferenceScope } from './track-scope.js?v=1.90';
+import { TRACKS } from '../tracks.js?v=1.91';
+import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.91';
+import { resolveTrackPreferenceScope } from './track-scope.js?v=1.91';
 
 export function moveReturningTrack(step) {
     if (!this._returningTrackKeys.length) return;

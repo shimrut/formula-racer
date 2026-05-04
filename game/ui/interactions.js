@@ -1,4 +1,4 @@
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.90';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.91';
 
 export function bindModalViewToggles() {
     if (this.backToMainBtn) {

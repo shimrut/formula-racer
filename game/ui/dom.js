@@ -35,6 +35,7 @@ export function assignGameUiDomRefs(ui) {
     ui.modeSelectStandardBtn = document.getElementById('mode-select-standard-btn');
     ui.modeSelectPracticeBtn = document.getElementById('mode-select-practice-btn');
     ui.modeSelectDailyBtn = document.getElementById('mode-select-daily-btn');
+    ui.modeSelectDailyTitleLabel = document.querySelector('#mode-select-daily-btn .mode-selection-row__title-label');
     ui.modeSelectDailyCopy = document.getElementById('mode-select-daily-copy');
     ui.returningPlayerPanel = document.getElementById('returning-player-panel');
     ui.returningPlayerHeading = document.getElementById('returning-player-heading');

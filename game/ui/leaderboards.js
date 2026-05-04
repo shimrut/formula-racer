@@ -1,16 +1,17 @@
-import { TRACKS } from '../tracks.js?v=1.90';
-import { TRACK_MODE_STANDARD } from '../modes.js?v=1.90';
+import { TRACKS } from '../tracks.js?v=1.91';
+import { TRACK_MODE_STANDARD } from '../modes.js?v=1.91';
 import {
     getDailyChallengeSnapshot
-} from '../services/daily-challenge.js?v=1.90';
-import { normalizeTrackMode } from './track-mode.js?v=1.90';
+} from '../services/daily-challenge.js?v=1.91';
+import { normalizeTrackMode } from './track-mode.js?v=1.91';
 
 export function showLeaderboardModalState(returnMode = 'close', {
     scoreboardSnapshot = null,
     scoreboardMode = TRACK_MODE_STANDARD,
     scoreboardChallengeId = null,
     scoreboardTrackKey = null,
-    scoreboardSubhead = null
+    scoreboardSubhead = null,
+    scoreboardDailyChallengeSkin = null
 } = {}) {
     const payload = {
         scoreboardSnapshot,
@@ -24,6 +25,9 @@ export function showLeaderboardModalState(returnMode = 'close', {
     }
     if (scoreboardSubhead !== null) {
         payload.scoreboardSubhead = scoreboardSubhead;
+    }
+    if (scoreboardDailyChallengeSkin !== null && scoreboardDailyChallengeSkin !== undefined) {
+        payload.scoreboardDailyChallengeSkin = scoreboardDailyChallengeSkin;
     }
     this.showRunsModal(null, null, null, returnMode, payload);
 }
@@ -72,7 +76,10 @@ export async function openDailyChallengeLeaderboard(returnMode = 'close') {
     const sharedOptions = {
         scoreboardMode: TRACK_MODE_STANDARD,
         scoreboardTrackKey: summary.trackKey,
-        scoreboardSubhead: 'Leaderboard · Daily Challenge'
+        scoreboardSubhead: 'Leaderboard · Daily Challenge',
+        scoreboardDailyChallengeSkin: typeof summary.skin === 'string' && summary.skin.trim()
+            ? summary.skin.trim()
+            : null
     };
     showLeaderboardModalState.call(this, returnMode, {
         ...sharedOptions,
