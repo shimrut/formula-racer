@@ -1,5 +1,5 @@
-import { configureCanvasViewport } from '../core/canvas-resolution.js?v=1.90';
-import { drawViewportPresentationBackground } from '../core/track-canvas.js?v=1.90';
+import { configureCanvasViewport } from '../core/canvas-resolution.js?v=1.91';
+import { drawViewportPresentationBackground } from '../core/track-canvas.js?v=1.91';
 
 let canvas = null;
 let ctx = null;
