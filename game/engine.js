@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js?v=1.90';
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.90';
+import { CONFIG } from './config.js?v=1.91';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.91';
 
 function lerpAngle(a, b, t) {
     let d = b - a;
@@ -7,31 +7,31 @@ function lerpAngle(a, b, t) {
     while (d < -Math.PI) d += 2 * Math.PI;
     return a + d * t;
 }
-import { TRACKS } from './tracks.js?v=1.90';
-import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.90';
-import { drawViewportPresentationBackground } from './core/track-canvas.js?v=1.90';
+import { TRACKS } from './tracks.js?v=1.91';
+import { getTrackCanvasAsset, getTrackRuntimeAsset } from './core/track-assets.js?v=1.91';
+import { drawViewportPresentationBackground } from './core/track-canvas.js?v=1.91';
 import {
     createDailyChallengePresentationEvent,
     resolveTrackPresentation,
     TRACK_PRESENTATION_SURFACES
-} from './track-presentation.js?v=1.90';
-import { configureCanvasViewport } from './core/canvas-resolution.js?v=1.90';
-import { updateSimulation } from './core/simulation.js?v=1.90';
-import { RingBuffer } from './core/ring-buffer.js?v=1.90';
-import { getTrackData, hasAnyTrackData, saveLapTime, saveBestTime, syncBestTime } from './storage.js?v=1.90';
-import { getDailyChallengeData, setDailyChallengeBestTime } from './daily-challenge-storage.js?v=1.90';
+} from './track-presentation.js?v=1.91';
+import { configureCanvasViewport } from './core/canvas-resolution.js?v=1.91';
+import { updateSimulation } from './core/simulation.js?v=1.91';
+import { RingBuffer } from './core/ring-buffer.js?v=1.91';
+import { getTrackData, hasAnyTrackData, saveLapTime, saveBestTime, syncBestTime } from './storage.js?v=1.91';
+import { getDailyChallengeData, setDailyChallengeBestTime } from './daily-challenge-storage.js?v=1.91';
 import {
     buildLapRecord,
     createModalActions,
     isNewBestResult,
     pushRecentLap
-} from './result-flow.js?v=1.90';
-import { createRunPolicy } from './run-policy.js?v=1.90';
+} from './result-flow.js?v=1.91';
+import { createRunPolicy } from './run-policy.js?v=1.91';
 import { getPhysicsPresetForConfig } from './physics-presets.js';
-import { AnalyticsService } from './services/analytics.js?v=1.90';
-import { PlayerStatusStore } from './services/player-status.js?v=1.90';
-import { SessionFlagStore } from './services/session-flags.js?v=1.90';
-import { ShareService } from './services/share.js?v=1.90';
+import { AnalyticsService } from './services/analytics.js?v=1.91';
+import { PlayerStatusStore } from './services/player-status.js?v=1.91';
+import { SessionFlagStore } from './services/session-flags.js?v=1.91';
+import { ShareService } from './services/share.js?v=1.91';
 import {
     formatDailyChallengeResultLabel,
     getActiveDailyChallenge,
@@ -45,8 +45,8 @@ import {
     getDailyChallengeTrackName,
     isCrashBudgetDailyChallenge,
     submitDailyChallengeBestTime
-} from './services/daily-challenge.js?v=1.90';
-import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.90';
+} from './services/daily-challenge.js?v=1.91';
+import { submitScoreboardBestTime } from './services/scoreboard.js?v=1.91';
 import {
     clearDailyChallengeVerification,
     clearScoreboardVerification,
@@ -63,7 +63,7 @@ import {
     markScoreboardVerificationPending,
     markScoreboardVerificationRejected
 } from './services/verification-queue.js';
-import { GameUi } from './ui.js?v=1.90';
+import { GameUi } from './ui.js?v=1.91';
 
 const SCOREBOARD_REPLAY_MAX_FRAMES = 20000;
 
@@ -2572,6 +2572,9 @@ export class RealTimeRacer {
                 })
                 : existingScoreboardSnapshot,
             scoreboardChallengeId: challenge.id,
+            scoreboardDailyChallengeSkin: typeof challenge.skin === 'string' && challenge.skin.trim()
+                ? challenge.skin.trim()
+                : null,
             showGlobalLeaderboard: false,
             allowLeaderboardOpen: true
         }, false, createModalActions({

@@ -2,12 +2,22 @@ import {
     formatDailyChallengeBestLabel,
     getDailyChallengeCopyLabels,
     getDailyChallengeModeSelectObjectiveLine
-} from '../services/daily-challenge.js?v=1.90';
+} from '../services/daily-challenge.js?v=1.91';
 import {
     getDailyChallengeVerificationEntry,
     getDailyChallengeVerificationState
 } from '../services/verification-queue.js';
-import { buildScoreboardRankDisplay } from '../result-flow.js?v=1.90';
+import { buildScoreboardRankDisplay } from '../result-flow.js?v=1.91';
+
+const DEFAULT_DAILY_GP_MODE_TITLE = 'Daily GP';
+const KETTLE_RUN_SPACE_MODE_TITLE = 'The Kettle Run';
+
+function isKettleRunSpaceDailyChallenge(summary) {
+    const skin = typeof summary?.skin === 'string' ? summary.skin.trim() : '';
+    return Boolean(summary?.available)
+        && summary.trackKey === 'kettleRun'
+        && skin === 'space';
+}
 
 export function setDailyChallengeSummary(summary) {
     if (!summary || typeof summary !== 'object') {
@@ -35,6 +45,8 @@ export function setDailyChallengeSummary(summary) {
     }
 
     const hasChallenge = Boolean(this._dailyChallengeSummary?.available);
+    const kettleSpaceDaily = isKettleRunSpaceDailyChallenge(this._dailyChallengeSummary);
+    const dailyModeTitle = kettleSpaceDaily ? KETTLE_RUN_SPACE_MODE_TITLE : DEFAULT_DAILY_GP_MODE_TITLE;
     if (!hasChallenge && this._startOverlaySelection === 'daily') {
         this._startOverlaySelection = null;
     }
@@ -96,6 +108,9 @@ export function setDailyChallengeSummary(summary) {
                 : 'Daily challenge leaderboard unavailable.'
         );
     }
+    if (this.modeSelectDailyTitleLabel) {
+        this.modeSelectDailyTitleLabel.textContent = hasChallenge ? dailyModeTitle : DEFAULT_DAILY_GP_MODE_TITLE;
+    }
     if (this.modeSelectDailyBtn) {
         this.modeSelectDailyBtn.hidden = !hasChallenge;
         this.modeSelectDailyBtn.disabled = !hasChallenge;
@@ -110,6 +125,9 @@ export function setDailyChallengeSummary(summary) {
     }
     if (this.dailyChallengeStartBtn) {
         this.dailyChallengeStartBtn.disabled = !hasChallenge || Boolean(this._dailyChallengeSummary?.loading);
+        this.dailyChallengeStartBtn.textContent = hasChallenge && kettleSpaceDaily
+            ? `Start ${KETTLE_RUN_SPACE_MODE_TITLE}`
+            : 'Start Daily GP';
     }
     if (hasChallenge && typeof this._dailyChallengeSummary.trackKey === 'string') {
         this.renderDailyChallengePreview(this._dailyChallengeSummary.trackKey);

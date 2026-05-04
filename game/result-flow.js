@@ -245,12 +245,18 @@ export function buildModalRunsPayload(source, {
 } = {}) {
     if (!source || typeof source !== 'object') return null;
 
+    const rawDailySkin = source.scoreboardDailyChallengeSkin;
+    const scoreboardDailyChallengeSkin = typeof rawDailySkin === 'string' && rawDailySkin.trim()
+        ? rawDailySkin.trim()
+        : null;
+
     const normalized = {
         lapTimesArray: source.listData ?? source.lapTimesArray ?? null,
         bestTime: source.bestTime ?? source.lapTime ?? null,
         currentTime: source.currentTime ?? source.lapTime ?? null,
         scoreboardChallengeId: source.scoreboardChallengeId || null,
         scoreboardTrackKey: source.scoreboardTrackKey || currentTrackKey || null,
+        scoreboardDailyChallengeSkin,
         scoreboardSnapshot: source.scoreboardSnapshot ?? null,
         scoreboardMode: source.scoreboardMode || 'standard',
         scoreboardSubhead: source.scoreboardSubhead || null,
@@ -281,11 +287,13 @@ export function buildModalRunsPayload(source, {
 export function buildModalRunsViewOptions(payload) {
     if (!payload || typeof payload !== 'object') return {};
 
+    const skin = payload.scoreboardDailyChallengeSkin;
     return {
         scoreboardChallengeId: payload.scoreboardChallengeId || null,
         scoreboardSnapshot: payload.scoreboardSnapshot || null,
         scoreboardMode: payload.scoreboardMode || 'standard',
         scoreboardTrackKey: payload.scoreboardTrackKey || null,
+        scoreboardDailyChallengeSkin: typeof skin === 'string' && skin.trim() ? skin.trim() : null,
         scoreboardSubhead: payload.scoreboardSubhead || null,
         showGlobalLeaderboard: payload.showGlobalLeaderboard !== false,
         allowLeaderboardOpen: payload.allowLeaderboardOpen !== false

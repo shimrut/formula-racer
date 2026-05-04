@@ -1,13 +1,13 @@
-import { CONFIG } from '../config.js?v=1.90';
+import { CONFIG } from '../config.js?v=1.91';
 import { getPhysicsPresetForConfig } from '../physics-presets.js';
-import { TRACKS } from '../tracks.js?v=1.90';
+import { TRACKS } from '../tracks.js?v=1.91';
 import {
     buildServiceHeaders,
     clampRequestLimit,
     getBaseSupabaseConfig,
     getOrCreatePlayerId,
     unwrapRpcPayload
-} from './shared-client.js?v=1.90';
+} from './shared-client.js?v=1.91';
 
 const DEFAULT_DAILY_SUBMIT_FUNCTION_NAME = 'daily-challenge-submit';
 const DEFAULT_DAILY_ACTIVE_RPC_NAME = 'get_active_daily_challenge';

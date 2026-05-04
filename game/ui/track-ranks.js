@@ -1,8 +1,8 @@
-import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.90';
-import { getScoreboardSnapshot } from '../services/scoreboard.js?v=1.90';
-import { getTrackData, writeTrackCardRankSnapshots } from '../storage.js?v=1.90';
-import { TRACKS } from '../tracks.js?v=1.90';
-import { getTrackResultNamespace, resolveTrackPreferenceScope } from './track-scope.js?v=1.90';
+import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.91';
+import { getScoreboardSnapshot } from '../services/scoreboard.js?v=1.91';
+import { getTrackData, writeTrackCardRankSnapshots } from '../storage.js?v=1.91';
+import { TRACKS } from '../tracks.js?v=1.91';
+import { getTrackResultNamespace, resolveTrackPreferenceScope } from './track-scope.js?v=1.91';
 
 const TRACK_CARD_RANK_CACHE_MS = 10 * 60 * 1000;
 const TRACK_CARD_LEADERBOARD_TOP_LIMIT = 10;

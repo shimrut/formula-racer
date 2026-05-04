@@ -1,4 +1,4 @@
-import { CONFIG } from '../config.js?v=1.90';
+import { CONFIG } from '../config.js?v=1.91';
 import {
     drawCheckeredLine,
     drawInnerDebris,
@@ -7,7 +7,7 @@ import {
     drawTrackBoundaries,
     drawTrackFinishLine,
     fillTrackPresentation
-} from '../core/track-canvas.js?v=1.90';
+} from '../core/track-canvas.js?v=1.91';
 
 const MODAL_SURFACE_COLOR = '#020617';
 const SHARE_POSTER_TOP_INSET = 236;

@@ -1,6 +1,6 @@
-import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.90';
-import { TRACKS } from '../tracks.js?v=1.90';
-import { getTrackPreferences } from '../storage.js?v=1.90';
+import { TRACK_MODE_LABELS, TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from '../modes.js?v=1.91';
+import { TRACKS } from '../tracks.js?v=1.91';
+import { getTrackPreferences } from '../storage.js?v=1.91';
 
 /** Horizontal swipe distance (px) to change track on mobile carousel. */
 const MOBILE_CAROUSEL_SWIPE_PX = 42;
