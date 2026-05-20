@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js?v=1.91';
+import { CONFIG } from './config.js?v=1.92';
 import { TRACK_MODE_PRACTICE, TRACK_MODE_STANDARD } from './modes.js?v=1.91';
 
 function lerpAngle(a, b, t) {
